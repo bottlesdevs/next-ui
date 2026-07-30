@@ -8,7 +8,7 @@ use next_ui::components::{
     info_panel::{self, Kind},
     info_row, picker_row, popover,
     search::{self, Action as SearchAction},
-    selector_row, status_bar, switcher, switcher_row, tab, tabs, text_row, title,
+    selector_row, status_bar, switcher_row, tab, tabs, text_row, title,
 };
 use next_ui::{icons, theme};
 
@@ -163,20 +163,21 @@ impl Gallery {
         .spacing(12);
 
         let cards = row![
-            card::TextCard::new(
-                "Text card",
-                "Subtitle",
-                "Cards accept caller-owned content and messages.",
-            ),
-            card::ArtworkCard::new("Artwork card", "Ready", Message::Noop, Message::Noop,)
-                .image(sample_image()),
-            card::ProgramCard::new(
-                "Program card",
-                "Last played today",
-                Message::Noop,
-                Message::Noop,
-            )
-            .image(sample_image()),
+            card::Card::new()
+                .title("Text card")
+                .subtitle("Subtitle")
+                .description("Cards accept a title, subtitle, description, and banner.")
+                .text(),
+            card::Card::new()
+                .title("Artwork card")
+                .subtitle("Ready")
+                .banner(sample_image())
+                .artwork(Message::Noop, Message::Noop),
+            card::Card::new()
+                .title("Program card")
+                .subtitle("Last played today")
+                .banner(sample_image())
+                .program(Message::Noop, Message::Noop),
         ]
         .spacing(16);
 
