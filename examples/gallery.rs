@@ -8,7 +8,7 @@ use next_ui::components::{
     info_panel::{self, Kind},
     info_row, picker_row, popover,
     search::{self, Action as SearchAction},
-    selector_row, status_bar, switcher, tab, tabs, text_field, text_row, title,
+    selector_row, status_bar, switcher, switcher_row, tab, tabs, text_field, text_row, title,
 };
 use next_ui::{icons, theme};
 
@@ -283,12 +283,9 @@ impl Gallery {
                 Message::DetailsToggled,
             )
             .expanded(self.details_expanded),
-            text_field::Toggle::new(
-                "Toggle",
-                "Caller-owned boolean",
-                self.switched_on,
-                Message::Switched,
-            ),
+            switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
+                .title("Title")
+                .description("Description"),
             cycle_row::CycleRow::new()
                 .title("DLSS Level")
                 .value(DLSS_LEVELS[self.value])

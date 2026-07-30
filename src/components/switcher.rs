@@ -1,4 +1,11 @@
-use iced::{Background, Color, Element, Theme, widget::toggler};
+use iced::{
+    Background, Border, Element, Fill, Theme,
+    widget::{Space, button, container, row},
+};
+
+const WIDTH: f32 = 52.0;
+const HEIGHT: f32 = 32.0;
+const KNOB: f32 = 24.0;
 
 pub struct Switcher<'a, Message> {
     is_on: bool,
@@ -14,57 +21,82 @@ impl<'a, Message> Switcher<'a, Message> {
     }
 }
 
-impl<'a, Message: 'a> From<Switcher<'a, Message>> for Element<'a, Message> {
+impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Message> {
     fn from(switcher: Switcher<'a, Message>) -> Self {
-        toggler(switcher.is_on)
-            .size(52)
-            .on_toggle(switcher.on_toggle)
-            .style(appearance)
+        let knob = container(Space::new())
+            .width(KNOB)
+            .height(KNOB)
+            .style(move |theme| knob_style(theme, switcher.is_on));
+        let content = if switcher.is_on {
+            row![Space::new().width(Fill), knob]
+        } else {
+            row![knob, Space::new().width(Fill)]
+        };
+
+        button(content.width(Fill))
+            .width(WIDTH)
+            .height(HEIGHT)
+            .padding((HEIGHT - KNOB) / 2.0)
+            .on_press((switcher.on_toggle)(!switcher.is_on))
+            .style(track_style)
             .into()
     }
 }
 
-fn appearance(theme: &Theme, status: toggler::Status) -> toggler::Style {
-    let is_on = match status {
-        toggler::Status::Active { is_toggled }
-        | toggler::Status::Hovered { is_toggled }
-        | toggler::Status::Disabled { is_toggled } => is_toggled,
-    };
-    let colors = theme.extended_palette();
-
-    toggler::Style {
-        background: Background::Color(colors.background.weaker.color),
-        foreground: Background::Color(if is_on {
-            theme.palette().primary
-        } else {
-            colors.background.stronger.color
-        }),
-        background_border_width: 0.0,
-        background_border_color: Color::TRANSPARENT,
-        foreground_border_width: 0.0,
-        foreground_border_color: Color::TRANSPARENT,
-        text_color: Some(theme.palette().text),
-        border_radius: None,
-        padding_ratio: 0.1,
+fn track_style(theme: &Theme, _status: button::Status) -> button::Style {
+    button::Style {
+        background: Some(Background::Color(
+            theme.extended_palette().background.weaker.color,
+        )),
+        border: Border::default().rounded(HEIGHT / 2.0),
+        ..button::Style::default()
     }
+}
+
+fn knob_style(theme: &Theme, is_on: bool) -> container::Style {
+    let color = if is_on {
+        theme.palette().primary
+    } else {
+        theme.extended_palette().background.stronger.color
+    };
+
+    container::Style::default()
+        .background(color)
+        .border(Border::default().rounded(KNOB / 2.0))
 }
 
 #[cfg(test)]
 mod tests {
-    use iced::{Background, widget::toggler};
+    use iced::{Background, widget::button};
 
     use crate::theme;
 
-    use super::appearance;
+    use super::{HEIGHT, KNOB, WIDTH, knob_style, track_style};
 
     #[test]
     fn switcher_uses_mockup_colors() {
         let theme = theme::theme();
-        let off = appearance(&theme, toggler::Status::Active { is_toggled: false });
-        let on = appearance(&theme, toggler::Status::Active { is_toggled: true });
 
-        assert_eq!(off.background, Background::Color(theme::PANEL));
-        assert_eq!(off.foreground, Background::Color(theme::SURFACE_SELECTED));
-        assert_eq!(on.foreground, Background::Color(theme::ACCENT));
+        assert_eq!((WIDTH, HEIGHT, KNOB), (52.0, 32.0, 24.0));
+        assert_eq!(
+            track_style(&theme, button::Status::Active).background,
+            Some(Background::Color(theme::PANEL))
+        );
+        assert_eq!(
+            track_style(&theme, button::Status::Hovered).background,
+            Some(Background::Color(theme::PANEL))
+        );
+        assert_eq!(
+            track_style(&theme, button::Status::Pressed).background,
+            Some(Background::Color(theme::PANEL))
+        );
+        assert_eq!(
+            knob_style(&theme, false).background,
+            Some(Background::Color(theme::SURFACE_SELECTED))
+        );
+        assert_eq!(
+            knob_style(&theme, true).background,
+            Some(Background::Color(theme::ACCENT))
+        );
     }
 }
