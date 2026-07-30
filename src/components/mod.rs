@@ -7,6 +7,7 @@ pub mod heading;
 pub mod info_panel;
 pub mod popover;
 pub mod search;
+pub mod selector_row;
 pub mod status_bar;
 pub mod switcher;
 pub mod tab;

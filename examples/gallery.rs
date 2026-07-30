@@ -9,7 +9,7 @@ use next_ui::components::{
     info_panel::{self, Kind},
     popover,
     search::{self, Action as SearchAction},
-    status_bar, switcher, tab, tabs, text_field, text_row, title,
+    selector_row, status_bar, switcher, tab, tabs, text_field, text_row, title,
 };
 use next_ui::{icons, theme};
 
@@ -43,7 +43,7 @@ fn theme(_: &Gallery) -> Theme {
 struct Gallery {
     search: String,
     text_rows: [String; 3],
-    selected_option: &'static str,
+    selected_option: Option<&'static str>,
     selector_expanded: bool,
     selected_popover: usize,
     selected_tab: usize,
@@ -58,7 +58,7 @@ impl Default for Gallery {
         Self {
             search: String::new(),
             text_rows: std::array::from_fn(|_| String::new()),
-            selected_option: SELECTOR_OPTIONS[0],
+            selected_option: None,
             selector_expanded: false,
             selected_popover: 2,
             selected_tab: 0,
@@ -95,7 +95,10 @@ impl Gallery {
             Message::TextRowPressed(index) => {
                 return iced::widget::operation::focus(TEXT_ROW_IDS[index]);
             }
-            Message::OptionSelected(value) => self.selected_option = value,
+            Message::OptionSelected(value) => {
+                self.selected_option = Some(value);
+                self.selector_expanded = false;
+            }
             Message::SelectorToggled => self.selector_expanded = !self.selector_expanded,
             Message::PopoverSelected(index) => self.selected_popover = index,
             Message::TabSelected(index) => self.selected_tab = index,
@@ -224,9 +227,9 @@ impl Gallery {
         ]
         .spacing(16);
 
-        let selected = SELECTOR_OPTIONS
-            .iter()
-            .find(|option| **option == self.selected_option);
+        let selected = self
+            .selected_option
+            .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
         let fields = column![
             text_row::TextRow::new()
                 .title("Input Name")
@@ -255,14 +258,15 @@ impl Gallery {
                 .id(TEXT_ROW_IDS[2])
                 .on_press(Message::TextRowPressed(2))
                 .variant_3(),
-            text_field::Selector::new(
-                "Selector Name",
-                "Choose an option",
+            selector_row::SelectorRow::new(
                 SELECTOR_OPTIONS,
-                selected,
                 Message::OptionSelected,
                 Message::SelectorToggled,
             )
+            .title("Selector Name")
+            .placeholder("Placeholder")
+            .icon(icons::get("person"))
+            .selected(selected)
             .expanded(self.selector_expanded),
             text_field::Action::new("Action", "Open another view", Message::Noop),
             text_field::Collapsible::new(
