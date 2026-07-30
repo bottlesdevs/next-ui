@@ -8,7 +8,6 @@ use super::style;
 pub struct Popover<'a, T, Message> {
     options: &'a [T],
     selected: Option<usize>,
-    embedded: bool,
     on_select: Box<dyn Fn(usize) -> Message + 'a>,
 }
 
@@ -17,18 +16,12 @@ impl<'a, T, Message> Popover<'a, T, Message> {
         Self {
             options,
             selected: None,
-            embedded: false,
             on_select: Box::new(on_select),
         }
     }
 
     pub fn selected(mut self, selected: Option<usize>) -> Self {
         self.selected = selected;
-        self
-    }
-
-    pub(crate) fn embedded(mut self) -> Self {
-        self.embedded = true;
         self
     }
 }
@@ -42,7 +35,6 @@ where
         let Popover {
             options,
             selected,
-            embedded,
             on_select,
         } = popover;
         let rows = options.iter().enumerate().map(move |(index, label)| {
@@ -56,15 +48,11 @@ where
                 .into()
         });
 
-        let content = container(Column::with_children(rows).width(Fill))
+        container(Column::with_children(rows).width(Fill))
             .padding(22)
-            .width(Fill);
-
-        if embedded {
-            content.into()
-        } else {
-            content.style(style::bordered_surface).into()
-        }
+            .width(Fill)
+            .style(style::bordered_surface)
+            .into()
     }
 }
 

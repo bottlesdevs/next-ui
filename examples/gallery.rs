@@ -8,7 +8,7 @@ use next_ui::components::{
     info_panel::{self, Kind},
     info_row, picker_row, popover,
     search::{self, Action as SearchAction},
-    selector_row, status_bar, switcher, switcher_row, tab, tabs, text_field, text_row, title,
+    selector_row, status_bar, switcher, switcher_row, tab, tabs, text_row, title,
 };
 use next_ui::{icons, theme};
 
@@ -47,7 +47,6 @@ struct Gallery {
     selected_popover: usize,
     selected_tab: usize,
     switched_on: bool,
-    details_expanded: bool,
     status_expanded: bool,
     value: usize,
 }
@@ -62,7 +61,6 @@ impl Default for Gallery {
             selected_popover: 2,
             selected_tab: 0,
             switched_on: true,
-            details_expanded: false,
             status_expanded: false,
             value: 1,
         }
@@ -79,7 +77,6 @@ enum Message {
     PopoverSelected(usize),
     TabSelected(usize),
     Switched(bool),
-    DetailsToggled,
     StatusToggled,
     Previous,
     Next,
@@ -102,7 +99,6 @@ impl Gallery {
             Message::PopoverSelected(index) => self.selected_popover = index,
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
-            Message::DetailsToggled => self.details_expanded = !self.details_expanded,
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
                 self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
@@ -277,12 +273,6 @@ impl Gallery {
                 .title("Title")
                 .description("Description")
                 .icon(icons::get("timer")),
-            text_field::Collapsible::new(
-                "Collapsible",
-                "Show more content",
-                Message::DetailsToggled,
-            )
-            .expanded(self.details_expanded),
             switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
                 .title("Title")
                 .description("Description"),
