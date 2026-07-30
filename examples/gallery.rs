@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, image, row, scrollable, text},
 };
 use next_ui::components::{
-    action_row, button, card, cycle_row,
+    action_row, button, card, cycle_row, expander_row,
     heading::{self, Level},
     info_panel::{self, Kind},
     info_row, picker_row, popover,
@@ -44,6 +44,7 @@ struct Gallery {
     text_rows: [String; 3],
     selected_option: Option<&'static str>,
     selector_expanded: bool,
+    expander_expanded: bool,
     selected_popover: usize,
     selected_tab: usize,
     switched_on: bool,
@@ -58,6 +59,7 @@ impl Default for Gallery {
             text_rows: std::array::from_fn(|_| String::new()),
             selected_option: None,
             selector_expanded: false,
+            expander_expanded: false,
             selected_popover: 2,
             selected_tab: 0,
             switched_on: true,
@@ -74,6 +76,7 @@ enum Message {
     TextRowPressed(usize),
     OptionSelected(&'static str),
     SelectorToggled,
+    ExpanderToggled,
     PopoverSelected(usize),
     TabSelected(usize),
     Switched(bool),
@@ -96,6 +99,7 @@ impl Gallery {
                 self.selector_expanded = false;
             }
             Message::SelectorToggled => self.selector_expanded = !self.selector_expanded,
+            Message::ExpanderToggled => self.expander_expanded = !self.expander_expanded,
             Message::PopoverSelected(index) => self.selected_popover = index,
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
@@ -285,6 +289,23 @@ impl Gallery {
                 .title("Title")
                 .description("Choose the location")
                 .on_press(Message::Noop),
+            expander_row::ExpanderRow::new(Message::ExpanderToggled)
+                .title("Title")
+                .description("Description")
+                .expanded(self.expander_expanded)
+                .content(
+                    row![
+                        switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
+                            .title("FSR")
+                            .description("FidelityFX Super Resolution"),
+                        cycle_row::CycleRow::new()
+                            .title("Sharpening")
+                            .value("5")
+                            .on_previous(Message::Previous)
+                            .on_next(Message::Next),
+                    ]
+                    .spacing(18),
+                ),
         ]
         .spacing(32);
 
