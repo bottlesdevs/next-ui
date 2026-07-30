@@ -195,11 +195,6 @@ impl Gallery {
                 tab::Tab::new("Inactive tab", Message::Noop),
             ],
             tabs::Tabs::new(TAB_LABELS, Message::TabSelected).selected(self.selected_tab),
-            row![
-                text("Switcher"),
-                Space::new().width(20),
-                switcher::Switcher::new(self.switched_on, Message::Switched),
-            ],
             popover::Popover::new(POPOVER_OPTIONS, Message::PopoverSelected)
                 .selected(Some(self.selected_popover)),
         ]
