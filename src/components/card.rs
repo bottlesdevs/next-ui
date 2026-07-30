@@ -1,5 +1,5 @@
 use iced::{
-    ContentFit, Element, Fill, Theme,
+    Center, ContentFit, Element, Fill, Theme,
     widget::{Space, button, column, container, image, row, stack, text},
 };
 
@@ -8,6 +8,8 @@ use crate::icons;
 use super::{button::Button, style};
 
 const ARTWORK_HEIGHT: f32 = 180.0;
+const ACTION_DIAMETER: f32 = 52.0;
+const PRIMARY_ACTION_DIAMETER: f32 = 68.0;
 
 pub struct TextCard<'a> {
     title: &'a str,
@@ -36,7 +38,7 @@ impl<'a, Message: 'a> From<TextCard<'a>> for Element<'a, Message> {
         )
         .padding(24)
         .width(Fill)
-        .style(style::surface)
+        .style(style::bordered_surface)
         .into()
     }
 }
@@ -77,20 +79,37 @@ impl<'a, Message> ArtworkCard<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Message> {
     fn from(card: ArtworkCard<'a, Message>) -> Self {
-        let actions = column![
-            row![
-                Space::new().width(Fill),
-                button("⋮").padding(6).style(style::tab).on_press(card.menu)
-            ],
-            Space::new().height(Fill),
-            row![
-                Space::new().width(Fill),
-                Button::new("Play")
-                    .icon(icons::play())
-                    .circular()
-                    .on_press(card.play)
+        let actions = stack![
+            container(
+                row![
+                    Space::new().width(Fill),
+                    button(icons::view("ellipsis_vertical"))
+                        .padding(6)
+                        .style(style::tab)
+                        .on_press(card.menu)
+                ]
+                .width(Fill),
+            )
+            .padding(12)
+            .width(Fill)
+            .height(ARTWORK_HEIGHT),
+            column![
+                Space::new().height(ARTWORK_HEIGHT - ACTION_DIAMETER / 2.0),
+                container(
+                    row![
+                        Space::new().width(Fill),
+                        Button::new("Play")
+                            .icon(icons::get("play"))
+                            .circular()
+                            .diameter(ACTION_DIAMETER)
+                            .on_press(card.play)
+                    ]
+                    .width(Fill),
+                )
+                .padding([0, 12])
             ],
         ]
+        .width(Fill)
         .height(Fill);
 
         card_with_artwork(card.title, card.subtitle, card.artwork, actions.into())
@@ -134,21 +153,27 @@ impl<'a, Message> ProgramCard<'a, Message> {
 impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Message> {
     fn from(card: ProgramCard<'a, Message>) -> Self {
         let actions = column![
-            Space::new().height(Fill),
-            row![
-                Space::new().width(Fill),
-                Button::new("Settings")
-                    .icon(icons::settings())
-                    .circular()
-                    .on_press(card.settings),
-                Button::new("Play")
-                    .icon(icons::play())
-                    .circular()
-                    .diameter(68.0)
-                    .primary()
-                    .on_press(card.play),
-            ]
-            .spacing(8),
+            Space::new().height(ARTWORK_HEIGHT - PRIMARY_ACTION_DIAMETER / 2.0),
+            container(
+                row![
+                    Space::new().width(Fill),
+                    Button::new("Settings")
+                        .icon(icons::get("gear"))
+                        .circular()
+                        .diameter(ACTION_DIAMETER)
+                        .on_press(card.settings),
+                    Button::new("Play")
+                        .icon(icons::get("play"))
+                        .circular()
+                        .diameter(PRIMARY_ACTION_DIAMETER)
+                        .primary()
+                        .on_press(card.play),
+                ]
+                .spacing(8)
+                .align_y(Center)
+                .width(Fill),
+            )
+            .padding([0, 12]),
         ]
         .height(Fill);
 
@@ -174,17 +199,13 @@ fn card_with_artwork<'a, Message: Clone + 'a>(
     });
 
     container(
-        column![
-            stack![
+        stack![
+            column![
                 container(artwork).width(Fill).height(ARTWORK_HEIGHT),
-                container(actions)
-                    .padding(12)
-                    .width(Fill)
-                    .height(ARTWORK_HEIGHT),
+                container(labels(title, subtitle)).padding([18, 24]),
             ]
-            .width(Fill)
-            .height(ARTWORK_HEIGHT),
-            container(labels(title, subtitle)).padding([18, 24]),
+            .width(Fill),
+            actions,
         ]
         .width(Fill),
     )

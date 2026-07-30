@@ -1,10 +1,10 @@
 use iced::{
-    Background, Border, Element, Fill, Theme,
+    Background, Border, Center, Element, Fill, Theme,
     theme::palette::Pair,
     widget::{column, container, row, text},
 };
 
-use crate::theme;
+use crate::{icons, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -33,7 +33,9 @@ impl<'a, Message: 'a> From<InfoPanel<'a>> for Element<'a, Message> {
 
         container(
             column![
-                row![text(icon(kind)).size(30), text(title).size(28),].spacing(14),
+                row![icon(kind), text(title).size(28),]
+                    .spacing(14)
+                    .align_y(Center),
                 text(body).size(20),
             ]
             .spacing(18),
@@ -54,13 +56,13 @@ impl<'a, Message: 'a> From<InfoPanel<'a>> for Element<'a, Message> {
     }
 }
 
-fn icon(kind: Kind) -> &'static str {
+fn icon<'a, Message: 'a>(kind: Kind) -> Element<'a, Message> {
     match kind {
-        Kind::Hint => "✦",
-        Kind::Info => "ⓘ",
-        Kind::Error => "✖",
-        Kind::Warning => "▲",
-        Kind::Success => "✓",
+        Kind::Hint => icons::view("wand"),
+        Kind::Info => icons::view("info"),
+        Kind::Error => icons::view("error"),
+        Kind::Warning => icons::view("warning"),
+        Kind::Success => icons::view("double_checkmark"),
     }
 }
 
@@ -68,11 +70,8 @@ fn colors(theme: &Theme, kind: Kind) -> Pair {
     let palette = theme.extended_palette();
 
     match kind {
-        Kind::Hint => palette.secondary.base,
-        Kind::Info => Pair {
-            color: theme::INFO_DARK,
-            text: theme.palette().text,
-        },
+        Kind::Hint => palette.background.base,
+        Kind::Info => theme::info(),
         Kind::Error => palette.danger.base,
         Kind::Warning => palette.warning.base,
         Kind::Success => palette.success.base,
@@ -82,9 +81,18 @@ fn colors(theme: &Theme, kind: Kind) -> Pair {
 #[cfg(test)]
 mod tests {
     use super::{Kind, icon};
+    use iced::Element;
 
     #[test]
-    fn error_has_error_icon() {
-        assert_eq!(icon(Kind::Error), "✖");
+    fn embedded_icons_exist() {
+        for kind in [
+            Kind::Hint,
+            Kind::Info,
+            Kind::Error,
+            Kind::Warning,
+            Kind::Success,
+        ] {
+            let _: Element<'_, ()> = icon(kind);
+        }
     }
 }

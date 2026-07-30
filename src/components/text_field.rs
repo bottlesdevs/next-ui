@@ -3,6 +3,8 @@ use iced::{
     widget::{Space, button, column, container, row, text, text_input, toggler},
 };
 
+use crate::icons;
+
 use super::{popover::Popover, style};
 
 pub struct Field<'a, Message> {
@@ -46,12 +48,9 @@ impl<'a, Message> Editable<'a, Message> {
 impl<'a, Message: Clone + 'a> From<Editable<'a, Message>> for Element<'a, Message> {
     fn from(field: Editable<'a, Message>) -> Self {
         button(
-            row![
-                description(field.label, field.value),
-                text("✎").size(22).style(style::muted_text),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(16),
+            row![description(field.label, field.value), icons::view("pencil"),]
+                .align_y(Alignment::Center)
+                .spacing(16),
         )
         .width(Fill)
         .padding([18, 20])
@@ -175,6 +174,7 @@ where
     Message: Clone + 'a,
 {
     fn from(field: Selector<'a, T, Message>) -> Self {
+        let expanded = field.expanded;
         let selected_index = field
             .selected
             .and_then(|selected| field.options.iter().position(|option| option == selected));
@@ -183,27 +183,28 @@ where
             .map(ToString::to_string)
             .unwrap_or_else(|| field.placeholder.to_owned());
         let header = button(
-            column![
-                text(field.label).size(18),
-                row![
+            row![
+                column![
+                    text(field.label).size(18),
                     text(value).size(16).style(style::muted_text),
-                    Space::new().width(Fill),
-                    text(if field.expanded { "⌃" } else { "⌄" })
-                        .size(26)
-                        .style(style::muted_text),
                 ]
-                .align_y(Alignment::Center),
+                .width(Fill)
+                .spacing(8),
+                icons::rotated(
+                    "down_caret",
+                    if expanded { std::f32::consts::PI } else { 0.0 },
+                ),
             ]
-            .spacing(8),
+            .align_y(Alignment::Center),
         )
         .width(Fill)
         .padding([18, 20])
         .on_press(field.on_toggle)
-        .style(selector_header_style);
+        .style(move |theme, status| selector_header_style(theme, status, expanded));
 
         let mut content = column![header].width(Fill);
 
-        if field.expanded {
+        if expanded {
             let options = field.options;
             let on_selected = field.on_selected;
 
@@ -250,7 +251,7 @@ impl<'a, Message: Clone + 'a> From<Action<'a, Message>> for Element<'a, Message>
         button(
             row![
                 description(field.title, field.description_text),
-                text("→").size(26).style(style::muted_text),
+                icons::rotated("arrow", std::f32::consts::PI),
             ]
             .align_y(Alignment::Center)
             .spacing(16),
@@ -291,9 +292,14 @@ impl<'a, Message: Clone + 'a> From<Collapsible<'a, Message>> for Element<'a, Mes
         button(
             row![
                 description(field.title, field.description_text),
-                text(if field.expanded { "⌃" } else { "⌄" })
-                    .size(26)
-                    .style(style::muted_text),
+                icons::rotated(
+                    "down_caret",
+                    if field.expanded {
+                        std::f32::consts::PI
+                    } else {
+                        0.0
+                    },
+                ),
             ]
             .align_y(Alignment::Center)
             .spacing(16),
@@ -365,7 +371,7 @@ impl<'a, Message: Clone + 'a> From<Value<'a, Message>> for Element<'a, Message> 
     fn from(field: Value<'a, Message>) -> Self {
         Field::new(
             row![
-                button("←")
+                button(icons::view("arrow"))
                     .on_press(field.previous)
                     .style(style::tab)
                     .padding(0),
@@ -376,7 +382,7 @@ impl<'a, Message: Clone + 'a> From<Value<'a, Message>> for Element<'a, Message> 
                 .width(Fill)
                 .align_x(Alignment::Center)
                 .spacing(4),
-                button("→")
+                button(icons::rotated("arrow", std::f32::consts::PI))
                     .on_press(field.next)
                     .style(style::tab)
                     .padding(0),
@@ -409,7 +415,7 @@ impl<'a, Message: Clone + 'a> From<Path<'a, Message>> for Element<'a, Message> {
         Field::new(
             row![
                 description(field.title, field.path),
-                button("▰")
+                button(icons::view("folder"))
                     .on_press(field.on_choose)
                     .style(style::tab)
                     .padding(0),
@@ -443,16 +449,25 @@ fn input_style(theme: &iced::Theme, status: text_input::Status) -> text_input::S
             text_input::Status::Disabled => colors.secondary.weak.text,
             _ => theme.palette().text,
         },
-        selection: colors.primary.weak.color,
+        selection: theme.palette().primary,
     }
 }
 
-fn selector_header_style(theme: &iced::Theme, status: button::Status) -> button::Style {
+fn selector_header_style(
+    theme: &iced::Theme,
+    status: button::Status,
+    expanded: bool,
+) -> button::Style {
     let mut appearance = style::tab(theme, status);
+    appearance.border = Border::default().rounded(if expanded {
+        iced::border::top(8)
+    } else {
+        8.into()
+    });
 
     if matches!(status, button::Status::Hovered | button::Status::Pressed) {
         appearance.background = Some(Background::Color(
-            theme.extended_palette().secondary.strong.color,
+            theme.extended_palette().background.strong.color,
         ));
     }
 
@@ -461,4 +476,27 @@ fn selector_header_style(theme: &iced::Theme, status: button::Status) -> button:
 
 fn selector_divider_style(theme: &iced::Theme) -> container::Style {
     container::Style::default().background(theme.extended_palette().background.neutral.color)
+}
+
+#[cfg(test)]
+mod tests {
+    use iced::{Border, border, widget::button};
+
+    use crate::theme;
+
+    use super::selector_header_style;
+
+    #[test]
+    fn selector_header_keeps_rounded_corners() {
+        let theme = theme::theme();
+
+        assert_eq!(
+            selector_header_style(&theme, button::Status::Active, false).border,
+            Border::default().rounded(8)
+        );
+        assert_eq!(
+            selector_header_style(&theme, button::Status::Active, true).border,
+            Border::default().rounded(border::top(8))
+        );
+    }
 }

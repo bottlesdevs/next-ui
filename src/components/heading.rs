@@ -1,6 +1,5 @@
 use iced::{
-    Element, Font,
-    font::Weight,
+    Element,
     widget::{Text, text},
 };
 
@@ -28,10 +27,7 @@ impl<'a> Heading<'a> {
         };
 
         Self {
-            text: text(content).size(size).font(Font {
-                weight: Weight::Semibold,
-                ..Font::DEFAULT
-            }),
+            text: text(content).size(size),
         }
     }
 }

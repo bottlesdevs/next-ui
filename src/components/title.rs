@@ -46,9 +46,9 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
             content = content.push(text(label).size(detail_size).style(move |theme: &Theme| {
                 text::Style {
                     color: Some(if is_status {
-                        theme.extended_palette().secondary.strong.color
+                        theme.extended_palette().primary.strong.color
                     } else {
-                        theme.extended_palette().secondary.base.color
+                        theme.extended_palette().secondary.base.text
                     }),
                 }
             }));

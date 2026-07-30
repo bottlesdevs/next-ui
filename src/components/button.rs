@@ -1,5 +1,6 @@
 use iced::{
-    Background, Border, Center, Element, Fill, Length, Theme,
+    Background, Border, Center, ContentFit, Element, Fill, Length, Theme,
+    theme::palette::Pair,
     widget::{Row, Space, button as iced_button, container, svg, text},
 };
 
@@ -11,12 +12,20 @@ enum Shape {
     Circular,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Tone {
+    #[default]
+    Secondary,
+    Primary,
+    Surface,
+}
+
 pub struct Button<'a, Message> {
     label: &'a str,
     icon: Option<svg::Handle>,
     shape: Shape,
     diameter: f32,
-    primary: bool,
+    tone: Tone,
     on_press: Option<Message>,
 }
 
@@ -27,7 +36,7 @@ impl<'a, Message> Button<'a, Message> {
             icon: None,
             shape: Shape::Rectangular,
             diameter: 52.0,
-            primary: false,
+            tone: Tone::Secondary,
             on_press: None,
         }
     }
@@ -58,7 +67,12 @@ impl<'a, Message> Button<'a, Message> {
     }
 
     pub fn primary(mut self) -> Self {
-        self.primary = true;
+        self.tone = Tone::Primary;
+        self
+    }
+
+    pub fn surface(mut self) -> Self {
+        self.tone = Tone::Surface;
         self
     }
 
@@ -73,7 +87,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         let content: Element<'a, Message> = if !shows_label(button.shape) {
             let icon = button
                 .icon
-                .map(|icon| icon_element(icon, button.primary))
+                .map(|icon| icon_element(icon, button.tone))
                 .unwrap_or_else(|| Space::new().into());
 
             container(icon).center_x(Fill).center_y(Fill).into()
@@ -81,15 +95,15 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             let mut content = Row::new().spacing(8).align_y(Center);
 
             if let Some(icon) = button.icon {
-                content = content.push(icon_element(icon, button.primary));
+                content = content.push(icon_element(icon, button.tone));
             }
 
             content.push(text(button.label).size(18)).into()
         };
         let shape = button.shape;
-        let primary = button.primary;
-        let mut widget = iced_button(content)
-            .style(move |theme, status| appearance(theme, status, shape, primary));
+        let tone = button.tone;
+        let mut widget =
+            iced_button(content).style(move |theme, status| appearance(theme, status, shape, tone));
 
         widget = match shape {
             Shape::Rectangular => widget.padding([12, 18]),
@@ -108,16 +122,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
     }
 }
 
-fn icon_element<'a, Message: 'a>(handle: svg::Handle, primary: bool) -> Element<'a, Message> {
+fn icon_element<'a, Message: 'a>(handle: svg::Handle, tone: Tone) -> Element<'a, Message> {
     svg(handle)
-        .width(24)
-        .height(24)
+        .width(crate::icons::SIZE)
+        .height(crate::icons::SIZE)
+        .content_fit(ContentFit::Contain)
         .style(move |theme: &Theme, _| svg::Style {
-            color: Some(if primary {
-                theme.extended_palette().primary.base.text
-            } else {
-                theme.palette().text
-            }),
+            color: Some(colors(theme, iced_button::Status::Active, tone).text),
         })
         .into()
 }
@@ -130,22 +141,9 @@ fn appearance(
     theme: &Theme,
     status: iced_button::Status,
     shape: Shape,
-    primary: bool,
+    tone: Tone,
 ) -> iced_button::Style {
-    let palette = theme.extended_palette();
-    let colors = if primary {
-        match status {
-            iced_button::Status::Hovered | iced_button::Status::Pressed => palette.primary.strong,
-            _ => palette.primary.base,
-        }
-    } else {
-        match status {
-            iced_button::Status::Hovered | iced_button::Status::Pressed => {
-                palette.background.strong
-            }
-            _ => palette.background.weakest,
-        }
-    };
+    let colors = colors(theme, status, tone);
 
     iced_button::Style {
         background: Some(Background::Color(colors.color)),
@@ -158,14 +156,85 @@ fn appearance(
     }
 }
 
+fn colors(theme: &Theme, status: iced_button::Status, tone: Tone) -> Pair {
+    let palette = theme.extended_palette();
+
+    match tone {
+        Tone::Primary => match status {
+            iced_button::Status::Hovered => palette.primary.strong,
+            iced_button::Status::Pressed => palette.primary.weak,
+            _ => palette.primary.base,
+        },
+        Tone::Secondary => match status {
+            iced_button::Status::Hovered => palette.secondary.strong,
+            iced_button::Status::Pressed => palette.secondary.weak,
+            _ => palette.secondary.base,
+        },
+        Tone::Surface => {
+            let background = match status {
+                iced_button::Status::Hovered => palette.background.strong,
+                iced_button::Status::Pressed => palette.background.stronger,
+                _ => palette.background.weak,
+            };
+
+            Pair {
+                color: background.color,
+                text: palette.secondary.base.text,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Shape, shows_label};
+    use super::{Shape, Tone, appearance, colors, shows_label};
+    use crate::theme;
+    use iced::{Background, widget::button};
 
     #[test]
     fn circular_buttons_hide_their_label() {
         assert!(!shows_label(Shape::Circular));
         assert!(shows_label(Shape::Pill));
         assert!(shows_label(Shape::Rectangular));
+    }
+
+    #[test]
+    fn pressing_changes_the_button_color() {
+        let theme = theme::theme();
+
+        for tone in [Tone::Primary, Tone::Secondary, Tone::Surface] {
+            assert_ne!(
+                appearance(&theme, button::Status::Hovered, Shape::Circular, tone).background,
+                appearance(&theme, button::Status::Pressed, Shape::Circular, tone).background,
+            );
+        }
+    }
+
+    #[test]
+    fn circular_buttons_use_the_card_action_colors() {
+        let theme = theme::theme();
+        let primary = appearance(
+            &theme,
+            button::Status::Active,
+            Shape::Circular,
+            Tone::Primary,
+        );
+        let secondary = appearance(
+            &theme,
+            button::Status::Active,
+            Shape::Circular,
+            Tone::Secondary,
+        );
+        let surface = colors(&theme, button::Status::Active, Tone::Surface);
+
+        assert_eq!(primary.background, Some(Background::Color(theme::MUTED)));
+        assert_eq!(primary.text_color, theme::DEEP_BACKGROUND);
+        assert_eq!(
+            secondary.background,
+            Some(Background::Color(theme::DEEP_BACKGROUND))
+        );
+        assert_eq!(secondary.text_color, theme::MUTED);
+        assert_eq!(surface.color, theme::SURFACE);
+        assert_eq!(surface.text, theme::MUTED);
     }
 }

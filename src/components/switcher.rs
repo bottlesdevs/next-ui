@@ -33,11 +33,11 @@ fn appearance(theme: &Theme, status: toggler::Status) -> toggler::Style {
     let colors = theme.extended_palette();
 
     toggler::Style {
-        background: Background::Color(colors.secondary.base.color),
+        background: Background::Color(colors.background.weaker.color),
         foreground: Background::Color(if is_on {
-            colors.primary.base.color
+            theme.palette().primary
         } else {
-            colors.secondary.strong.color
+            colors.background.stronger.color
         }),
         background_border_width: 0.0,
         background_border_color: Color::TRANSPARENT,
@@ -46,5 +46,25 @@ fn appearance(theme: &Theme, status: toggler::Status) -> toggler::Style {
         text_color: Some(theme.palette().text),
         border_radius: None,
         padding_ratio: 0.1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use iced::{Background, widget::toggler};
+
+    use crate::theme;
+
+    use super::appearance;
+
+    #[test]
+    fn switcher_uses_mockup_colors() {
+        let theme = theme::theme();
+        let off = appearance(&theme, toggler::Status::Active { is_toggled: false });
+        let on = appearance(&theme, toggler::Status::Active { is_toggled: true });
+
+        assert_eq!(off.background, Background::Color(theme::PANEL));
+        assert_eq!(off.foreground, Background::Color(theme::SURFACE_SELECTED));
+        assert_eq!(on.foreground, Background::Color(theme::ACCENT));
     }
 }

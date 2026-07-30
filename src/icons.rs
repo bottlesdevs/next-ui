@@ -1,28 +1,47 @@
-use iced::widget::svg;
+use iced::{ContentFit, Element, widget::svg};
+use rust_embed::RustEmbed;
 
-const PLAY: &[u8] = br#"
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <path d="M8 5v14l11-7z"/>
-</svg>
-"#;
+pub const SIZE: f32 = 24.0;
 
-const SETTINGS: &[u8] = br#"
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="12" cy="12" r="3"/>
-  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3
-           1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1
-           L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0
-           1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0
-           1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1
-           a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>
-</svg>
-"#;
+#[derive(RustEmbed)]
+#[folder = "assets"]
+#[include = "icons/*.svg"]
+struct Assets;
+
+pub fn get(name: &str) -> svg::Handle {
+    let path = format!("icons/{name}.svg");
+    let icon = Assets::get(&path).unwrap_or_else(|| panic!("missing embedded icon: {path}"));
+
+    svg::Handle::from_memory(icon.data)
+}
+
+pub fn view<'a, Message: 'a>(name: &str) -> Element<'a, Message> {
+    rotated(name, 0.0)
+}
+
+pub fn rotated<'a, Message: 'a>(name: &str, rotation: f32) -> Element<'a, Message> {
+    svg(get(name))
+        .width(SIZE)
+        .height(SIZE)
+        .content_fit(ContentFit::Contain)
+        .rotation(rotation)
+        .into()
+}
 
 pub fn play() -> svg::Handle {
-    svg::Handle::from_memory(PLAY)
+    get("play")
 }
 
 pub fn settings() -> svg::Handle {
-    svg::Handle::from_memory(SETTINGS)
+    get("gear")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Assets;
+
+    #[test]
+    fn embeds_every_icon() {
+        assert_eq!(Assets::iter().count(), 28);
+    }
 }

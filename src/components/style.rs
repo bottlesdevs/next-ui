@@ -1,14 +1,25 @@
 use iced::{
     Background, Border, Shadow, Theme,
+    theme::palette::Pair,
     widget::{button, container, text},
 };
 
 pub fn surface(theme: &Theme) -> container::Style {
-    let colors = theme.extended_palette();
+    surface_style(theme.extended_palette().background.weak)
+}
 
+pub fn bordered_surface(theme: &Theme) -> container::Style {
+    surface_style(theme.extended_palette().background.neutral)
+}
+
+pub fn panel(theme: &Theme) -> container::Style {
+    surface_style(theme.extended_palette().background.weaker)
+}
+
+fn surface_style(colors: Pair) -> container::Style {
     container::Style {
-        text_color: Some(colors.secondary.base.text),
-        background: Some(Background::Color(colors.secondary.base.color)),
+        text_color: Some(colors.text),
+        background: Some(Background::Color(colors.color)),
         border: Border::default().rounded(8),
         shadow: Shadow::default(),
         snap: true,
@@ -18,8 +29,9 @@ pub fn surface(theme: &Theme) -> container::Style {
 pub fn action(theme: &Theme, status: button::Status) -> button::Style {
     let colors = theme.extended_palette();
     let colors = match status {
-        button::Status::Hovered => colors.secondary.strong,
-        _ => colors.secondary.base,
+        button::Status::Hovered => colors.background.strong,
+        button::Status::Pressed => colors.background.stronger,
+        _ => colors.background.weak,
     };
 
     button::Style {

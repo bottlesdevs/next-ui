@@ -4,6 +4,8 @@ use iced::{
     widget::{Space, button, column, container, row, text},
 };
 
+use crate::icons;
+
 use super::style;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,9 +18,9 @@ pub enum BottleKind {
 impl BottleKind {
     fn icon(self) -> &'static str {
         match self {
-            Self::Gaming => "🎮",
-            Self::Software => "⚙",
-            Self::Custom => "⌘",
+            Self::Gaming => "controller",
+            Self::Software => "hollow-gear",
+            Self::Custom => "custom",
         }
     }
 
@@ -56,7 +58,7 @@ impl<'a, Message: Clone + 'a> From<BottleEntry<'a, Message>> for Element<'a, Mes
         let labels = column![
             text(name).size(36).style(text::base),
             row![
-                text(kind.icon()).size(28).style(muted),
+                icons::view(kind.icon()),
                 text(kind.label()).size(34).style(muted),
             ]
             .spacing(16)
@@ -66,7 +68,7 @@ impl<'a, Message: Clone + 'a> From<BottleEntry<'a, Message>> for Element<'a, Mes
 
         let (trailing, on_press): (Element<'a, Message>, Option<Message>) = match status {
             BottleEntryStatus::Ready(message) => {
-                (text("→").size(48).style(muted).into(), Some(message))
+                (icons::rotated("arrow", std::f32::consts::PI), Some(message))
             }
             BottleEntryStatus::Progress(progress) => (
                 container(
@@ -91,14 +93,11 @@ impl<'a, Message: Clone + 'a> From<BottleEntry<'a, Message>> for Element<'a, Mes
             ),
         };
 
-        let entry = button(row![
-            labels,
-            Space::new().width(Fill),
-            container(trailing).align_y(Vertical::Center),
-        ])
-        .padding([28, 44])
-        .width(Fill)
-        .style(style::action);
+        let entry =
+            button(row![labels, Space::new().width(Fill), trailing].align_y(Vertical::Center))
+                .padding([28, 44])
+                .width(Fill)
+                .style(style::action);
 
         match on_press {
             Some(message) => entry.on_press(message).into(),

@@ -1,6 +1,6 @@
 use iced::{
     Element, Fill, Task, Theme,
-    widget::{Space, column, container, image, row, scrollable, text},
+    widget::{Space, column, image, row, scrollable, text},
 };
 use next_ui::components::{
     bottle_entry::{self, BottleEntryStatus, BottleKind},
@@ -17,6 +17,12 @@ const POPOVER_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3", "Option 4
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
 const VALUES: &[&str] = &["One", "Two", "Three"];
+const SEARCH_CATALOG: &[(&str, SearchAction)] = &[
+    ("Epic Games Store", SearchAction::Install),
+    ("Epic Fight", SearchAction::Run),
+    ("GOG Galaxy", SearchAction::Install),
+    ("Steam", SearchAction::Run),
+];
 const LOG: &str = "11:42:12 (INFO) Doing runner update for bottle: games\n\
 11:42:12 (INFO) Setting Key Runner=caffe-8.18\n\
 11:42:36 (INFO) Using Wine Registry CLI";
@@ -154,7 +160,7 @@ impl Gallery {
                 "Cards accept caller-owned content and messages.",
             ),
             card::ArtworkCard::new("Artwork card", "Ready", Message::Noop, Message::Noop,)
-                .artwork(artwork("Artwork")),
+                .image(sample_image()),
             card::ProgramCard::new(
                 "Program card",
                 "Last played today",
@@ -190,6 +196,13 @@ impl Gallery {
         ]
         .spacing(20);
 
+        let query = self.search.trim().to_lowercase();
+        let search_results = SEARCH_CATALOG
+            .iter()
+            .filter(|item| item.0.to_lowercase().contains(&query))
+            .map(|(title, action)| {
+                search::SearchResultRow::new(*title, Message::Noop).action(*action)
+            });
         let search = column![
             search::Search::new(
                 "Search for software and games…",
@@ -201,12 +214,8 @@ impl Gallery {
                 &self.search,
                 Message::SearchChanged,
             )
-            .results([
-                search::SearchResultRow::new("Epic Games Store", Message::Noop)
-                    .action(SearchAction::Install),
-                search::SearchResultRow::new("Epic fight", Message::Noop).action(SearchAction::Run),
-            ])
-            .footer("Not listed, install manually  →", Message::Noop),
+            .results(search_results)
+            .footer("Not listed, install manually", Message::Noop),
         ]
         .spacing(16);
 
@@ -294,16 +303,12 @@ fn section<'a>(label: &'a str, content: impl Into<Element<'a, Message>>) -> Elem
         .into()
 }
 
-fn artwork(label: &'static str) -> Element<'static, Message> {
-    container(text(label)).center_x(Fill).center_y(Fill).into()
-}
-
 fn sample_image() -> image::Handle {
     image::Handle::from_rgba(
         2,
         2,
         vec![
-            151, 71, 255, 255, 27, 184, 175, 255, 65, 57, 60, 255, 250, 230, 237, 255,
+            51, 53, 71, 255, 53, 71, 51, 255, 92, 63, 63, 255, 107, 93, 71, 255,
         ],
     )
 }

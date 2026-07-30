@@ -1,6 +1,6 @@
 use iced::{
-    Background, Border, Center, Color, Element, Fill, Font, Theme,
-    widget::{Column, Space, button, column, container, row, text, text_input, text_input::Icon},
+    Background, Border, Center, Color, Element, Fill, Theme,
+    widget::{Column, Space, button, column, container, row, text, text_input},
 };
 
 use crate::icons;
@@ -16,8 +16,8 @@ pub enum Action {
 impl Action {
     const fn label(self) -> &'static str {
         match self {
-            Self::Install => "Install  →",
-            Self::Run => "▶",
+            Self::Install => "Install",
+            Self::Run => "Run",
         }
     }
 }
@@ -110,36 +110,43 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             results,
             footer,
         } = search;
-        let expandable = results.is_some();
+        let expanded = should_expand(query, results.is_some());
+        let mut content = column![search_input(placeholder, query, on_input, expanded)].width(Fill);
 
-        if !should_expand(query, expandable) {
-            return search_input(placeholder, query, on_input, false);
-        }
+        if expanded {
+            let results = results
+                .expect("results exist when the search is expanded")
+                .into_iter()
+                .map(Element::from);
 
-        let results = results
-            .expect("results exist when the search is expandable")
-            .into_iter()
-            .map(Element::from);
-        let mut content = column![
-            search_input(placeholder, query, on_input, true),
-            container(Column::with_children(results).width(Fill)).padding([0, 20]),
-        ]
-        .width(Fill);
+            content = content
+                .push(container(Column::with_children(results).width(Fill)).padding([0, 20]));
 
-        if let Some((label, on_press)) = footer {
-            content = content.push(
-                button(label)
+            if let Some((label, on_press)) = footer {
+                content = content.push(
+                    button(
+                        row![text(label), icons::rotated("arrow", std::f32::consts::PI),]
+                            .spacing(14)
+                            .align_y(Center),
+                    )
                     .padding([22, 40])
                     .width(Fill)
                     .style(footer_style)
                     .on_press(on_press),
-            );
+                );
+            }
         }
 
         container(content)
             .width(Fill)
             .clip(true)
-            .style(panel_style)
+            .style(move |theme| {
+                if expanded {
+                    panel_style(theme)
+                } else {
+                    container::Style::default()
+                }
+            })
             .into()
     }
 }
@@ -154,47 +161,88 @@ fn search_input<'a, Message: Clone + 'a>(
     on_input: Box<dyn Fn(String) -> Message + 'a>,
     embedded: bool,
 ) -> Element<'a, Message> {
-    text_input(placeholder, value)
+    let input = text_input(placeholder, value)
         .on_input(on_input)
-        .icon(Icon {
-            font: Font::DEFAULT,
-            code_point: '⌕',
-            size: Some(22.into()),
-            spacing: 12.0,
-            side: text_input::Side::Left,
-        })
         .width(Fill)
-        .padding([16, 20])
+        .padding(0)
         .size(18)
-        .style(move |theme, status| search_style(theme, status, embedded))
-        .into()
+        .style(input_style);
+
+    container(
+        row![icons::view("search"), input]
+            .spacing(12)
+            .align_y(Center),
+    )
+    .width(Fill)
+    .padding([16, 20])
+    .style(move |theme| search_style(theme, embedded))
+    .into()
 }
 
-fn search_style(theme: &Theme, _: text_input::Status, embedded: bool) -> text_input::Style {
+fn search_style(theme: &Theme, embedded: bool) -> container::Style {
     let colors = theme.extended_palette();
 
-    text_input::Style {
-        background: Background::Color(if embedded {
+    container::Style {
+        background: Some(Background::Color(if embedded {
             Color::TRANSPARENT
         } else {
-            colors.secondary.base.color
-        }),
+            colors.background.neutral.color
+        })),
         border: if embedded {
             Border::default()
         } else {
             Border::default().rounded(8)
         },
+        ..container::Style::default()
+    }
+}
+
+fn input_style(theme: &Theme, _: text_input::Status) -> text_input::Style {
+    let colors = theme.extended_palette();
+
+    text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
         icon: colors.secondary.weak.text,
         placeholder: colors.secondary.weak.text,
         value: theme.palette().text,
-        selection: colors.primary.weak.color,
+        selection: theme.palette().primary,
     }
 }
 
 fn action<'a, Message: Clone + 'a>(action: Action) -> Element<'a, Message> {
     match action {
-        Action::Install => Button::new(action.label()).pill().into(),
-        Action::Run => Button::new("Run").icon(icons::play()).circular().into(),
+        Action::Install => button(
+            row![
+                text(action.label()).size(18),
+                icons::rotated("arrow", std::f32::consts::PI),
+            ]
+            .spacing(8)
+            .align_y(Center),
+        )
+        .padding([10, 16])
+        .style(install_action_style)
+        .into(),
+        Action::Run => Button::new(action.label())
+            .icon(icons::play())
+            .circular()
+            .surface()
+            .into(),
+    }
+}
+
+fn install_action_style(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+    let colors = match status {
+        button::Status::Hovered | button::Status::Pressed => palette.background.strong,
+        _ => palette.background.weak,
+    };
+
+    button::Style {
+        background: Some(Background::Color(colors.color)),
+        text_color: colors.text,
+        border: Border::default().rounded(999),
+        ..button::Style::default()
     }
 }
 
@@ -249,7 +297,7 @@ mod tests {
         assert!(!should_expand("Epic", false));
         assert!(!should_expand("  ", true));
         assert!(should_expand("Epic", true));
-        assert_eq!(Action::Install.label(), "Install  →");
-        assert_eq!(Action::Run.label(), "▶");
+        assert_eq!(Action::Install.label(), "Install");
+        assert_eq!(Action::Run.label(), "Run");
     }
 }

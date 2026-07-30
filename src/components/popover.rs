@@ -63,7 +63,7 @@ where
         if embedded {
             content.into()
         } else {
-            content.style(style::surface).into()
+            content.style(style::bordered_surface).into()
         }
     }
 }

@@ -4,6 +4,8 @@ use iced::{
     widget::{Space, button, column, container, row, text},
 };
 
+use crate::icons;
+
 use super::style;
 
 pub struct StatusBar<'a, Message> {
@@ -55,29 +57,24 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         } = status;
         let header = row![
             row![
-                text("▣").size(30).style(muted),
+                icons::view("chip"),
                 text(architecture).size(24).style(muted),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
-            row![
-                text("♟").size(30).style(muted),
-                text(runner).size(24).style(muted),
-            ]
-            .spacing(12)
-            .align_y(Vertical::Center),
+            row![icons::view("run"), text(runner).size(24).style(muted),]
+                .spacing(12)
+                .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
-                text(if is_running { "ϟ" } else { "○" })
-                    .size(32)
-                    .style(muted),
+                icons::view(if is_running { "lightning" } else { "power" }),
                 text(if is_running { "Running" } else { "Stopped" })
                     .size(24)
                     .style(muted),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
-            button(text("▣").size(30))
+            button(icons::view("computer"))
                 .padding(0)
                 .style(style::tab)
                 .on_press(toggle),
@@ -104,7 +101,7 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         container(content)
             .width(Fill)
             .clip(true)
-            .style(style::surface)
+            .style(style::panel)
             .into()
     }
 }
