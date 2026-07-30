@@ -1,5 +1,5 @@
 use iced::{
-    Element, Fill, Theme,
+    Element, Fill,
     alignment::Vertical,
     widget::{Space, button, column, container, row, text},
 };
@@ -58,19 +58,22 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         let header = row![
             row![
                 icons::view("chip"),
-                text(architecture).size(24).style(muted),
+                text(architecture).size(24).style(style::muted_text),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
-            row![icons::view("run"), text(runner).size(24).style(muted),]
-                .spacing(12)
-                .align_y(Vertical::Center),
+            row![
+                icons::view("run"),
+                text(runner).size(24).style(style::muted_text),
+            ]
+            .spacing(12)
+            .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
                 icons::view(if is_running { "lightning" } else { "power" }),
                 text(if is_running { "Running" } else { "Stopped" })
                     .size(24)
-                    .style(muted),
+                    .style(style::muted_text),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
@@ -90,11 +93,7 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
                 container(text(log).size(24).style(text::base))
                     .padding([16, 22])
                     .width(Fill)
-                    .style(|theme| {
-                        container::Style::default()
-                            .color(theme.palette().text)
-                            .background(crate::theme::HINT)
-                    }),
+                    .style(|_| container::background(crate::theme::HINT)),
             );
         }
 
@@ -103,11 +102,5 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
             .clip(true)
             .style(style::panel)
             .into()
-    }
-}
-
-fn muted(theme: &Theme) -> text::Style {
-    text::Style {
-        color: Some(theme.extended_palette().secondary.weak.text),
     }
 }

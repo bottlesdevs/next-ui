@@ -37,12 +37,6 @@ impl<'a, Message> PickerRow<'a, Message> {
     }
 }
 
-impl<Message> Default for PickerRow<'_, Message> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for Element<'a, Message> {
     fn from(picker: PickerRow<'a, Message>) -> Self {
         ListRow::from(picker).into()

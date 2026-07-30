@@ -114,11 +114,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 .height(Length::Fixed(button.diameter)),
         };
 
-        if let Some(message) = button.on_press {
-            widget = widget.on_press(message);
-        }
-
-        widget.into()
+        widget.on_press_maybe(button.on_press).into()
     }
 }
 

@@ -35,12 +35,6 @@ impl<'a> InfoRow<'a> {
     }
 }
 
-impl Default for InfoRow<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<'a, Message: Clone + 'a> From<InfoRow<'a>> for Element<'a, Message> {
     fn from(info: InfoRow<'a>) -> Self {
         ListRow::from(info).into()

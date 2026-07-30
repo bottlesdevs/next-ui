@@ -99,12 +99,6 @@ impl<'a, Message> TextRow<'a, Message> {
     }
 }
 
-impl<Message> Default for TextRow<'_, Message> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for Element<'a, Message> {
     fn from(text_row: TextRow<'a, Message>) -> Self {
         ListRow::from(text_row).into()
@@ -128,11 +122,8 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
             .width(Fill)
             .padding(0)
             .size(layout.placeholder_size)
-            .style(move |theme, _| input_style(theme, placeholder_is_active));
-
-        if let Some(on_input) = text_row.on_input {
-            input = input.on_input(on_input);
-        }
+            .style(move |theme, _| input_style(theme, placeholder_is_active))
+            .on_input_maybe(text_row.on_input);
 
         if let Some(id) = text_row.id {
             input = input.id(id);

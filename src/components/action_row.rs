@@ -54,12 +54,6 @@ impl<'a, Message> ActionRow<'a, Message> {
     }
 }
 
-impl<Message> Default for ActionRow<'_, Message> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
         ListRow::from(action).into()
@@ -86,12 +80,7 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         let trailing: Element<'a, Message> = match action.progress {
             Some(progress) => progress_indicator(progress),
-            None => svg(icons::get("arrow"))
-                .width(24)
-                .height(24)
-                .content_fit(ContentFit::Contain)
-                .rotation(std::f32::consts::PI)
-                .into(),
+            None => icons::rotated("arrow", std::f32::consts::PI),
         };
 
         let row = ListRow::new(labels).trailing(trailing);

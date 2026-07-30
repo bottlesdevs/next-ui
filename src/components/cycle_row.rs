@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, ContentFit, Element, Fill,
-    widget::{button, column, svg, text},
+    Alignment, Element, Fill,
+    widget::{button, column, text},
 };
 
 use crate::icons;
@@ -47,12 +47,6 @@ impl<'a, Message> CycleRow<'a, Message> {
     }
 }
 
-impl<Message> Default for CycleRow<'_, Message> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
         ListRow::from(cycle).into()
@@ -61,32 +55,15 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Messag
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        let previous = button(
-            svg(icons::get("arrow"))
-                .width(24)
-                .height(24)
-                .content_fit(ContentFit::Contain),
-        )
-        .padding(8)
-        .style(style::action);
-        let previous: Element<'a, Message> = match cycle.previous {
-            Some(message) => previous.on_press(message).into(),
-            None => previous.into(),
-        };
+        let previous = button(icons::view("arrow"))
+            .padding(8)
+            .style(style::action)
+            .on_press_maybe(cycle.previous);
 
-        let next = button(
-            svg(icons::get("arrow"))
-                .width(24)
-                .height(24)
-                .content_fit(ContentFit::Contain)
-                .rotation(std::f32::consts::PI),
-        )
-        .padding(8)
-        .style(style::action);
-        let next: Element<'a, Message> = match cycle.next {
-            Some(message) => next.on_press(message).into(),
-            None => next.into(),
-        };
+        let next = button(icons::rotated("arrow", std::f32::consts::PI))
+            .padding(8)
+            .style(style::action)
+            .on_press_maybe(cycle.next);
 
         let labels = column![
             text(cycle.title).size(18).style(text::base),

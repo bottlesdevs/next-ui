@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Shadow, Theme,
+    Background, Border, Theme,
     theme::palette::Pair,
     widget::{button, container, text},
 };
@@ -17,13 +17,10 @@ pub fn panel(theme: &Theme) -> container::Style {
 }
 
 fn surface_style(colors: Pair) -> container::Style {
-    container::Style {
-        text_color: Some(colors.text),
-        background: Some(Background::Color(colors.color)),
-        border: Border::default().rounded(8),
-        shadow: Shadow::default(),
-        snap: true,
-    }
+    container::Style::default()
+        .color(colors.text)
+        .background(colors.color)
+        .border(Border::default().rounded(8))
 }
 
 pub fn action(theme: &Theme, status: button::Status) -> button::Style {
@@ -38,21 +35,17 @@ pub fn action(theme: &Theme, status: button::Status) -> button::Style {
         background: Some(Background::Color(colors.color)),
         text_color: colors.text,
         border: Border::default().rounded(8),
-        shadow: Shadow::default(),
-        snap: true,
+        ..button::Style::default()
     }
 }
 
 pub fn tab(theme: &Theme, status: button::Status) -> button::Style {
     button::Style {
-        background: None,
         text_color: match status {
             button::Status::Disabled => theme.extended_palette().secondary.weak.text,
             _ => theme.palette().text,
         },
-        border: Border::default(),
-        shadow: Shadow::default(),
-        snap: true,
+        ..button::Style::default()
     }
 }
 

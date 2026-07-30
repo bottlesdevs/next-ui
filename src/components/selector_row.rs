@@ -1,9 +1,9 @@
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Theme,
-    widget::{Column, Space, button, column, container, row, svg, text},
+    widget::{Column, button, column, container, row, rule, svg, text},
 };
 
-use super::list_row::ListRow;
+use super::{list_row::ListRow, style};
 
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
@@ -88,7 +88,7 @@ where
             value_row = value_row.push(icon_view(icon));
         }
 
-        value_row = value_row.push(text(value).size(16).style(muted_text));
+        value_row = value_row.push(text(value).size(16).style(style::muted_text));
 
         let body = column![text(selector.title).size(18), value_row]
             .width(Fill)
@@ -101,6 +101,8 @@ where
         let mut row = ListRow::new(body)
             .trailing(caret)
             .on_press(selector.on_toggle)
+            .height(79)
+            .padding([14, 24])
             .raised(expanded);
 
         if expanded {
@@ -119,10 +121,10 @@ where
 
             row = row.content(
                 column![
-                    container(Space::new())
-                        .width(Fill)
-                        .height(1)
-                        .style(divider_style),
+                    rule::horizontal(1).style(|theme: &Theme| rule::Style {
+                        color: theme.extended_palette().background.stronger.color,
+                        ..rule::default(theme)
+                    }),
                     container(Column::with_children(rows).width(Fill))
                         .width(Fill)
                         .padding([16, 10]),
@@ -141,16 +143,6 @@ fn icon_view<'a, Message: 'a>(handle: svg::Handle) -> Element<'a, Message> {
         .height(16)
         .content_fit(ContentFit::Contain)
         .into()
-}
-
-fn muted_text(theme: &Theme) -> text::Style {
-    text::Style {
-        color: Some(theme.extended_palette().secondary.base.text),
-    }
-}
-
-fn divider_style(theme: &Theme) -> container::Style {
-    container::Style::default().background(theme.extended_palette().background.stronger.color)
 }
 
 fn option_style(theme: &Theme, status: button::Status, selected: bool) -> button::Style {
@@ -177,7 +169,7 @@ mod tests {
 
     use crate::theme;
 
-    use super::{divider_style, option_style};
+    use super::option_style;
 
     #[test]
     fn expanded_and_selected_states_match_the_mockup() {
@@ -185,10 +177,6 @@ mod tests {
 
         assert_eq!(
             option_style(&theme, button::Status::Active, true).background,
-            Some(Background::Color(theme::SURFACE_SELECTED))
-        );
-        assert_eq!(
-            divider_style(&theme).background,
             Some(Background::Color(theme::SURFACE_SELECTED))
         );
     }

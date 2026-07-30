@@ -2,25 +2,21 @@ use iced::{
     Alignment, Background, Border, Element, Event, Fill, Length, Padding, Rectangle, Shadow, Size,
     Theme, Vector,
     advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, tree},
+        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
+        widget::{Operation, Tree},
     },
     widget::{Row as IcedRow, button, column, container, mouse_area, text},
 };
 
-pub struct ListRow<'a, Message, Renderer = iced::Renderer>
-where
-    Renderer: renderer::Renderer,
-{
-    body: Element<'a, Message, Theme, Renderer>,
-    leading: Vec<Element<'a, Message, Theme, Renderer>>,
-    trailing: Vec<Element<'a, Message, Theme, Renderer>>,
-    content: Option<Element<'a, Message, Theme, Renderer>>,
+pub struct ListRow<'a, Message> {
+    body: Element<'a, Message>,
+    leading: Vec<Element<'a, Message>>,
+    trailing: Vec<Element<'a, Message>>,
+    content: Option<Element<'a, Message>>,
     content_enabled: bool,
     on_press: Option<Message>,
     press_area: bool,
     raised: bool,
-    enabled: bool,
     padding: Padding,
     height: Length,
     spacing: f32,
@@ -40,11 +36,8 @@ pub(crate) fn labels<'a, Message: 'a>(
     .into()
 }
 
-impl<'a, Message, Renderer> ListRow<'a, Message, Renderer>
-where
-    Renderer: renderer::Renderer,
-{
-    pub fn new(body: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+impl<'a, Message> ListRow<'a, Message> {
+    pub fn new(body: impl Into<Element<'a, Message>>) -> Self {
         Self {
             body: body.into(),
             leading: Vec::new(),
@@ -54,32 +47,28 @@ where
             on_press: None,
             press_area: false,
             raised: false,
-            enabled: true,
             padding: Padding::from([18, 24]),
             height: Length::Shrink,
             spacing: 16.0,
         }
     }
 
-    pub fn leading(mut self, control: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+    pub fn leading(mut self, control: impl Into<Element<'a, Message>>) -> Self {
         self.leading.push(control.into());
         self
     }
 
-    pub fn trailing(mut self, control: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+    pub fn trailing(mut self, control: impl Into<Element<'a, Message>>) -> Self {
         self.trailing.push(control.into());
         self
     }
 
-    pub fn prepend_trailing(
-        mut self,
-        control: impl Into<Element<'a, Message, Theme, Renderer>>,
-    ) -> Self {
+    pub fn prepend_trailing(mut self, control: impl Into<Element<'a, Message>>) -> Self {
         self.trailing.insert(0, control.into());
         self
     }
 
-    pub fn content(mut self, content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+    pub fn content(mut self, content: impl Into<Element<'a, Message>>) -> Self {
         self.content = Some(content.into());
         self
     }
@@ -105,11 +94,6 @@ where
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
     pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
         self
@@ -126,10 +110,8 @@ where
     }
 }
 
-impl<'a, Message: Clone + 'a, Renderer: renderer::Renderer + 'a>
-    From<ListRow<'a, Message, Renderer>> for Element<'a, Message, Theme, Renderer>
-{
-    fn from(base: ListRow<'a, Message, Renderer>) -> Self {
+impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
+    fn from(base: ListRow<'a, Message>) -> Self {
         let header = IcedRow::new()
             .spacing(base.spacing)
             .align_y(Alignment::Center)
@@ -137,7 +119,7 @@ impl<'a, Message: Clone + 'a, Renderer: renderer::Renderer + 'a>
             .push(container(base.body).width(Fill))
             .extend(base.trailing);
 
-        let header: Element<'a, Message, Theme, Renderer> = match (base.on_press, base.press_area) {
+        let header: Element<'a, Message> = match (base.on_press, base.press_area) {
             (Some(message), false) => button(header)
                 .width(Fill)
                 .height(base.height)
@@ -174,7 +156,6 @@ impl<'a, Message: Clone + 'a, Renderer: renderer::Renderer + 'a>
 
         Surface::new(container(contents).width(Fill).clip(true))
             .raised(base.raised)
-            .enabled(base.enabled)
             .into()
     }
 }
@@ -190,21 +171,15 @@ fn header_style(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-struct Surface<'a, Message, Renderer>
-where
-    Renderer: renderer::Renderer,
-{
-    content: Element<'a, Message, Theme, Renderer>,
+struct Surface<'a, Message> {
+    content: Element<'a, Message>,
     background: bool,
     raised: bool,
     enabled: bool,
 }
 
-impl<'a, Message, Renderer> Surface<'a, Message, Renderer>
-where
-    Renderer: renderer::Renderer,
-{
-    fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+impl<'a, Message> Surface<'a, Message> {
+    fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
             background: true,
@@ -229,23 +204,7 @@ where
     }
 }
 
-#[derive(Default)]
-struct State {
-    hovered: bool,
-}
-
-impl<Message, Renderer> Widget<Message, Theme, Renderer> for Surface<'_, Message, Renderer>
-where
-    Renderer: renderer::Renderer,
-{
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
-    }
-
-    fn state(&self) -> tree::State {
-        tree::State::new(State::default())
-    }
-
+impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
     fn children(&self) -> Vec<Tree> {
         vec![Tree::new(&self.content)]
     }
@@ -261,7 +220,7 @@ where
     fn layout(
         &mut self,
         tree: &mut Tree,
-        renderer: &Renderer,
+        renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
         self.content
@@ -273,7 +232,7 @@ where
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
-        renderer: &Renderer,
+        renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
         if self.enabled {
@@ -292,7 +251,7 @@ where
         event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
-        renderer: &Renderer,
+        renderer: &iced::Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
@@ -309,14 +268,6 @@ where
                 viewport,
             );
         }
-
-        let state = tree.state.downcast_mut::<State>();
-        let hovered = self.enabled && cursor.is_over(layout.bounds());
-
-        if state.hovered != hovered {
-            state.hovered = hovered;
-            shell.request_redraw();
-        }
     }
 
     fn mouse_interaction(
@@ -325,7 +276,7 @@ where
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer,
+        renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         if self.enabled {
             self.content.as_widget().mouse_interaction(
@@ -343,7 +294,7 @@ where
     fn draw(
         &self,
         tree: &Tree,
-        renderer: &mut Renderer,
+        renderer: &mut iced::Renderer,
         theme: &Theme,
         renderer_style: &renderer::Style,
         layout: Layout<'_>,
@@ -363,7 +314,7 @@ where
                 Background::Color(surface_color(
                     theme,
                     self.raised,
-                    tree.state.downcast_ref::<State>().hovered,
+                    self.enabled && cursor.is_over(bounds),
                 )),
             );
         }
@@ -395,10 +346,10 @@ where
         &'b mut self,
         tree: &'b mut Tree,
         layout: Layout<'b>,
-        renderer: &Renderer,
+        renderer: &iced::Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+    ) -> Option<overlay::Element<'b, Message, Theme, iced::Renderer>> {
         self.enabled.then(|| {
             self.content.as_widget_mut().overlay(
                 &mut tree.children[0],
@@ -411,10 +362,8 @@ where
     }
 }
 
-impl<'a, Message: 'a, Renderer: renderer::Renderer + 'a> From<Surface<'a, Message, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-{
-    fn from(surface: Surface<'a, Message, Renderer>) -> Self {
+impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {
+    fn from(surface: Surface<'a, Message>) -> Self {
         Element::new(surface)
     }
 }

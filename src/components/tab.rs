@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, Background, Element, Fill,
-    widget::{button, column, container, text},
+    Alignment, Element, Fill,
+    widget::{button, column, rule, text},
 };
 
 use super::style;
@@ -37,13 +37,14 @@ impl<'a, Message: Clone + 'a> From<Tab<'a, Message>> for Element<'a, Message> {
         button(
             column![
                 text(label).size(18),
-                container("")
-                    .width(Fill)
-                    .height(3)
-                    .style(move |theme: &iced::Theme| container::Style {
-                        background: selected.then_some(Background::Color(theme.palette().primary)),
-                        ..container::Style::default()
-                    }),
+                rule::horizontal(3).style(move |theme: &iced::Theme| rule::Style {
+                    color: if selected {
+                        theme.palette().primary
+                    } else {
+                        iced::Color::TRANSPARENT
+                    },
+                    ..rule::default(theme)
+                }),
             ]
             .align_x(Alignment::Center)
             .spacing(10),
