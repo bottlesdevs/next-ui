@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio"] }
+iced = { version = "0.14", features = ["svg", "image-without-codecs", "tokio"] }
 tokio = { workspace = true, features = ["fs", "io-util",
   "time"] }
 bottles-core.workspace = true
+rust-embed = "8.12.0"

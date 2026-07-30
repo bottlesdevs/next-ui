@@ -15,7 +15,7 @@ fn main() -> iced::Result {
 }
 
 fn theme(_: &()) -> Theme {
-    Theme::Dracula
+    next_ui::theme::theme()
 }
 
 #[derive(Debug, Clone)]
