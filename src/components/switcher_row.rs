@@ -1,9 +1,9 @@
-use iced::{
-    Alignment, Element, Fill,
-    widget::{Space, column, container, row, text},
-};
+use iced::Element;
 
-use super::{row_surface::RowSurface, style, switcher::Switcher};
+use super::{
+    list_row::{ListRow, labels},
+    switcher::Switcher,
+};
 
 pub struct SwitcherRow<'a, Message> {
     title: &'a str,
@@ -35,24 +35,13 @@ impl<'a, Message> SwitcherRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Message> {
     fn from(switcher: SwitcherRow<'a, Message>) -> Self {
-        let labels = column![
-            text(switcher.title).size(18).style(text::base),
-            text(switcher.description).size(16).style(style::muted_text),
-        ]
-        .spacing(4);
+        ListRow::from(switcher).into()
+    }
+}
 
-        RowSurface::new(
-            container(
-                row![
-                    labels,
-                    Space::new().width(Fill),
-                    Switcher::new(switcher.value, switcher.on_toggle),
-                ]
-                .align_y(Alignment::Center),
-            )
-            .width(Fill)
-            .padding([18, 24]),
-        )
-        .into()
+impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(switcher: SwitcherRow<'a, Message>) -> Self {
+        ListRow::new(labels(switcher.title, switcher.description))
+            .trailing(Switcher::new(switcher.value, switcher.on_toggle))
     }
 }

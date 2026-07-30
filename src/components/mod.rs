@@ -1,7 +1,5 @@
 pub mod style;
 
-mod row_surface;
-
 pub mod action_row;
 pub mod button;
 pub mod card;
@@ -10,6 +8,7 @@ pub mod expander_row;
 pub mod heading;
 pub mod info_panel;
 pub mod info_row;
+pub mod list_row;
 pub mod picker_row;
 pub mod popover;
 pub mod search;

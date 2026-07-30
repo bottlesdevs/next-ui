@@ -1,16 +1,21 @@
 use iced::{
-    Alignment, Background, Border, ContentFit, Element, Fill, Theme,
-    widget::{button, column, container, row, svg, text},
+    ContentFit, Element, Fill,
+    widget::{button, container, svg},
 };
 
-use super::{row_surface::RowSurface, style};
+use super::{
+    list_row::{ListRow, labels},
+    style,
+};
 
 pub struct ExpanderRow<'a, Message> {
     title: &'a str,
     description: &'a str,
+    header: Option<ListRow<'a, Message>>,
     expanded: bool,
     on_toggle: Message,
     content: Option<Element<'a, Message>>,
+    content_enabled: bool,
 }
 
 impl<'a, Message> ExpanderRow<'a, Message> {
@@ -18,9 +23,11 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         Self {
             title: "",
             description: "",
+            header: None,
             expanded: false,
             on_toggle,
             content: None,
+            content_enabled: true,
         }
     }
 
@@ -34,6 +41,11 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         self
     }
 
+    pub fn header(mut self, header: impl Into<ListRow<'a, Message>>) -> Self {
+        self.header = Some(header.into());
+        self
+    }
+
     pub fn expanded(mut self, expanded: bool) -> Self {
         self.expanded = expanded;
         self
@@ -43,52 +55,50 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         self.content = Some(content.into());
         self
     }
+
+    pub fn content_enabled(mut self, enabled: bool) -> Self {
+        self.content_enabled = enabled;
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Message> {
     fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        let expanded = expander.expanded;
-        let header = button(
-            row![
-                column![
-                    text(expander.title).size(18).style(text::base),
-                    text(expander.description).size(16).style(style::muted_text),
-                ]
-                .width(Fill)
-                .spacing(4),
-                svg(crate::icons::get("down_caret"))
-                    .width(20)
-                    .height(20)
-                    .content_fit(ContentFit::Contain)
-                    .rotation(if expanded { std::f32::consts::PI } else { 0.0 }),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .width(Fill)
-        .padding([18, 24])
-        .on_press(expander.on_toggle)
-        .style(header_style);
-
-        let mut contents = column![header].width(Fill);
-
-        if expanded && let Some(content) = expander.content {
-            contents = contents.push(container(content).width(Fill).padding(18));
-        }
-
-        RowSurface::new(container(contents).width(Fill).clip(true))
-            .raised(expanded)
-            .into()
+        ListRow::from(expander).into()
     }
 }
 
-fn header_style(theme: &Theme, status: button::Status) -> button::Style {
-    button::Style {
-        background: matches!(status, button::Status::Pressed).then_some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
-        text_color: theme.palette().text,
-        border: Border::default().rounded(8),
-        ..button::Style::default()
+impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(expander: ExpanderRow<'a, Message>) -> Self {
+        let expanded = expander.expanded;
+        let caret = || {
+            svg(crate::icons::get("down_caret"))
+                .width(20)
+                .height(20)
+                .content_fit(ContentFit::Contain)
+                .rotation(if expanded { std::f32::consts::PI } else { 0.0 })
+        };
+
+        let mut row = match expander.header {
+            Some(header) => header.prepend_trailing(
+                button(caret())
+                    .padding(6)
+                    .on_press(expander.on_toggle)
+                    .style(style::tab),
+            ),
+            None => ListRow::new(labels(expander.title, expander.description))
+                .trailing(caret())
+                .on_press(expander.on_toggle),
+        }
+        .raised(expanded);
+
+        if expanded && let Some(content) = expander.content {
+            row = row
+                .content(container(content).width(Fill).padding(18))
+                .content_enabled(expander.content_enabled);
+        }
+
+        row
     }
 }
 
@@ -96,14 +106,17 @@ fn header_style(theme: &Theme, status: button::Status) -> button::Style {
 mod tests {
     use iced::widget::text;
 
+    use crate::components::switcher_row::SwitcherRow;
+
     use super::ExpanderRow;
 
     #[test]
-    fn content_is_optional() {
-        let empty = ExpanderRow::<()>::new(());
-        let populated = ExpanderRow::new(()).content(text("child"));
+    fn accepts_an_interactive_row_as_its_header() {
+        let expander = ExpanderRow::new(())
+            .header(SwitcherRow::new(false, |_| ()))
+            .content(text("child"));
 
-        assert!(empty.content.is_none());
-        assert!(populated.content.is_some());
+        assert!(expander.header.is_some());
+        assert!(expander.content.is_some());
     }
 }

@@ -62,7 +62,7 @@ impl Default for Gallery {
             expander_expanded: false,
             selected_popover: 2,
             selected_tab: 0,
-            switched_on: true,
+            switched_on: false,
             status_expanded: false,
             value: 1,
         }
@@ -286,14 +286,18 @@ impl Gallery {
                 .description("Choose the location")
                 .on_press(Message::Noop),
             expander_row::ExpanderRow::new(Message::ExpanderToggled)
-                .title("Title")
-                .description("Description")
+                .header(
+                    switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
+                        .title("FSR")
+                        .description("FidelityFX Super Resolution"),
+                )
                 .expanded(self.expander_expanded)
                 .content(
                     row![
-                        switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
-                            .title("FSR")
-                            .description("FidelityFX Super Resolution"),
+                        action_row::ActionRow::new()
+                            .title("Quality")
+                            .description("Balanced")
+                            .on_press(Message::Noop),
                         cycle_row::CycleRow::new()
                             .title("Sharpening")
                             .value("5")
@@ -301,7 +305,8 @@ impl Gallery {
                             .on_next(Message::Next),
                     ]
                     .spacing(18),
-                ),
+                )
+                .content_enabled(self.switched_on),
         ]
         .spacing(32);
 

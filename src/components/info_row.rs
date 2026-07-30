@@ -1,9 +1,6 @@
-use iced::{
-    Alignment, ContentFit, Element, Fill,
-    widget::{container, row, svg, text},
-};
+use iced::{ContentFit, Element, widget::svg};
 
-use super::{row_surface::RowSurface, style};
+use super::list_row::{ListRow, labels};
 
 pub struct InfoRow<'a> {
     title: &'a str,
@@ -44,31 +41,25 @@ impl Default for InfoRow<'_> {
     }
 }
 
-impl<'a, Message: 'a> From<InfoRow<'a>> for Element<'a, Message> {
+impl<'a, Message: Clone + 'a> From<InfoRow<'a>> for Element<'a, Message> {
     fn from(info: InfoRow<'a>) -> Self {
-        let labels = iced::widget::column![
-            text(info.title).size(18).style(text::base),
-            text(info.description).size(16).style(style::muted_text),
-        ]
-        .spacing(4);
+        ListRow::from(info).into()
+    }
+}
 
-        let mut content = row![].spacing(24).align_y(Alignment::Center);
+impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
+    fn from(info: InfoRow<'a>) -> Self {
+        let row = ListRow::new(labels(info.title, info.description)).spacing(24.0);
 
-        if let Some(icon) = info.icon {
-            content = content.push(
+        match info.icon {
+            Some(icon) => row.leading(
                 svg(icon)
                     .width(24)
                     .height(24)
                     .content_fit(ContentFit::Contain),
-            );
+            ),
+            None => row,
         }
-
-        RowSurface::new(
-            container(content.push(labels))
-                .width(Fill)
-                .padding([18, 24]),
-        )
-        .into()
     }
 }
 

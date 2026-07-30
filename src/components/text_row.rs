@@ -1,11 +1,11 @@
 use iced::{
     Background, Border, Center, Color, ContentFit, Element, Fill, Theme,
-    widget::{Id, column, container, mouse_area, row, svg, text, text_input},
+    widget::{Id, column, row, svg, text, text_input},
 };
 
 use crate::icons;
 
-use super::row_surface::RowSurface;
+use super::list_row::ListRow;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum Variant {
@@ -107,6 +107,12 @@ impl<Message> Default for TextRow<'_, Message> {
 
 impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for Element<'a, Message> {
     fn from(text_row: TextRow<'a, Message>) -> Self {
+        ListRow::from(text_row).into()
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(text_row: TextRow<'a, Message>) -> Self {
         let layout = layout(text_row.variant);
         let placeholder_is_active = text_row.variant == Variant::Two;
         let title_is_muted = text_row.variant == Variant::Two;
@@ -145,23 +151,16 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for Element<'a, Message
         .width(Fill)
         .spacing(layout.spacing);
 
-        let content = container(
-            row![labels, icon_view(icons::get("pencil"), 16.0, false)]
-                .spacing(16)
-                .align_y(Center),
-        )
-        .width(Fill)
-        .height(79)
-        .padding([0, 24])
-        .align_y(Center);
-        let content: Element<'a, Message> = RowSurface::new(content)
-            .raised(text_row.variant == Variant::Three)
-            .into();
+        let row = ListRow::new(labels)
+            .trailing(icon_view(icons::get("pencil"), 16.0, false))
+            .height(79)
+            .padding([0, 24])
+            .raised(text_row.variant == Variant::Three);
 
         if let Some(on_press) = text_row.on_press {
-            mouse_area(content).on_press(on_press).into()
+            row.on_press_area(on_press)
         } else {
-            content.into()
+            row
         }
     }
 }

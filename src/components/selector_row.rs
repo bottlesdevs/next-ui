@@ -3,7 +3,7 @@ use iced::{
     widget::{Column, Space, button, column, container, row, svg, text},
 };
 
-use super::row_surface::RowSurface;
+use super::list_row::ListRow;
 
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
@@ -66,6 +66,16 @@ where
     Message: Clone + 'a,
 {
     fn from(selector: SelectorRow<'a, T, Message>) -> Self {
+        ListRow::from(selector).into()
+    }
+}
+
+impl<'a, T, Message> From<SelectorRow<'a, T, Message>> for ListRow<'a, Message>
+where
+    T: Clone + PartialEq + ToString + 'a,
+    Message: Clone + 'a,
+{
+    fn from(selector: SelectorRow<'a, T, Message>) -> Self {
         let expanded = selector.expanded;
         let value = selector
             .selected
@@ -80,25 +90,18 @@ where
 
         value_row = value_row.push(text(value).size(16).style(muted_text));
 
-        let header = button(
-            row![
-                column![text(selector.title).size(18), value_row,]
-                    .width(Fill)
-                    .spacing(8),
-                svg(crate::icons::get("down_caret"))
-                    .width(20)
-                    .height(20)
-                    .content_fit(ContentFit::Contain)
-                    .rotation(if expanded { std::f32::consts::PI } else { 0.0 }),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .width(Fill)
-        .padding([18, 24])
-        .on_press(selector.on_toggle)
-        .style(header_style);
-
-        let mut content = column![header].width(Fill);
+        let body = column![text(selector.title).size(18), value_row]
+            .width(Fill)
+            .spacing(8);
+        let caret = svg(crate::icons::get("down_caret"))
+            .width(20)
+            .height(20)
+            .content_fit(ContentFit::Contain)
+            .rotation(if expanded { std::f32::consts::PI } else { 0.0 });
+        let mut row = ListRow::new(body)
+            .trailing(caret)
+            .on_press(selector.on_toggle)
+            .raised(expanded);
 
         if expanded {
             let selected = selector.selected;
@@ -114,23 +117,21 @@ where
                     .into()
             });
 
-            content = content
-                .push(
+            row = row.content(
+                column![
                     container(Space::new())
                         .width(Fill)
                         .height(1)
                         .style(divider_style),
-                )
-                .push(
                     container(Column::with_children(rows).width(Fill))
                         .width(Fill)
                         .padding([16, 10]),
-                );
+                ]
+                .width(Fill),
+            );
         }
 
-        RowSurface::new(container(content).width(Fill).clip(true))
-            .raised(expanded)
-            .into()
+        row
     }
 }
 
@@ -145,25 +146,6 @@ fn icon_view<'a, Message: 'a>(handle: svg::Handle) -> Element<'a, Message> {
 fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.extended_palette().secondary.base.text),
-    }
-}
-
-fn header_style(theme: &Theme, status: button::Status) -> button::Style {
-    let background = match status {
-        button::Status::Hovered => Some(Background::Color(
-            theme.extended_palette().background.neutral.color,
-        )),
-        button::Status::Pressed => Some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
-        _ => None,
-    };
-
-    button::Style {
-        background,
-        text_color: theme.palette().text,
-        border: Border::default().rounded(8),
-        ..button::Style::default()
     }
 }
 

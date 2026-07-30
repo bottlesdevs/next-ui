@@ -1,11 +1,8 @@
-use iced::{
-    Alignment, ContentFit, Element, Fill,
-    widget::{Space, button, column, row, svg, text},
-};
+use iced::{ContentFit, Element, widget::svg};
 
 use crate::icons;
 
-use super::style;
+use super::list_row::{ListRow, labels};
 
 pub struct PickerRow<'a, Message> {
     title: &'a str,
@@ -48,30 +45,21 @@ impl<Message> Default for PickerRow<'_, Message> {
 
 impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for Element<'a, Message> {
     fn from(picker: PickerRow<'a, Message>) -> Self {
-        let labels = column![
-            text(picker.title).size(18).style(text::base),
-            text(picker.description).size(16).style(style::muted_text),
-        ]
-        .spacing(4);
+        ListRow::from(picker).into()
+    }
+}
 
-        let row = button(
-            row![
-                labels,
-                Space::new().width(Fill),
-                svg(icons::get("folder"))
-                    .width(25)
-                    .height(20)
-                    .content_fit(ContentFit::Contain),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .width(Fill)
-        .padding([18, 24])
-        .style(style::action);
-
+impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(picker: PickerRow<'a, Message>) -> Self {
+        let row = ListRow::new(labels(picker.title, picker.description)).trailing(
+            svg(icons::get("folder"))
+                .width(25)
+                .height(20)
+                .content_fit(ContentFit::Contain),
+        );
         match picker.on_press {
-            Some(on_press) => row.on_press(on_press).into(),
-            None => row.into(),
+            Some(on_press) => row.on_press(on_press),
+            None => row,
         }
     }
 }

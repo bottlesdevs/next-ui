@@ -1,11 +1,11 @@
 use iced::{
     Alignment, ContentFit, Element, Fill,
-    widget::{button, column, container, row, svg, text},
+    widget::{button, column, svg, text},
 };
 
 use crate::icons;
 
-use super::{row_surface::RowSurface, style};
+use super::{list_row::ListRow, style};
 
 pub struct CycleRow<'a, Message> {
     title: &'a str,
@@ -55,6 +55,12 @@ impl<Message> Default for CycleRow<'_, Message> {
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
+        ListRow::from(cycle).into()
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(cycle: CycleRow<'a, Message>) -> Self {
         let previous = button(
             svg(icons::get("arrow"))
                 .width(24)
@@ -90,16 +96,7 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Messag
         .align_x(Alignment::Center)
         .spacing(4);
 
-        RowSurface::new(
-            container(
-                row![previous, labels, next]
-                    .spacing(16)
-                    .align_y(Alignment::Center),
-            )
-            .width(Fill)
-            .padding([18, 24]),
-        )
-        .into()
+        ListRow::new(labels).leading(previous).trailing(next)
     }
 }
 

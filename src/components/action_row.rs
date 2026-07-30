@@ -1,11 +1,11 @@
 use iced::{
-    Alignment, ContentFit, Element, Fill,
-    widget::{Space, button, column, container, row, stack, svg, text},
+    Alignment, ContentFit, Element,
+    widget::{column, container, row, stack, svg, text},
 };
 
 use crate::icons;
 
-use super::style;
+use super::{list_row::ListRow, style};
 
 pub struct ActionRow<'a, Message> {
     title: &'a str,
@@ -62,6 +62,12 @@ impl<Message> Default for ActionRow<'_, Message> {
 
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
+        ListRow::from(action).into()
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(action: ActionRow<'a, Message>) -> Self {
         let mut description = row![].spacing(16).align_y(Alignment::Center);
 
         if let Some(icon) = action.icon {
@@ -88,15 +94,10 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Messa
                 .into(),
         };
 
-        let row =
-            button(row![labels, Space::new().width(Fill), trailing].align_y(Alignment::Center))
-                .padding([18, 24])
-                .width(Fill)
-                .style(style::action);
-
+        let row = ListRow::new(labels).trailing(trailing);
         match (action.on_press, action.progress) {
-            (Some(on_press), None) => row.on_press(on_press).into(),
-            _ => row.into(),
+            (Some(on_press), None) => row.on_press(on_press),
+            _ => row,
         }
     }
 }
