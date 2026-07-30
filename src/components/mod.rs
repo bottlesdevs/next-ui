@@ -1,6 +1,6 @@
 pub mod style;
 
-pub mod bottle_entry;
+pub mod action_row;
 pub mod button;
 pub mod card;
 pub mod heading;

@@ -3,8 +3,7 @@ use iced::{
     widget::{Space, column, image, row, scrollable, text},
 };
 use next_ui::components::{
-    bottle_entry::{self, BottleEntryStatus, BottleKind},
-    button, card,
+    action_row, button, card,
     heading::{self, Level},
     info_panel::{self, Kind},
     popover,
@@ -143,21 +142,21 @@ impl Gallery {
         .spacing(12);
 
         let bottles = column![
-            bottle_entry::BottleEntry::new(
-                "Gaming bottle",
-                BottleKind::Gaming,
-                BottleEntryStatus::Ready(Message::Noop),
-            ),
-            bottle_entry::BottleEntry::new(
-                "Development bottle",
-                BottleKind::Software,
-                BottleEntryStatus::Ready(Message::Noop),
-            ),
-            bottle_entry::BottleEntry::new(
-                "Custom bottle",
-                BottleKind::Custom,
-                BottleEntryStatus::Progress(50),
-            ),
+            action_row::ActionRow::new()
+                .title("Gaming bottle")
+                .description("Gaming")
+                .icon(icons::get("controller"))
+                .on_press(Message::Noop),
+            action_row::ActionRow::new()
+                .title("Development bottle")
+                .description("Software")
+                .icon(icons::get("hollow-gear"))
+                .on_press(Message::Noop),
+            action_row::ActionRow::new()
+                .title("Custom bottle")
+                .description("Custom")
+                .icon(icons::get("custom"))
+                .progress(50),
         ]
         .spacing(12);
 
@@ -268,7 +267,10 @@ impl Gallery {
             .icon(icons::get("person"))
             .selected(selected)
             .expanded(self.selector_expanded),
-            text_field::Action::new("Action", "Open another view", Message::Noop),
+            action_row::ActionRow::new()
+                .title("Title")
+                .description("Description")
+                .on_press(Message::Noop),
             text_field::Collapsible::new(
                 "Collapsible",
                 "Show more content",
