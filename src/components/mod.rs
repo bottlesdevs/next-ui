@@ -3,6 +3,7 @@ pub mod style;
 pub mod action_row;
 pub mod button;
 pub mod card;
+pub mod cycle_row;
 pub mod heading;
 pub mod info_panel;
 pub mod info_row;

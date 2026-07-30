@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, image, row, scrollable, text},
 };
 use next_ui::components::{
-    action_row, button, card,
+    action_row, button, card, cycle_row,
     heading::{self, Level},
     info_panel::{self, Kind},
     info_row, picker_row, popover,
@@ -15,7 +15,7 @@ use next_ui::{icons, theme};
 const POPOVER_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3", "Option 4"];
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
-const VALUES: &[&str] = &["One", "Two", "Three"];
+const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
 const TEXT_ROW_IDS: [&str; 3] = ["text-row-1", "text-row-2", "text-row-3"];
 const SEARCH_CATALOG: &[(&str, SearchAction)] = &[
     ("Epic Games Store", SearchAction::Install),
@@ -104,8 +104,10 @@ impl Gallery {
             Message::Switched(value) => self.switched_on = value,
             Message::DetailsToggled => self.details_expanded = !self.details_expanded,
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
-            Message::Previous => self.value = (self.value + VALUES.len() - 1) % VALUES.len(),
-            Message::Next => self.value = (self.value + 1) % VALUES.len(),
+            Message::Previous => {
+                self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
+            }
+            Message::Next => self.value = (self.value + 1) % DLSS_LEVELS.len(),
             Message::Noop => {}
         }
 
@@ -287,12 +289,11 @@ impl Gallery {
                 self.switched_on,
                 Message::Switched,
             ),
-            text_field::Value::new(
-                "Value",
-                VALUES[self.value],
-                Message::Previous,
-                Message::Next
-            ),
+            cycle_row::CycleRow::new()
+                .title("DLSS Level")
+                .value(DLSS_LEVELS[self.value])
+                .on_previous(Message::Previous)
+                .on_next(Message::Next),
             picker_row::PickerRow::new()
                 .title("Title")
                 .description("Choose the location")
