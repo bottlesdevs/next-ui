@@ -6,7 +6,7 @@ use next_ui::components::{
     action_row, button, card,
     heading::{self, Level},
     info_panel::{self, Kind},
-    popover,
+    info_row, popover,
     search::{self, Action as SearchAction},
     selector_row, status_bar, switcher, tab, tabs, text_field, text_row, title,
 };
@@ -271,6 +271,10 @@ impl Gallery {
                 .title("Title")
                 .description("Description")
                 .on_press(Message::Noop),
+            info_row::InfoRow::new()
+                .title("Title")
+                .description("Description")
+                .icon(icons::get("timer")),
             text_field::Collapsible::new(
                 "Collapsible",
                 "Show more content",

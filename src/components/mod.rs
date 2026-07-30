@@ -5,6 +5,7 @@ pub mod button;
 pub mod card;
 pub mod heading;
 pub mod info_panel;
+pub mod info_row;
 pub mod popover;
 pub mod search;
 pub mod selector_row;
