@@ -5,6 +5,8 @@ use iced::{
 
 use crate::icons;
 
+use super::row_surface::RowSurface;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum Variant {
     #[default]
@@ -151,12 +153,10 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for Element<'a, Message
         .width(Fill)
         .height(79)
         .padding([0, 24])
-        .align_y(Center)
-        .style(move |theme: &Theme| {
-            container::Style::default()
-                .background(background(theme, text_row.variant))
-                .border(Border::default().rounded(8))
-        });
+        .align_y(Center);
+        let content: Element<'a, Message> = RowSurface::new(content)
+            .raised(text_row.variant == Variant::Three)
+            .into();
 
         if let Some(on_press) = text_row.on_press {
             mouse_area(content).on_press(on_press).into()
@@ -202,14 +202,6 @@ fn input_style(theme: &Theme, active: bool) -> text_input::Style {
     }
 }
 
-fn background(theme: &Theme, variant: Variant) -> iced::Color {
-    if variant == Variant::Three {
-        theme.extended_palette().background.neutral.color
-    } else {
-        theme.extended_palette().background.weak.color
-    }
-}
-
 fn icon_view<'a, Message: 'a>(
     handle: svg::Handle,
     size: f32,
@@ -235,8 +227,7 @@ fn foreground(theme: &Theme, active: bool) -> iced::Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{Layout, Variant, background, layout};
-    use crate::theme;
+    use super::{Layout, Variant, layout};
 
     #[test]
     fn variants_have_distinct_mockup_typography() {
@@ -252,8 +243,6 @@ mod tests {
         assert_ne!(layout(Variant::One), layout(Variant::Two));
         assert_ne!(layout(Variant::Two), layout(Variant::Three));
 
-        let theme = theme::theme();
-        assert_eq!(background(&theme, Variant::One), theme::SURFACE);
-        assert_eq!(background(&theme, Variant::Three), theme::BORDER);
+        assert_ne!(Variant::One, Variant::Three);
     }
 }

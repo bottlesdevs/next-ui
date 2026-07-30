@@ -70,7 +70,7 @@ fn colors(theme: &Theme, kind: Kind) -> Pair {
     let palette = theme.extended_palette();
 
     match kind {
-        Kind::Hint => palette.background.base,
+        Kind::Hint => theme::hint(),
         Kind::Info => theme::info(),
         Kind::Error => palette.danger.base,
         Kind::Warning => palette.warning.base,

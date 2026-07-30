@@ -3,7 +3,7 @@ use iced::{
     widget::{container, row, svg, text},
 };
 
-use super::style;
+use super::{row_surface::RowSurface, style};
 
 pub struct InfoRow<'a> {
     title: &'a str,
@@ -63,11 +63,12 @@ impl<'a, Message: 'a> From<InfoRow<'a>> for Element<'a, Message> {
             );
         }
 
-        container(content.push(labels))
-            .width(Fill)
-            .padding([18, 24])
-            .style(style::surface)
-            .into()
+        RowSurface::new(
+            container(content.push(labels))
+                .width(Fill)
+                .padding([18, 24]),
+        )
+        .into()
     }
 }
 

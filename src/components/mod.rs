@@ -1,5 +1,7 @@
 pub mod style;
 
+mod row_surface;
+
 pub mod action_row;
 pub mod button;
 pub mod card;

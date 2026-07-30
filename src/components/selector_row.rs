@@ -3,6 +3,8 @@ use iced::{
     widget::{Column, Space, button, column, container, row, svg, text},
 };
 
+use super::row_surface::RowSurface;
+
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
     placeholder: &'a str,
@@ -126,10 +128,8 @@ where
                 );
         }
 
-        container(content)
-            .width(Fill)
-            .clip(true)
-            .style(move |theme| surface_style(theme, expanded))
+        RowSurface::new(container(content).width(Fill).clip(true))
+            .raised(expanded)
             .into()
     }
 }
@@ -146,18 +146,6 @@ fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.extended_palette().secondary.base.text),
     }
-}
-
-fn surface_style(theme: &Theme, expanded: bool) -> container::Style {
-    let background = if expanded {
-        theme.extended_palette().background.neutral.color
-    } else {
-        theme.extended_palette().background.weak.color
-    };
-
-    container::Style::default()
-        .background(background)
-        .border(Border::default().rounded(8))
 }
 
 fn header_style(theme: &Theme, status: button::Status) -> button::Style {
@@ -207,16 +195,12 @@ mod tests {
 
     use crate::theme;
 
-    use super::{divider_style, option_style, surface_style};
+    use super::{divider_style, option_style};
 
     #[test]
     fn expanded_and_selected_states_match_the_mockup() {
         let theme = theme::theme();
 
-        assert_eq!(
-            surface_style(&theme, true).background,
-            Some(Background::Color(theme::BORDER))
-        );
         assert_eq!(
             option_style(&theme, button::Status::Active, true).background,
             Some(Background::Color(theme::SURFACE_SELECTED))

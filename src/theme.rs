@@ -9,10 +9,11 @@ use iced::{
     },
 };
 
-pub const BACKGROUND: Color = Color::from_rgb8(41, 34, 37);
+pub const BACKGROUND: Color = Color::from_rgb8(58, 50, 53);
+pub const HINT: Color = Color::from_rgb8(41, 34, 37);
 pub const DEEP_BACKGROUND: Color = Color::from_rgb8(27, 25, 26);
 pub const SURFACE_DEEP: Color = Color::from_rgb8(54, 44, 49);
-pub const PANEL: Color = Color::from_rgb8(58, 50, 53);
+pub const PANEL: Color = BACKGROUND;
 pub const SURFACE: Color = Color::from_rgb8(65, 57, 60);
 pub const BORDER: Color = Color::from_rgb8(76, 66, 70);
 pub const SURFACE_SELECTED: Color = Color::from_rgb8(89, 78, 82);
@@ -85,19 +86,26 @@ pub const fn info() -> Pair {
     pair(INFO, WHITE)
 }
 
+pub const fn hint() -> Pair {
+    pair(HINT, WHITE)
+}
+
 const fn pair(color: Color, text: Color) -> Pair {
     Pair { color, text }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ACCENT, BORDER, DEEP_BACKGROUND, MUTED, SURFACE, WHITE, theme as bottles_theme};
+    use super::{
+        ACCENT, BACKGROUND, BORDER, DEEP_BACKGROUND, MUTED, SURFACE, WHITE, theme as bottles_theme,
+    };
 
     #[test]
     fn iced_roles_use_the_extracted_palette() {
         let theme = bottles_theme();
         let colors = theme.extended_palette();
 
+        assert_eq!(theme.palette().background, BACKGROUND);
         assert_eq!(theme.palette().primary, ACCENT);
         assert_eq!(colors.background.weak.color, SURFACE);
         assert_eq!(colors.background.neutral.color, BORDER);

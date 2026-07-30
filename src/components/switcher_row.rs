@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, container, row, text},
 };
 
-use super::{style, switcher::Switcher};
+use super::{row_surface::RowSurface, style, switcher::Switcher};
 
 pub struct SwitcherRow<'a, Message> {
     title: &'a str,
@@ -41,17 +41,18 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Mes
         ]
         .spacing(4);
 
-        container(
-            row![
-                labels,
-                Space::new().width(Fill),
-                Switcher::new(switcher.value, switcher.on_toggle),
-            ]
-            .align_y(Alignment::Center),
+        RowSurface::new(
+            container(
+                row![
+                    labels,
+                    Space::new().width(Fill),
+                    Switcher::new(switcher.value, switcher.on_toggle),
+                ]
+                .align_y(Alignment::Center),
+            )
+            .width(Fill)
+            .padding([18, 24]),
         )
-        .width(Fill)
-        .padding([18, 24])
-        .style(style::surface)
         .into()
     }
 }

@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons;
 
-use super::style;
+use super::{row_surface::RowSurface, style};
 
 pub struct CycleRow<'a, Message> {
     title: &'a str,
@@ -90,14 +90,15 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Messag
         .align_x(Alignment::Center)
         .spacing(4);
 
-        container(
-            row![previous, labels, next]
-                .spacing(16)
-                .align_y(Alignment::Center),
+        RowSurface::new(
+            container(
+                row![previous, labels, next]
+                    .spacing(16)
+                    .align_y(Alignment::Center),
+            )
+            .width(Fill)
+            .padding([18, 24]),
         )
-        .width(Fill)
-        .padding([18, 24])
-        .style(style::surface)
         .into()
     }
 }
