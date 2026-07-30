@@ -1,6 +1,10 @@
 [package]
 name = "next-ui"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
+iced = { version = "0.14", features = ["tokio"] }
+tokio = { workspace = true, features = ["fs", "io-util",
+  "time"] }
+bottles-core.workspace = true
