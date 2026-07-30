@@ -6,7 +6,7 @@ use next_ui::components::{
     action_row, button, card,
     heading::{self, Level},
     info_panel::{self, Kind},
-    info_row, popover,
+    info_row, picker_row, popover,
     search::{self, Action as SearchAction},
     selector_row, status_bar, switcher, tab, tabs, text_field, text_row, title,
 };
@@ -293,7 +293,10 @@ impl Gallery {
                 Message::Previous,
                 Message::Next
             ),
-            text_field::Path::new("Location", "/home/user/Games", Message::Noop),
+            picker_row::PickerRow::new()
+                .title("Title")
+                .description("Choose the location")
+                .on_press(Message::Noop),
         ]
         .spacing(32);
 
