@@ -1,0 +1,259 @@
+use iced::{
+    Background, Border, Center, Color, ContentFit, Element, Fill, Theme,
+    widget::{Id, column, container, mouse_area, row, svg, text, text_input},
+};
+
+use crate::icons;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Variant {
+    #[default]
+    One,
+    Two,
+    Three,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Layout {
+    title_size: f32,
+    placeholder_size: f32,
+    spacing: f32,
+    icon_size: f32,
+}
+
+pub struct TextRow<'a, Message> {
+    title: &'a str,
+    placeholder: &'a str,
+    value: &'a str,
+    icon: Option<svg::Handle>,
+    variant: Variant,
+    on_input: Option<Box<dyn Fn(String) -> Message + 'a>>,
+    id: Option<Id>,
+    on_press: Option<Message>,
+}
+
+impl<'a, Message> TextRow<'a, Message> {
+    pub fn new() -> Self {
+        Self {
+            title: "",
+            placeholder: "",
+            value: "",
+            icon: None,
+            variant: Variant::One,
+            on_input: None,
+            id: None,
+            on_press: None,
+        }
+    }
+
+    pub fn title(mut self, title: &'a str) -> Self {
+        self.title = title;
+        self
+    }
+
+    pub fn placeholder(mut self, placeholder: &'a str) -> Self {
+        self.placeholder = placeholder;
+        self
+    }
+
+    pub fn value(mut self, value: &'a str) -> Self {
+        self.value = value;
+        self
+    }
+
+    pub fn icon(mut self, icon: impl Into<svg::Handle>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+
+    pub fn on_input(mut self, on_input: impl Fn(String) -> Message + 'a) -> Self {
+        self.on_input = Some(Box::new(on_input));
+        self
+    }
+
+    pub fn id(mut self, id: impl Into<Id>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    pub fn on_press(mut self, on_press: Message) -> Self {
+        self.on_press = Some(on_press);
+        self
+    }
+
+    pub fn variant_1(mut self) -> Self {
+        self.variant = Variant::One;
+        self
+    }
+
+    pub fn variant_2(mut self) -> Self {
+        self.variant = Variant::Two;
+        self
+    }
+
+    pub fn variant_3(mut self) -> Self {
+        self.variant = Variant::Three;
+        self
+    }
+}
+
+impl<Message> Default for TextRow<'_, Message> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for Element<'a, Message> {
+    fn from(text_row: TextRow<'a, Message>) -> Self {
+        let layout = layout(text_row.variant);
+        let placeholder_is_active = text_row.variant == Variant::Two;
+        let title_is_muted = text_row.variant == Variant::Two;
+
+        let mut placeholder = row![].spacing(12).align_y(Center);
+
+        if let Some(icon) = text_row.icon {
+            placeholder =
+                placeholder.push(icon_view(icon, layout.icon_size, placeholder_is_active));
+        }
+
+        let mut input = text_input(text_row.placeholder, text_row.value)
+            .width(Fill)
+            .padding(0)
+            .size(layout.placeholder_size)
+            .style(move |theme, _| input_style(theme, placeholder_is_active));
+
+        if let Some(on_input) = text_row.on_input {
+            input = input.on_input(on_input);
+        }
+
+        if let Some(id) = text_row.id {
+            input = input.id(id);
+        }
+
+        placeholder = placeholder.push(input);
+
+        let labels = column![
+            text(text_row.title)
+                .size(layout.title_size)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(foreground(theme, !title_is_muted)),
+                }),
+            placeholder,
+        ]
+        .width(Fill)
+        .spacing(layout.spacing);
+
+        let content = container(
+            row![labels, icon_view(icons::get("pencil"), 16.0, false)]
+                .spacing(16)
+                .align_y(Center),
+        )
+        .width(Fill)
+        .height(79)
+        .padding([0, 24])
+        .align_y(Center)
+        .style(move |theme: &Theme| {
+            container::Style::default()
+                .background(background(theme, text_row.variant))
+                .border(Border::default().rounded(8))
+        });
+
+        if let Some(on_press) = text_row.on_press {
+            mouse_area(content).on_press(on_press).into()
+        } else {
+            content.into()
+        }
+    }
+}
+
+fn layout(variant: Variant) -> Layout {
+    match variant {
+        Variant::One => Layout {
+            title_size: 18.0,
+            placeholder_size: 16.0,
+            spacing: 4.0,
+            icon_size: 10.0,
+        },
+        Variant::Two => Layout {
+            title_size: 14.0,
+            placeholder_size: 16.0,
+            spacing: 8.0,
+            icon_size: 10.0,
+        },
+        Variant::Three => Layout {
+            title_size: 16.0,
+            placeholder_size: 18.0,
+            spacing: 8.0,
+            icon_size: 12.0,
+        },
+    }
+}
+
+fn input_style(theme: &Theme, active: bool) -> text_input::Style {
+    let foreground = foreground(theme, active);
+
+    text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
+        icon: foreground,
+        placeholder: foreground,
+        value: foreground,
+        selection: theme.palette().primary,
+    }
+}
+
+fn background(theme: &Theme, variant: Variant) -> iced::Color {
+    if variant == Variant::Three {
+        theme.extended_palette().background.neutral.color
+    } else {
+        theme.extended_palette().background.weak.color
+    }
+}
+
+fn icon_view<'a, Message: 'a>(
+    handle: svg::Handle,
+    size: f32,
+    active: bool,
+) -> Element<'a, Message> {
+    svg(handle)
+        .width(size)
+        .height(size)
+        .content_fit(ContentFit::Contain)
+        .style(move |theme: &Theme, _| svg::Style {
+            color: Some(foreground(theme, active)),
+        })
+        .into()
+}
+
+fn foreground(theme: &Theme, active: bool) -> iced::Color {
+    if active {
+        theme.palette().text
+    } else {
+        theme.extended_palette().secondary.base.text
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Layout, Variant, background, layout};
+    use crate::theme;
+
+    #[test]
+    fn variants_have_distinct_mockup_typography() {
+        assert_eq!(
+            layout(Variant::One),
+            Layout {
+                title_size: 18.0,
+                placeholder_size: 16.0,
+                spacing: 4.0,
+                icon_size: 10.0,
+            }
+        );
+        assert_ne!(layout(Variant::One), layout(Variant::Two));
+        assert_ne!(layout(Variant::Two), layout(Variant::Three));
+
+        let theme = theme::theme();
+        assert_eq!(background(&theme, Variant::One), theme::SURFACE);
+        assert_eq!(background(&theme, Variant::Three), theme::BORDER);
+    }
+}

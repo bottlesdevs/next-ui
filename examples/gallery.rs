@@ -9,7 +9,7 @@ use next_ui::components::{
     info_panel::{self, Kind},
     popover,
     search::{self, Action as SearchAction},
-    status_bar, switcher, tab, tabs, text_field, title,
+    status_bar, switcher, tab, tabs, text_field, text_row, title,
 };
 use next_ui::{icons, theme};
 
@@ -17,6 +17,7 @@ const POPOVER_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3", "Option 4
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
 const VALUES: &[&str] = &["One", "Two", "Three"];
+const TEXT_ROW_IDS: [&str; 3] = ["text-row-1", "text-row-2", "text-row-3"];
 const SEARCH_CATALOG: &[(&str, SearchAction)] = &[
     ("Epic Games Store", SearchAction::Install),
     ("Epic Fight", SearchAction::Run),
@@ -41,7 +42,7 @@ fn theme(_: &Gallery) -> Theme {
 
 struct Gallery {
     search: String,
-    input: String,
+    text_rows: [String; 3],
     selected_option: &'static str,
     selector_expanded: bool,
     selected_popover: usize,
@@ -56,7 +57,7 @@ impl Default for Gallery {
     fn default() -> Self {
         Self {
             search: String::new(),
-            input: String::new(),
+            text_rows: std::array::from_fn(|_| String::new()),
             selected_option: SELECTOR_OPTIONS[0],
             selector_expanded: false,
             selected_popover: 2,
@@ -72,7 +73,8 @@ impl Default for Gallery {
 #[derive(Debug, Clone)]
 enum Message {
     SearchChanged(String),
-    InputChanged(String),
+    TextRowChanged(usize, String),
+    TextRowPressed(usize),
     OptionSelected(&'static str),
     SelectorToggled,
     PopoverSelected(usize),
@@ -89,7 +91,10 @@ impl Gallery {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SearchChanged(value) => self.search = value,
-            Message::InputChanged(value) => self.input = value,
+            Message::TextRowChanged(index, value) => self.text_rows[index] = value,
+            Message::TextRowPressed(index) => {
+                return iced::widget::operation::focus(TEXT_ROW_IDS[index]);
+            }
             Message::OptionSelected(value) => self.selected_option = value,
             Message::SelectorToggled => self.selector_expanded = !self.selector_expanded,
             Message::PopoverSelected(index) => self.selected_popover = index,
@@ -223,14 +228,33 @@ impl Gallery {
             .iter()
             .find(|option| **option == self.selected_option);
         let fields = column![
-            text_field::Editable::new("Input Name", "Editable value", Message::Noop),
-            text_field::Input::new(
-                "Input Name",
-                "Placeholder",
-                &self.input,
-                Message::InputChanged,
-            ),
-            text_field::Disabled::new("Input Name", "Disabled", ""),
+            text_row::TextRow::new()
+                .title("Input Name")
+                .placeholder("Placeholder")
+                .value(&self.text_rows[0])
+                .icon(icons::get("person"))
+                .on_input(|value| Message::TextRowChanged(0, value))
+                .id(TEXT_ROW_IDS[0])
+                .on_press(Message::TextRowPressed(0))
+                .variant_1(),
+            text_row::TextRow::new()
+                .title("Input Name")
+                .placeholder("Placeholder")
+                .value(&self.text_rows[1])
+                .icon(icons::get("person"))
+                .on_input(|value| Message::TextRowChanged(1, value))
+                .id(TEXT_ROW_IDS[1])
+                .on_press(Message::TextRowPressed(1))
+                .variant_2(),
+            text_row::TextRow::new()
+                .title("Input Name")
+                .placeholder("Placeholder")
+                .value(&self.text_rows[2])
+                .icon(icons::get("person"))
+                .on_input(|value| Message::TextRowChanged(2, value))
+                .id(TEXT_ROW_IDS[2])
+                .on_press(Message::TextRowPressed(2))
+                .variant_3(),
             text_field::Selector::new(
                 "Selector Name",
                 "Choose an option",
@@ -261,7 +285,7 @@ impl Gallery {
             ),
             text_field::Path::new("Location", "/home/user/Games", Message::Noop),
         ]
-        .spacing(12);
+        .spacing(32);
 
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", Message::Noop)

@@ -12,4 +12,5 @@ pub mod switcher;
 pub mod tab;
 pub mod tabs;
 pub mod text_field;
+pub mod text_row;
 pub mod title;
