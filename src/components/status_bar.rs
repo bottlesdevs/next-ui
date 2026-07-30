@@ -93,7 +93,7 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
                     .style(|theme| {
                         container::Style::default()
                             .color(theme.palette().text)
-                            .background(theme.palette().background)
+                            .background(crate::theme::HINT)
                     }),
             );
         }
