@@ -8,7 +8,7 @@ use next_ui::components::{
     info_card::{self, Kind},
     info_row, picker_row, program_card, row_group,
     search::{self, Action as SearchAction},
-    selector_row, status_bar, switcher_row, tab, tabs, text_row, title,
+    selector_row, status_bar, switcher_row, tabs, text_row, title,
 };
 use next_ui::{icons, theme};
 
@@ -185,14 +185,7 @@ impl Gallery {
         ]
         .spacing(16);
 
-        let navigation = column![
-            row![
-                tab::Tab::new("Single tab", Message::Noop).selected(true),
-                tab::Tab::new("Inactive tab", Message::Noop),
-            ],
-            tabs::Tabs::new(TAB_LABELS, Message::TabSelected).selected(self.selected_tab),
-        ]
-        .spacing(20);
+        let tabs = tabs::Tabs::new(TAB_LABELS, Message::TabSelected).selected(self.selected_tab);
 
         let query = self.search.trim().to_lowercase();
         let search_results = SEARCH_CATALOG
@@ -374,7 +367,7 @@ impl Gallery {
                 section("Title", titles),
                 section("Buttons", buttons),
                 section("Cards", cards),
-                section("Navigation and selection", navigation),
+                section("Tabs", tabs),
                 section("Search", search),
                 section("Rows", fields),
                 section("Row group", row_group),

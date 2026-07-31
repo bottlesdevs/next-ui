@@ -17,7 +17,6 @@ pub mod selector_row;
 pub mod status_bar;
 pub mod switcher;
 pub mod switcher_row;
-pub mod tab;
 pub mod tabs;
 pub mod text;
 pub mod text_row;

@@ -1,6 +1,9 @@
-use iced::{Element, Fill, widget::row};
+use iced::{
+    Alignment, Element, Fill,
+    widget::{button, column, row, rule, text},
+};
 
-use super::tab::Tab;
+use super::{style, text::TextExt as _};
 
 pub struct Tabs<'a, Message> {
     labels: &'a [&'a str],
@@ -31,12 +34,46 @@ impl<'a, Message: Clone + 'a> From<Tabs<'a, Message>> for Element<'a, Message> {
             on_select,
         } = tabs;
 
-        row(labels.iter().enumerate().map(move |(index, label)| {
-            Tab::new(label, on_select(index))
-                .selected(selected == index)
-                .into()
-        }))
+        row(labels
+            .iter()
+            .enumerate()
+            .map(move |(index, label)| tab(label, selected == index, on_select(index))))
         .width(Fill)
         .into()
     }
+}
+
+fn tab<'a, Message: Clone + 'a>(
+    label: &'a str,
+    selected: bool,
+    on_press: Message,
+) -> Element<'a, Message> {
+    button(
+        column![
+            text(label).label(),
+            rule::horizontal(3).style(move |theme: &iced::Theme| rule::Style {
+                color: if selected {
+                    theme.palette().primary
+                } else {
+                    iced::Color::TRANSPARENT
+                },
+                ..rule::default(theme)
+            }),
+        ]
+        .align_x(Alignment::Center)
+        .spacing(10),
+    )
+    .width(Fill)
+    .padding([8, 16])
+    .on_press(on_press)
+    .style(move |theme, status| {
+        let mut tab = style::tab(theme, status);
+        tab.text_color = match status {
+            button::Status::Hovered | button::Status::Pressed => theme.palette().text,
+            _ if selected => theme.palette().text,
+            _ => theme.extended_palette().secondary.weak.text,
+        };
+        tab
+    })
+    .into()
 }
