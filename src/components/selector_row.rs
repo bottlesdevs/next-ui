@@ -7,12 +7,15 @@ use iced::{
     },
     keyboard::{self, key},
     touch,
-    widget::{column, container, row, svg, text},
+    widget::{button, column, container, row, svg, text},
 };
 
 use crate::icons::Icon;
 
-use super::text::TextExt as _;
+use super::{
+    pressable::{Pressable, SharedFlag, Status},
+    text::TextExt as _,
+};
 
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
@@ -85,26 +88,35 @@ where
         let value = selected
             .map(|index| labels[index].clone())
             .unwrap_or_else(|| selector.placeholder.to_owned());
-        let children = [false, true]
-            .into_iter()
-            .map(|expanded| header(selector.title, &value, selector.icon, expanded))
-            .chain(labels.iter().map(|label| {
-                container(text(label.clone()).label())
-                    .width(Fill)
-                    .padding(Padding::from([10, 9]))
-                    .into()
-            }))
-            .collect();
-        let messages = selector
+        let messages: Vec<_> = selector
             .options
             .iter()
             .cloned()
             .map(selector.on_selected)
             .collect();
+        let highlights: Vec<_> = labels.iter().map(|_| SharedFlag::default()).collect();
+        let children = [false, true]
+            .into_iter()
+            .map(|expanded| header(selector.title, &value, selector.icon, expanded))
+            .chain(labels.iter().zip(&messages).zip(&highlights).map(
+                |((label, message), highlighted)| {
+                    let highlighted = highlighted.clone();
+
+                    Pressable::new(text(label.clone()).label())
+                        .width(Fill)
+                        .padding(Padding::from([10, 9]))
+                        .focusable(false)
+                        .on_press(message.clone())
+                        .style(move |theme, status| option_style(theme, status, highlighted.get()))
+                        .into()
+                },
+            ))
+            .collect();
 
         Element::new(Selector {
             children,
             messages,
+            highlights,
             selected,
             enabled: selector.enabled,
         })
@@ -152,6 +164,7 @@ fn header<'a, Message: 'a>(
 struct Selector<'a, Message> {
     children: Vec<Element<'a, Message>>,
     messages: Vec<Message>,
+    highlights: Vec<SharedFlag>,
     selected: Option<usize>,
     enabled: bool,
 }
@@ -283,24 +296,75 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
-        _renderer: &iced::Renderer,
-        _clipboard: &mut dyn Clipboard,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        _viewport: &Rectangle,
+        viewport: &Rectangle,
     ) {
         if !self.enabled {
             return;
         }
 
-        let state = tree.state.downcast_mut::<State>();
-        let was_open = state.open;
-        let was_highlighted = state.highlighted;
+        let open = tree.state.downcast_ref::<State>().open;
         let mut children = layout.children();
         let collapsed = children.next().expect("collapsed selector header");
         let expanded = children.next().expect("expanded selector header");
-        let header = if state.open { expanded } else { collapsed };
+        let header = if open { expanded } else { collapsed };
         let options: Vec<_> = children.collect();
+
+        if open {
+            for (index, option_layout) in options.iter().enumerate() {
+                self.children[index + 2].as_widget_mut().update(
+                    &mut tree.children[index + 2],
+                    event,
+                    *option_layout,
+                    cursor,
+                    renderer,
+                    clipboard,
+                    shell,
+                    viewport,
+                );
+            }
+        }
+
+        let child_captured = shell.is_event_captured();
+        let state = tree.state.downcast_mut::<State>();
+        let was_open = state.open;
+        let was_highlighted = state.highlighted;
         let target = hit_target(state.open, header, &options, event_cursor(event, cursor));
+
+        if child_captured {
+            match event {
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+                | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                    state.pressed = target;
+                    state.focused = target.is_some();
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+                | Event::Touch(touch::Event::FingerLifted { .. }) => {
+                    let pressed = state.pressed.take();
+
+                    if pressed == target
+                        && let Some(Pressed::Option(index)) = target
+                    {
+                        state.open = false;
+                        state.highlighted = Some(index);
+                    }
+                }
+                Event::Touch(touch::Event::FingerLost { .. }) => state.pressed = None,
+                _ => {}
+            }
+
+            if state.open != was_open {
+                shell.invalidate_layout();
+            }
+
+            if state.open != was_open || state.highlighted != was_highlighted {
+                shell.request_redraw();
+            }
+
+            return;
+        }
 
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
@@ -469,6 +533,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let collapsed = children.next().expect("collapsed selector header");
         let expanded = children.next().expect("expanded selector header");
         let header = if state.open { expanded } else { collapsed };
+        let options: Vec<_> = children.collect();
         self.children[usize::from(state.open)].as_widget().draw(
             &tree.children[usize::from(state.open)],
             renderer,
@@ -480,6 +545,15 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         );
 
         if state.open {
+            let highlighted = options
+                .iter()
+                .position(|layout| cursor.is_over(layout.bounds()))
+                .or(state.highlighted);
+
+            for (index, option) in self.highlights.iter().enumerate() {
+                option.set(highlighted == Some(index));
+            }
+
             let line = Rectangle {
                 y: header.bounds().y + header.bounds().height,
                 height: 1.0,
@@ -495,34 +569,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                 theme.extended_palette().background.stronger.color,
             );
 
-            for (index, option_layout) in children.enumerate() {
-                let highlighted = state.highlighted == Some(index)
-                    || self.selected == Some(index)
-                    || cursor.is_over(option_layout.bounds());
-
-                if highlighted {
-                    renderer.fill_quad(
-                        renderer::Quad {
-                            bounds: option_layout.bounds(),
-                            border: Border::default().rounded(8),
-                            shadow: Shadow::default(),
-                            snap: true,
-                        },
-                        theme.extended_palette().background.stronger.color,
-                    );
-                }
-
+            for (index, option_layout) in options.into_iter().enumerate() {
                 self.children[index + 2].as_widget().draw(
                     &tree.children[index + 2],
                     renderer,
                     theme,
-                    &renderer::Style {
-                        text_color: if highlighted {
-                            theme.palette().text
-                        } else {
-                            theme.extended_palette().secondary.base.text
-                        },
-                    },
+                    renderer_style,
                     option_layout,
                     cursor,
                     viewport,
@@ -552,6 +604,24 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         _translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         None
+    }
+}
+
+fn option_style(theme: &Theme, status: Status, highlighted: bool) -> button::Style {
+    let highlighted =
+        highlighted || matches!(status, Status::Hovered | Status::Pressed | Status::Focused);
+
+    button::Style {
+        background: highlighted.then_some(Background::Color(
+            theme.extended_palette().background.stronger.color,
+        )),
+        text_color: if highlighted {
+            theme.palette().text
+        } else {
+            theme.extended_palette().secondary.base.text
+        },
+        border: Border::default().rounded(8),
+        ..button::Style::default()
     }
 }
 
@@ -593,7 +663,7 @@ fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
 
 #[cfg(test)]
 mod tests {
-    use super::{Pressed, State};
+    use super::{Pressed, State, Status, option_style};
 
     #[test]
     fn changing_options_clamps_the_keyboard_highlight() {
@@ -610,5 +680,21 @@ mod tests {
         }
 
         assert_eq!(state.highlighted, Some(0));
+    }
+
+    #[test]
+    fn hovered_options_use_the_highlight_style() {
+        let theme = crate::theme::theme();
+
+        assert!(
+            option_style(&theme, Status::Hovered, false)
+                .background
+                .is_some()
+        );
+        assert!(
+            option_style(&theme, Status::Active, false)
+                .background
+                .is_none()
+        );
     }
 }
