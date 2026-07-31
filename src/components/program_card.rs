@@ -17,28 +17,35 @@ pub struct ProgramCard<'a, Message> {
     title: &'a str,
     subtitle: &'a str,
     banner: Option<image::Handle>,
-    settings: Message,
-    play: Message,
+    settings: Option<Message>,
+    play: Option<Message>,
+    play_loading: bool,
 }
 
 impl<'a, Message> ProgramCard<'a, Message> {
-    pub fn new(settings: Message, play: Message) -> Self {
+    pub fn new(title: &'a str, subtitle: &'a str) -> Self {
         Self {
-            title: "",
-            subtitle: "",
+            title,
+            subtitle,
             banner: None,
-            settings,
-            play,
+            settings: None,
+            play: None,
+            play_loading: false,
         }
     }
 
-    pub fn title(mut self, title: &'a str) -> Self {
-        self.title = title;
+    pub fn settings(mut self, settings: Message) -> Self {
+        self.settings = Some(settings);
         self
     }
 
-    pub fn subtitle(mut self, subtitle: &'a str) -> Self {
-        self.subtitle = subtitle;
+    pub fn play(mut self, play: Message) -> Self {
+        self.play = Some(play);
+        self
+    }
+
+    pub fn play_loading(mut self, loading: bool) -> Self {
+        self.play_loading = loading;
         self
     }
 
@@ -57,11 +64,12 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
                     Space::new().width(Fill),
                     Button::icon_only("Settings", Icon::Gear)
                         .diameter(ACTION_DIAMETER)
-                        .on_press(card.settings),
+                        .on_press_maybe(card.settings),
                     Button::icon_only("Play", Icon::Play)
                         .diameter(PRIMARY_ACTION_DIAMETER)
                         .primary()
-                        .on_press(card.play),
+                        .on_press_maybe(card.play)
+                        .loading(card.play_loading),
                 ]
                 .spacing(8)
                 .align_y(Center)
@@ -78,5 +86,18 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
             actions.into(),
         ))
         .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProgramCard;
+
+    #[test]
+    fn actions_are_optional() {
+        let card = ProgramCard::<()>::new("Program", "Not installed");
+
+        assert!(card.settings.is_none());
+        assert!(card.play.is_none());
     }
 }

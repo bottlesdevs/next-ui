@@ -149,13 +149,13 @@ impl Gallery {
                     .spacing(8),
                 )
                 .padding(24),
-                artwork_card::ArtworkCard::new(Message::Noop, Message::Noop)
-                    .title("Artwork card")
-                    .subtitle("Ready")
+                artwork_card::ArtworkCard::new("Artwork card", "Ready")
+                    .menu(Message::Noop)
+                    .play(Message::Noop)
                     .banner(sample_image()),
-                program_card::ProgramCard::new(Message::Noop, Message::Noop)
-                    .title("Program card")
-                    .subtitle("Last played today")
+                program_card::ProgramCard::new("Program card", "Last played today")
+                    .settings(Message::Noop)
+                    .play(Message::Noop)
                     .banner(sample_image()),
             ]
             .spacing(16),
