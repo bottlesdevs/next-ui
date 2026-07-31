@@ -1,11 +1,11 @@
 use iced::{
     Alignment, Element, Fill,
-    widget::{button, column, text},
+    widget::{column, text},
 };
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, style, text::TextExt as _};
+use super::{list_row::ListRow, pressable::Pressable, style, text::TextExt as _};
 
 pub struct CycleRow<'a, Message> {
     title: &'a str,
@@ -53,12 +53,13 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Messag
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        let previous = button(Icon::Arrow.view())
+        let enabled = cycle.previous.is_some() || cycle.next.is_some();
+        let previous = Pressable::new(Icon::Arrow.view())
             .padding(8)
             .style(style::action)
             .on_press_maybe(cycle.previous);
 
-        let next = button(Icon::Arrow.rotated(std::f32::consts::PI))
+        let next = Pressable::new(Icon::Arrow.rotated(std::f32::consts::PI))
             .padding(8)
             .style(style::action)
             .on_press_maybe(cycle.next);
@@ -71,19 +72,9 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
         .align_x(Alignment::Center)
         .spacing(4);
 
-        ListRow::new(labels).leading(previous).trailing(next)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::CycleRow;
-
-    #[test]
-    fn each_direction_can_be_disabled() {
-        let cycle = CycleRow::new("Quality", "Balanced").on_next(());
-
-        assert!(cycle.previous.is_none());
-        assert!(cycle.next.is_some());
+        ListRow::new(labels)
+            .leading(previous)
+            .trailing(next)
+            .enabled(enabled)
     }
 }

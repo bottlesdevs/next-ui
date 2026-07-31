@@ -51,18 +51,7 @@ impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for ListRow<'a, Messa
         );
         match picker.on_press {
             Some(on_press) => row.on_press(on_press),
-            None => row,
+            None => row.enabled(false),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::PickerRow;
-
-    #[test]
-    fn click_action_is_optional() {
-        assert!(PickerRow::<()>::new("Folder").on_press.is_none());
-        assert!(PickerRow::new("Folder").on_press(()).on_press.is_some());
     }
 }

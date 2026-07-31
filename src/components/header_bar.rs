@@ -6,6 +6,8 @@ use iced::{
 
 use crate::{icons::Icon, theme};
 
+use super::pressable::{Pressable, Status};
+
 const HEIGHT: f32 = 64.0;
 const SPACING: f32 = 12.0;
 
@@ -100,19 +102,16 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 }
 
 fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Message> {
-    button(container(svg(Icon::Cross.handle()).width(16).height(16)).center(40))
+    Pressable::new(container(svg(Icon::Cross.handle()).width(16).height(16)).center(40))
         .width(40)
         .height(40)
-        .padding(0)
         .on_press(message)
         .style(|theme: &Theme, status| {
             let colors = theme.extended_palette();
 
             button::Style {
                 background: match status {
-                    button::Status::Pressed => {
-                        Some(Background::Color(colors.background.stronger.color))
-                    }
+                    Status::Pressed => Some(Background::Color(colors.background.stronger.color)),
                     _ => None,
                 },
                 text_color: colors.secondary.weak.text,

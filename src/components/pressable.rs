@@ -43,7 +43,6 @@ pub(crate) struct Pressable<'a, Message> {
     width: Length,
     height: Length,
     padding: Padding,
-    focusable: bool,
     style: Box<dyn Fn(&Theme, Status) -> button::Style + 'a>,
     last_status: Option<Status>,
 }
@@ -61,7 +60,6 @@ impl<'a, Message> Pressable<'a, Message> {
             width: Length::Shrink,
             height: Length::Shrink,
             padding: Padding::ZERO,
-            focusable: true,
             style: Box::new(|_, _| button::Style::default()),
             last_status: None,
         }
@@ -94,11 +92,6 @@ impl<'a, Message> Pressable<'a, Message> {
 
     pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
-        self
-    }
-
-    pub(crate) fn focusable(mut self, focusable: bool) -> Self {
-        self.focusable = focusable;
         self
     }
 
@@ -172,7 +165,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
     ) {
         let state = tree.state.downcast_mut::<State>();
 
-        if self.action.is_some() && self.focusable {
+        if self.action.is_some() {
             operation.focusable(None, layout.bounds(), state);
         }
 
@@ -222,13 +215,23 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
         };
         let hovered = enabled && pointer.is_over(layout.bounds());
         let state = tree.state.downcast_mut::<State>();
-        state.focused &= self.focusable;
+
+        if child_captured
+            && matches!(
+                event,
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+                    | Event::Touch(touch::Event::FingerPressed { .. })
+            )
+        {
+            state.focused = false;
+            state.pressed = false;
+        }
 
         if !child_captured {
             match event {
                 Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
                 | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                    state.focused = self.focusable && hovered;
+                    state.focused = hovered;
 
                     if hovered {
                         state.pressed = true;
