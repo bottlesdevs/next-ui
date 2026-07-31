@@ -1,6 +1,6 @@
 use iced::{ContentFit, Element, widget::svg};
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::list_row::{ListRow, labels};
 
@@ -46,7 +46,7 @@ impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for Element<'a, Messa
 impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for ListRow<'a, Message> {
     fn from(picker: PickerRow<'a, Message>) -> Self {
         let row = ListRow::new(labels(picker.title, picker.description)).trailing(
-            svg(icons::get("folder"))
+            svg(Icon::Folder.handle())
                 .width(25)
                 .height(20)
                 .content_fit(ContentFit::Contain),

@@ -3,7 +3,7 @@ use iced::{
     widget::{Id, column, row, svg, text, text_input},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::list_row::ListRow;
 
@@ -143,7 +143,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         .spacing(layout.spacing);
 
         let row = ListRow::new(labels)
-            .trailing(icon_view(icons::get("pencil"), 16.0, false))
+            .trailing(icon_view(Icon::Pencil.handle(), 16.0, false))
             .height(79)
             .padding([0, 24])
             .raised(text_row.variant == Variant::Three);

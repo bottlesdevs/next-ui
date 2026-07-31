@@ -4,7 +4,7 @@ use iced::{
     widget::{column, container, row, text},
 };
 
-use crate::{icons, theme};
+use crate::{icons::Icon, theme};
 
 use super::{card::Card, text::TextExt as _};
 
@@ -59,11 +59,11 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
 
 fn icon<'a, Message: 'a>(kind: Kind) -> Element<'a, Message> {
     match kind {
-        Kind::Hint => icons::view("wand"),
-        Kind::Info => icons::view("info"),
-        Kind::Error => icons::view("error"),
-        Kind::Warning => icons::view("warning"),
-        Kind::Success => icons::view("double_checkmark"),
+        Kind::Hint => Icon::Wand.view(),
+        Kind::Info => Icon::Info.view(),
+        Kind::Error => Icon::Error.view(),
+        Kind::Warning => Icon::Warning.view(),
+        Kind::Success => Icon::DoubleCheckmark.view(),
     }
 }
 

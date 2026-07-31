@@ -3,7 +3,7 @@ use iced::{
     widget::{column, container, row, stack, svg, text},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::{list_row::ListRow, text::TextExt as _};
 
@@ -79,7 +79,7 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         let trailing: Element<'a, Message> = match action.progress {
             Some(progress) => progress_indicator(progress),
-            None => icons::rotated("arrow", std::f32::consts::PI),
+            None => Icon::Arrow.rotated(std::f32::consts::PI),
         };
 
         let row = ListRow::new(labels).trailing(trailing);

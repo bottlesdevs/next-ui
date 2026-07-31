@@ -3,7 +3,7 @@ use iced::{
     widget::{Column, Space, button, column, container, row, text, text_input},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::{button::Button, text::TextExt as _};
 
@@ -156,7 +156,7 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             if let Some((label, on_press)) = footer {
                 content = content.push(
                     button(
-                        row![text(label), icons::rotated("arrow", std::f32::consts::PI),]
+                        row![text(label), Icon::Arrow.rotated(std::f32::consts::PI),]
                             .spacing(14)
                             .align_y(Center),
                     )
@@ -201,15 +201,11 @@ fn search_input<'a, Message: Clone + 'a>(
         .size(18)
         .style(input_style);
 
-    container(
-        row![icons::view("search"), input]
-            .spacing(12)
-            .align_y(Center),
-    )
-    .width(Fill)
-    .padding([padding_y, padding_x])
-    .style(move |theme| search_style(theme, embedded))
-    .into()
+    container(row![Icon::Search.view(), input].spacing(12).align_y(Center))
+        .width(Fill)
+        .padding([padding_y, padding_x])
+        .style(move |theme| search_style(theme, embedded))
+        .into()
 }
 
 fn search_style(theme: &Theme, embedded: bool) -> container::Style {
@@ -248,7 +244,7 @@ fn action<'a, Message: Clone + 'a>(action: Action) -> Element<'a, Message> {
         Action::Install => button(
             row![
                 text(action.label()).label(),
-                icons::rotated("arrow", std::f32::consts::PI),
+                Icon::Arrow.rotated(std::f32::consts::PI),
             ]
             .spacing(8)
             .align_y(Center),
@@ -257,7 +253,7 @@ fn action<'a, Message: Clone + 'a>(action: Action) -> Element<'a, Message> {
         .style(install_action_style)
         .into(),
         Action::Run => Button::new(action.label())
-            .icon(icons::play())
+            .icon(Icon::Play)
             .circular()
             .surface()
             .into(),

@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, button, column, container, image, row, stack},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::{
     button::Button,
@@ -54,7 +54,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             container(
                 row![
                     Space::new().width(Fill),
-                    button(icons::view("ellipsis_vertical"))
+                    button(Icon::EllipsisVertical.view())
                         .padding(6)
                         .style(style::tab)
                         .on_press(card.menu)
@@ -70,7 +70,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                     row![
                         Space::new().width(Fill),
                         Button::new("Play")
-                            .icon(icons::get("play"))
+                            .icon(Icon::Play)
                             .circular()
                             .diameter(ACTION_DIAMETER)
                             .on_press(card.play)

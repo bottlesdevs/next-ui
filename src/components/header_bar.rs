@@ -4,7 +4,7 @@ use iced::{
     window,
 };
 
-use crate::{icons, theme};
+use crate::{icons::Icon, theme};
 
 const HEIGHT: f32 = 64.0;
 const SPACING: f32 = 12.0;
@@ -100,7 +100,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 }
 
 fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Message> {
-    button(container(svg(icons::get("cross")).width(16).height(16)).center(40))
+    button(container(svg(Icon::Cross.handle()).width(16).height(16)).center(40))
         .width(40)
         .height(40)
         .padding(0)

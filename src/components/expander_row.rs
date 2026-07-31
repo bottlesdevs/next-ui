@@ -82,7 +82,7 @@ impl<'a, Message: Clone + 'a> ExpanderRow<'a, Message> {
     pub(crate) fn into_parts(self) -> ExpanderParts<'a, Message> {
         let expanded = self.expanded;
         let caret = || {
-            svg(crate::icons::get("down_caret"))
+            svg(crate::icons::Icon::DownCaret.handle())
                 .width(20)
                 .height(20)
                 .content_fit(ContentFit::Contain)

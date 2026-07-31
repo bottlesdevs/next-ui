@@ -93,7 +93,7 @@ where
         let body = column![text(selector.title).label(), value_row]
             .width(Fill)
             .spacing(8);
-        let caret = svg(crate::icons::get("down_caret"))
+        let caret = svg(crate::icons::Icon::DownCaret.handle())
             .width(20)
             .height(20)
             .content_fit(ContentFit::Contain)

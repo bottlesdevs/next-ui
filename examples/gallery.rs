@@ -10,7 +10,7 @@ use next_ui::components::{
     search::{self, Action as SearchAction},
     selector_row, status_bar, switcher_row, tabs, text_row, title,
 };
-use next_ui::{icons, theme};
+use next_ui::{icons::Icon, theme};
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
@@ -140,12 +140,12 @@ impl Gallery {
 
         let buttons = row![
             button::Button::new("Play")
-                .icon(icons::play())
+                .icon(Icon::Play)
                 .rectangular()
                 .on_press(Message::Noop),
             button::Button::new("Pill").pill().on_press(Message::Noop),
             button::Button::new("Play")
-                .icon(icons::play())
+                .icon(Icon::Play)
                 .circular()
                 .on_press(Message::Noop),
         ]
@@ -223,7 +223,7 @@ impl Gallery {
                 .title("Input Name")
                 .placeholder("Placeholder")
                 .value(&self.text_rows[0])
-                .icon(icons::get("person"))
+                .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(0, value))
                 .id(TEXT_ROW_IDS[0])
                 .on_press(Message::TextRowPressed(0))
@@ -232,7 +232,7 @@ impl Gallery {
                 .title("Input Name")
                 .placeholder("Placeholder")
                 .value(&self.text_rows[1])
-                .icon(icons::get("person"))
+                .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(1, value))
                 .id(TEXT_ROW_IDS[1])
                 .on_press(Message::TextRowPressed(1))
@@ -241,7 +241,7 @@ impl Gallery {
                 .title("Input Name")
                 .placeholder("Placeholder")
                 .value(&self.text_rows[2])
-                .icon(icons::get("person"))
+                .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .id(TEXT_ROW_IDS[2])
                 .on_press(Message::TextRowPressed(2))
@@ -253,7 +253,7 @@ impl Gallery {
             )
             .title("Selector Name")
             .placeholder("Placeholder")
-            .icon(icons::get("person"))
+            .icon(Icon::Person)
             .selected(selected)
             .expanded(self.selector_expanded),
             action_row::ActionRow::new()
@@ -263,7 +263,7 @@ impl Gallery {
             info_row::InfoRow::new()
                 .title("Title")
                 .description("Description")
-                .icon(icons::get("timer")),
+                .icon(Icon::Timer),
             switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
                 .title("Title")
                 .description("Description"),

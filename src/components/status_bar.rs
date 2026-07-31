@@ -4,7 +4,7 @@ use iced::{
     widget::{Space, button, column, container, row, text},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::{style, text::TextExt as _};
 
@@ -56,22 +56,26 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
             toggle,
         } = status;
         let header = row![
-            row![icons::view("chip"), text(architecture).supporting().muted(),]
+            row![Icon::Chip.view(), text(architecture).supporting().muted(),]
                 .spacing(12)
                 .align_y(Vertical::Center),
-            row![icons::view("run"), text(runner).supporting().muted(),]
+            row![Icon::Run.view(), text(runner).supporting().muted(),]
                 .spacing(12)
                 .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
-                icons::view(if is_running { "lightning" } else { "power" }),
+                if is_running {
+                    Icon::Lightning.view()
+                } else {
+                    Icon::Power.view()
+                },
                 text(if is_running { "Running" } else { "Stopped" })
                     .supporting()
                     .muted(),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
-            button(icons::view("computer"))
+            button(Icon::Computer.view())
                 .padding(0)
                 .style(style::tab)
                 .on_press(toggle),

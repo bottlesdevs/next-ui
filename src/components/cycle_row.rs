@@ -3,7 +3,7 @@ use iced::{
     widget::{button, column, text},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::{list_row::ListRow, style, text::TextExt as _};
 
@@ -55,12 +55,12 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Messag
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        let previous = button(icons::view("arrow"))
+        let previous = button(Icon::Arrow.view())
             .padding(8)
             .style(style::action)
             .on_press_maybe(cycle.previous);
 
-        let next = button(icons::rotated("arrow", std::f32::consts::PI))
+        let next = button(Icon::Arrow.rotated(std::f32::consts::PI))
             .padding(8)
             .style(style::action)
             .on_press_maybe(cycle.next);

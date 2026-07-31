@@ -59,13 +59,13 @@ impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
 
 #[cfg(test)]
 mod tests {
-    use crate::icons;
+    use crate::icons::Icon;
 
     use super::InfoRow;
 
     #[test]
     fn icon_is_optional() {
         assert!(InfoRow::new().icon.is_none());
-        assert!(InfoRow::new().icon(icons::get("timer")).icon.is_some());
+        assert!(InfoRow::new().icon(Icon::Timer).icon.is_some());
     }
 }

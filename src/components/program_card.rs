@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, container, image, row},
 };
 
-use crate::icons;
+use crate::icons::Icon;
 
 use super::{
     button::Button,
@@ -56,12 +56,12 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
                 row![
                     Space::new().width(Fill),
                     Button::new("Settings")
-                        .icon(icons::get("gear"))
+                        .icon(Icon::Gear)
                         .circular()
                         .diameter(ACTION_DIAMETER)
                         .on_press(card.settings),
                     Button::new("Play")
-                        .icon(icons::get("play"))
+                        .icon(Icon::Play)
                         .circular()
                         .diameter(PRIMARY_ACTION_DIAMETER)
                         .primary()
