@@ -12,7 +12,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::text::TextExt as _;
+use super::{pressable::event_cursor, text::TextExt as _};
 
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
@@ -606,17 +606,5 @@ fn hit_target(
             .map(Pressed::Option)
     } else {
         None
-    }
-}
-
-fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
-    match event {
-        Event::Touch(
-            touch::Event::FingerPressed { position, .. }
-            | touch::Event::FingerMoved { position, .. }
-            | touch::Event::FingerLifted { position, .. }
-            | touch::Event::FingerLost { position, .. },
-        ) => mouse::Cursor::Available(*position),
-        _ => cursor,
     }
 }

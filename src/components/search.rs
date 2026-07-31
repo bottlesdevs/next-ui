@@ -1,8 +1,8 @@
 use iced::{
     Alignment, Background, Border, Color, Element, Event, Fill, Length, Padding, Pixels, Point,
-    Rectangle, Size, Theme, Vector,
+    Rectangle, Shadow, Size, Theme, Vector,
     advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
+        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
     },
     keyboard::{self, key},
@@ -159,11 +159,13 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             left: search.padding_x,
         })
         .style(search_style);
-        let (panel, visible, keys, selections, highlights) = panel(search.state, search.footer);
+        let (panel_body, panel_footer, visible, keys, selections, highlights) =
+            panel(search.state, search.footer);
 
         Element::new(SearchWidget {
             input: input.into(),
-            panel,
+            panel_body,
+            panel_footer,
             visible,
             keys,
             selections,
@@ -179,6 +181,7 @@ fn panel<'a, Message: Clone + 'a>(
     footer: Option<(&'a str, Message)>,
 ) -> (
     Element<'a, Message>,
+    Option<Element<'a, Message>>,
     bool,
     Vec<String>,
     Vec<Message>,
@@ -211,10 +214,8 @@ fn panel<'a, Message: Clone + 'a>(
         SearchState::Hidden => column![].into(),
     };
 
-    let mut content = column![scrollable(body).width(Fill)].width(Fill);
-
-    if visible && let Some((label, message)) = footer {
-        content = content.push(
+    let footer = if visible {
+        footer.map(|(label, message)| {
             Pressable::new(
                 row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
                     .spacing(14)
@@ -223,13 +224,21 @@ fn panel<'a, Message: Clone + 'a>(
             .width(Fill)
             .padding([18, 20])
             .on_press(message)
-            .style(footer_style),
-        );
-    }
+            .style(footer_style)
+            .into()
+        })
+    } else {
+        None
+    };
 
-    let panel = container(content).width(Fill).style(panel_style).into();
-
-    (panel, visible, keys, selections, highlights)
+    (
+        scrollable(body).width(Fill).into(),
+        footer,
+        visible,
+        keys,
+        selections,
+        highlights,
+    )
 }
 
 fn result_row<'a, Message: Clone + 'a>(
@@ -291,7 +300,8 @@ fn status_row<'a, Message: 'a>(label: &'a str, color: Option<Color>) -> Element<
 
 struct SearchWidget<'a, Message> {
     input: Element<'a, Message>,
-    panel: Element<'a, Message>,
+    panel_body: Element<'a, Message>,
+    panel_footer: Option<Element<'a, Message>>,
     visible: bool,
     keys: Vec<String>,
     selections: Vec<Message>,
@@ -319,12 +329,24 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
     }
 
     fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.input), Tree::new(&self.panel)]
+        let mut children = vec![Tree::new(&self.input), Tree::new(&self.panel_body)];
+
+        if let Some(footer) = &self.panel_footer {
+            children.push(Tree::new(footer));
+        }
+
+        children
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.children[0].diff(&self.input);
-        tree.children[1].diff(&self.panel);
+        let mut children: Vec<&dyn Widget<Message, Theme, iced::Renderer>> =
+            vec![self.input.as_widget(), self.panel_body.as_widget()];
+
+        if let Some(footer) = &self.panel_footer {
+            children.push(footer.as_widget());
+        }
+
+        tree.diff_children(&children);
         let state = tree.state.downcast_mut::<SearchLocal>();
         state.highlighted = preserve_highlight(&state.keys, state.highlighted, &self.keys);
         state.keys.clone_from(&self.keys);
@@ -504,14 +526,17 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
 
         set_highlight(&self.highlights, state.highlighted);
         let bounds = layout.bounds();
+        let (_, panel_trees) = children.split_at_mut(1);
+        let (body_trees, footer_trees) = panel_trees.split_at_mut(1);
 
         Some(overlay::Element::new(Box::new(Anchored {
             position: bounds.position() + translation,
             target_height: bounds.height,
             width: bounds.width,
             viewport: *viewport,
-            panel: &mut self.panel,
-            tree: &mut children[1],
+            body: &mut self.panel_body,
+            body_tree: &mut body_trees[0],
+            footer: self.panel_footer.as_mut().zip(footer_trees.first_mut()),
         })))
     }
 }
@@ -561,8 +586,9 @@ where
     target_height: f32,
     width: f32,
     viewport: Rectangle,
-    panel: &'a mut Element<'b, Message>,
-    tree: &'a mut Tree,
+    body: &'a mut Element<'b, Message>,
+    body_tree: &'a mut Tree,
+    footer: Option<(&'a mut Element<'b, Message>, &'a mut Tree)>,
 }
 
 impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
@@ -576,17 +602,34 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             Size::new(self.width, 0.0),
             Size::new(self.width, max_height),
         );
-        let node = self
-            .panel
+        let footer = self
+            .footer
+            .as_mut()
+            .map(|(footer, tree)| footer.as_widget_mut().layout(tree, renderer, &limits));
+        let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
+        let body_limits = layout::Limits::new(
+            Size::new(self.width, 0.0),
+            Size::new(self.width, (max_height - footer_height).max(0.0)),
+        );
+        let body = self
+            .body
             .as_widget_mut()
-            .layout(self.tree, renderer, &limits);
-        let height = node.size().height;
+            .layout(self.body_tree, renderer, &body_limits);
+        let body_height = body.size().height;
+        let height = body_height + footer_height;
+        let mut children = vec![body];
 
-        node.move_to(if below >= height || below >= above {
-            self.position + Vector::new(0.0, self.target_height + 6.0)
-        } else {
-            self.position - Vector::new(0.0, height + 6.0)
-        })
+        if let Some(footer) = footer {
+            children.push(footer.move_to(Point::new(0.0, body_height)));
+        }
+
+        layout::Node::with_children(Size::new(self.width, height), children).move_to(
+            if below >= height || below >= above {
+                self.position + Vector::new(0.0, self.target_height + 6.0)
+            } else {
+                self.position - Vector::new(0.0, height + 6.0)
+            },
+        )
     }
 
     fn update(
@@ -598,16 +641,30 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
     ) {
-        self.panel.as_widget_mut().update(
-            self.tree,
+        let mut children = layout.children();
+        self.body.as_widget_mut().update(
+            self.body_tree,
             event,
-            layout,
+            children.next().expect("search panel body layout"),
             cursor,
             renderer,
             clipboard,
             shell,
             &self.viewport,
         );
+
+        if let Some((footer, tree)) = self.footer.as_mut() {
+            footer.as_widget_mut().update(
+                tree,
+                event,
+                children.next().expect("search panel footer layout"),
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                &self.viewport,
+            );
+        }
     }
 
     fn mouse_interaction(
@@ -616,13 +673,24 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         cursor: mouse::Cursor,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        self.panel.as_widget().mouse_interaction(
-            self.tree,
-            layout,
+        let mut children = layout.children();
+        let body = self.body.as_widget().mouse_interaction(
+            self.body_tree,
+            children.next().expect("search panel body layout"),
             cursor,
             &self.viewport,
             renderer,
-        )
+        );
+
+        self.footer.as_ref().map_or(body, |(footer, tree)| {
+            body.max(footer.as_widget().mouse_interaction(
+                tree,
+                children.next().expect("search panel footer layout"),
+                cursor,
+                &self.viewport,
+                renderer,
+            ))
+        })
     }
 
     fn draw(
@@ -633,15 +701,38 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         layout: Layout<'_>,
         cursor: mouse::Cursor,
     ) {
-        self.panel.as_widget().draw(
-            self.tree,
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: layout.bounds(),
+                border: Border::default().rounded(12),
+                shadow: Shadow::default(),
+                snap: true,
+            },
+            Background::Color(theme.extended_palette().background.neutral.color),
+        );
+
+        let mut children = layout.children();
+        self.body.as_widget().draw(
+            self.body_tree,
             renderer,
             theme,
             style,
-            layout,
+            children.next().expect("search panel body layout"),
             cursor,
             &self.viewport,
         );
+
+        if let Some((footer, tree)) = &self.footer {
+            footer.as_widget().draw(
+                tree,
+                renderer,
+                theme,
+                style,
+                children.next().expect("search panel footer layout"),
+                cursor,
+                &self.viewport,
+            );
+        }
     }
 
     fn operate(
@@ -650,19 +741,25 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        self.panel
-            .as_widget_mut()
-            .operate(self.tree, layout, renderer, operation);
-    }
-}
+        let mut children = layout.children();
+        operation.container(None, layout.bounds());
+        operation.traverse(&mut |operation| {
+            self.body.as_widget_mut().operate(
+                self.body_tree,
+                children.next().expect("search panel body layout"),
+                renderer,
+                operation,
+            );
 
-fn panel_style(theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(
-            theme.extended_palette().background.neutral.color,
-        )),
-        border: Border::default().rounded(12),
-        ..container::Style::default()
+            if let Some((footer, tree)) = self.footer.as_mut() {
+                footer.as_widget_mut().operate(
+                    tree,
+                    children.next().expect("search panel footer layout"),
+                    renderer,
+                    operation,
+                );
+            }
+        });
     }
 }
 

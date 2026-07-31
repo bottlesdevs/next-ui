@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Border, Element, Fill, Theme,
+    Alignment, Background, Border, Element, Fill, Theme,
     widget::{button, column, row, rule, text},
 };
 
@@ -92,6 +92,9 @@ where
 
 fn tab_style(theme: &Theme, status: Status, selected: bool) -> button::Style {
     button::Style {
+        background: matches!(status, Status::Focused).then_some(Background::Color(
+            theme.extended_palette().background.strong.color,
+        )),
         text_color: if selected
             || matches!(status, Status::Hovered | Status::Pressed | Status::Focused)
         {

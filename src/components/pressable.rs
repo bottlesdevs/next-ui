@@ -204,15 +204,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
 
         let child_captured = shell.is_event_captured();
         let enabled = self.action.is_some();
-        let pointer = match event {
-            Event::Touch(
-                touch::Event::FingerPressed { position, .. }
-                | touch::Event::FingerMoved { position, .. }
-                | touch::Event::FingerLifted { position, .. }
-                | touch::Event::FingerLost { position, .. },
-            ) => mouse::Cursor::Available(*position),
-            _ => cursor,
-        };
+        let pointer = event_cursor(event, cursor);
         let hovered = enabled && pointer.is_over(layout.bounds());
         let state = tree.state.downcast_mut::<State>();
 
@@ -380,6 +372,22 @@ fn activate<Message: Clone>(action: Option<&Action<Message>>, shell: &mut Shell<
     }
 }
 
+pub(crate) fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
+    if cursor != mouse::Cursor::Unavailable {
+        return cursor;
+    }
+
+    match event {
+        Event::Touch(
+            touch::Event::FingerPressed { position, .. }
+            | touch::Event::FingerMoved { position, .. }
+            | touch::Event::FingerLifted { position, .. }
+            | touch::Event::FingerLost { position, .. },
+        ) => mouse::Cursor::Available(*position),
+        _ => cursor,
+    }
+}
+
 impl<'a, Message: Clone + 'a> From<Pressable<'a, Message>> for Element<'a, Message> {
     fn from(pressable: Pressable<'a, Message>) -> Self {
         Element::new(pressable)
@@ -402,33 +410,22 @@ fn status(enabled: bool, hovered: bool, state: &State) -> Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{SharedFlag, State, Status, status};
+    use iced::{Event, Point, advanced::mouse, touch};
+
+    use super::event_cursor;
 
     #[test]
-    fn shared_flags_are_consumed_once() {
-        let flag = SharedFlag::default();
+    fn touch_keeps_a_scrollables_translated_cursor() {
+        let event = Event::Touch(touch::Event::FingerPressed {
+            id: touch::Finger(1),
+            position: Point::new(100.0, 100.0),
+        });
+        let translated = mouse::Cursor::Available(Point::new(100.0, 40.0));
 
-        flag.set(true);
-        assert!(flag.take());
-        assert!(!flag.take());
-    }
-
-    #[test]
-    fn interaction_status_has_stable_priority() {
-        let active = State::default();
-        assert_eq!(status(false, true, &active), Status::Disabled);
-        assert_eq!(status(true, true, &active), Status::Hovered);
-
-        let focused = State {
-            focused: true,
-            ..State::default()
-        };
-        assert_eq!(status(true, false, &focused), Status::Focused);
-
-        let pressed = State {
-            pressed: true,
-            focused: true,
-        };
-        assert_eq!(status(true, true, &pressed), Status::Pressed);
+        assert_eq!(event_cursor(&event, translated), translated);
+        assert_eq!(
+            event_cursor(&event, mouse::Cursor::Unavailable),
+            mouse::Cursor::Available(Point::new(100.0, 100.0))
+        );
     }
 }

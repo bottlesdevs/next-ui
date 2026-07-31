@@ -112,6 +112,7 @@ fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Mess
             button::Style {
                 background: match status {
                     Status::Pressed => Some(Background::Color(colors.background.stronger.color)),
+                    Status::Focused => Some(Background::Color(colors.background.strong.color)),
                     _ => None,
                 },
                 text_color: colors.secondary.weak.text,
