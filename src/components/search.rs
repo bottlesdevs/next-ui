@@ -1,3 +1,5 @@
+use std::{cell::Cell, rc::Rc};
+
 use iced::{
     Alignment, Background, Border, Color, Element, Event, Fill, Length, Padding, Pixels, Point,
     Rectangle, Shadow, Size, Theme, Vector,
@@ -13,7 +15,7 @@ use crate::icons::Icon;
 
 use super::{
     button::{Button, ButtonKind},
-    pressable::{Pressable, SharedFlag, Status},
+    pressable::{Pressable, Status},
     text::TextExt as _,
 };
 
@@ -159,7 +161,7 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             left: search.padding_x,
         })
         .style(search_style);
-        let (panel_body, panel_footer, visible, keys, selections, highlights) =
+        let (panel_body, panel_footer, visible, keys, selections, highlight) =
             panel(search.state, search.footer);
 
         Element::new(SearchWidget {
@@ -169,7 +171,7 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             visible,
             keys,
             selections,
-            highlights,
+            highlight,
             query: search.query,
             on_submit: search.on_submit,
         })
@@ -185,22 +187,20 @@ fn panel<'a, Message: Clone + 'a>(
     bool,
     Vec<String>,
     Vec<Message>,
-    Vec<SharedFlag>,
+    Rc<Cell<Option<usize>>>,
 ) {
     let mut keys = Vec::new();
     let mut selections = Vec::new();
-    let mut highlights = Vec::new();
+    let highlight = Rc::new(Cell::new(None));
     let visible = !matches!(state, SearchState::Hidden);
     let body: Element<'a, Message> = match state {
         SearchState::Results(results) => {
             let mut rows = column![].width(Fill);
 
-            for result in results {
+            for (index, result) in results.into_iter().enumerate() {
                 keys.push(result.key.clone());
                 selections.push(result.on_select.clone());
-                let highlighted = SharedFlag::default();
-                rows = rows.push(result_row(result, highlighted.clone()));
-                highlights.push(highlighted);
+                rows = rows.push(result_row(result, Rc::clone(&highlight), index));
             }
 
             container(rows)
@@ -237,13 +237,14 @@ fn panel<'a, Message: Clone + 'a>(
         visible,
         keys,
         selections,
-        highlights,
+        highlight,
     )
 }
 
 fn result_row<'a, Message: Clone + 'a>(
     result: SearchResult<'a, Message>,
-    highlighted: SharedFlag,
+    highlight: Rc<Cell<Option<usize>>>,
+    index: usize,
 ) -> Element<'a, Message> {
     let mut labels = column![text(result.title).label()].spacing(4);
 
@@ -285,7 +286,7 @@ fn result_row<'a, Message: Clone + 'a>(
         .width(Fill)
         .padding([8, 20])
         .on_press(result.on_select)
-        .style(move |theme, status| result_style(theme, status, highlighted.get()))
+        .style(move |theme, status| result_style(theme, status, highlight.get() == Some(index)))
         .into()
 }
 
@@ -305,7 +306,7 @@ struct SearchWidget<'a, Message> {
     visible: bool,
     keys: Vec<String>,
     selections: Vec<Message>,
-    highlights: Vec<SharedFlag>,
+    highlight: Rc<Cell<Option<usize>>>,
     query: &'a str,
     on_submit: Option<Message>,
 }
@@ -350,7 +351,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         let state = tree.state.downcast_mut::<SearchLocal>();
         state.highlighted = preserve_highlight(&state.keys, state.highlighted, &self.keys);
         state.keys.clone_from(&self.keys);
-        set_highlight(&self.highlights, state.highlighted);
+        self.highlight.set(state.highlighted);
 
         if state.query != self.query {
             state.query.clear();
@@ -444,7 +445,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             };
 
             if handled {
-                set_highlight(&self.highlights, state.highlighted);
+                self.highlight.set(state.highlighted);
                 shell.capture_event();
                 shell.request_redraw();
                 return;
@@ -524,7 +525,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             return None;
         }
 
-        set_highlight(&self.highlights, state.highlighted);
+        self.highlight.set(state.highlighted);
         let bounds = layout.bounds();
         let (_, panel_trees) = children.split_at_mut(1);
         let (body_trees, footer_trees) = panel_trees.split_at_mut(1);
@@ -570,12 +571,6 @@ fn preserve_highlight(
         .and_then(|index| old_keys.get(index))
         .and_then(|key| new_keys.iter().position(|candidate| candidate == key))
         .or((!new_keys.is_empty()).then_some(0))
-}
-
-fn set_highlight(highlights: &[SharedFlag], highlighted: Option<usize>) {
-    for (index, flag) in highlights.iter().enumerate() {
-        flag.set(Some(index) == highlighted);
-    }
 }
 
 struct Anchored<'a, 'b, Message>
