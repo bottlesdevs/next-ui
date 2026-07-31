@@ -3,8 +3,9 @@ use iced::{
     Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree},
+        widget::{Operation, Tree, operation},
     },
+    touch,
     widget::{Row as IcedRow, button, column, container, text},
 };
 
@@ -25,6 +26,7 @@ pub struct ListRow<'a, Message> {
     padding: Padding,
     height: Length,
     spacing: f32,
+    focus_content_on_press: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -57,6 +59,7 @@ impl<'a, Message> ListRow<'a, Message> {
             padding: Padding::from([18, 24]),
             height: Length::Shrink,
             spacing: 16.0,
+            focus_content_on_press: false,
         }
     }
 
@@ -90,11 +93,6 @@ impl<'a, Message> ListRow<'a, Message> {
         self
     }
 
-    pub(crate) fn on_press_area(mut self, message: Message) -> Self {
-        self.on_press = Some(message);
-        self
-    }
-
     pub fn raised(mut self, raised: bool) -> Self {
         self.raised = raised;
         self
@@ -102,6 +100,11 @@ impl<'a, Message> ListRow<'a, Message> {
 
     pub(crate) fn set_hover_tone(&mut self, hover_tone: HoverTone) {
         self.hover_tone = hover_tone;
+    }
+
+    pub(crate) fn focus_content_on_press(mut self) -> Self {
+        self.focus_content_on_press = true;
+        self
     }
 
     pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
@@ -155,6 +158,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
             .raised(base.raised)
             .hover_tone(base.hover_tone)
             .enabled(base.enabled)
+            .focus_content_on_press(base.focus_content_on_press)
             .into()
     }
 }
@@ -187,6 +191,7 @@ struct Surface<'a, Message> {
     raised: bool,
     hover_tone: HoverTone,
     enabled: bool,
+    focus_content_on_press: bool,
 }
 
 impl<'a, Message> Surface<'a, Message> {
@@ -197,6 +202,7 @@ impl<'a, Message> Surface<'a, Message> {
             raised: false,
             hover_tone: HoverTone::Default,
             enabled: true,
+            focus_content_on_press: false,
         }
     }
 
@@ -217,6 +223,11 @@ impl<'a, Message> Surface<'a, Message> {
 
     fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    fn focus_content_on_press(mut self, focus_content_on_press: bool) -> Self {
+        self.focus_content_on_press = focus_content_on_press;
         self
     }
 }
@@ -292,17 +303,46 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
                 shell,
                 viewport,
             );
+
+            if self.focus_content_on_press
+                && cursor.is_over(layout.bounds())
+                && matches!(
+                    event,
+                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+                        | Event::Touch(touch::Event::FingerPressed { .. })
+                )
+            {
+                self.content.as_widget_mut().operate(
+                    &mut tree.children[0],
+                    layout,
+                    renderer,
+                    &mut FocusFirst(false),
+                );
+                shell.request_redraw();
+            }
         }
 
         let hovered = self.background && self.enabled && cursor.is_over(layout.bounds());
-        let state = tree.state.downcast_mut::<SurfaceState>();
 
         if matches!(
             event,
             Event::Window(iced::window::Event::RedrawRequested(_))
         ) {
+            let mut count = operation::focusable::count();
+            self.content.as_widget_mut().operate(
+                &mut tree.children[0],
+                layout,
+                renderer,
+                &mut operation::black_box(&mut count),
+            );
+            let focused = matches!(
+                Operation::finish(&count),
+                operation::Outcome::Some(count) if count.focused.is_some()
+            );
+            let state = tree.state.downcast_mut::<SurfaceState>();
             state.hovered = hovered;
-        } else if state.hovered != hovered {
+            state.focused = focused;
+        } else if tree.state.downcast_ref::<SurfaceState>().hovered != hovered {
             shell.request_redraw();
         }
     }
@@ -339,8 +379,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
-        let hovered = tree.state.downcast_ref::<SurfaceState>().hovered
-            || self.enabled && cursor.is_over(bounds);
+        let state = tree.state.downcast_ref::<SurfaceState>();
+        let hovered = state.hovered || self.enabled && cursor.is_over(bounds);
 
         if self.background {
             renderer.fill_quad(
@@ -350,7 +390,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
                     shadow: Shadow::default(),
                     snap: true,
                 },
-                Background::Color(surface_color(theme, self.raised, hovered, self.hover_tone)),
+                Background::Color(surface_color(
+                    theme,
+                    self.raised || state.focused,
+                    hovered,
+                    self.hover_tone,
+                )),
             );
         }
 
@@ -400,6 +445,27 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
 #[derive(Debug, Default)]
 struct SurfaceState {
     hovered: bool,
+    focused: bool,
+}
+
+struct FocusFirst(bool);
+
+impl Operation for FocusFirst {
+    fn focusable(
+        &mut self,
+        _id: Option<&iced::widget::Id>,
+        _bounds: Rectangle,
+        state: &mut dyn operation::Focusable,
+    ) {
+        if !self.0 {
+            state.focus();
+            self.0 = true;
+        }
+    }
+
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
+        operate(self);
+    }
 }
 
 impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {

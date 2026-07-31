@@ -15,7 +15,6 @@ use next_ui::{icons::Icon, theme};
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
-const TEXT_ROW_IDS: [&str; 3] = ["text-row-1", "text-row-2", "text-row-3"];
 const SEARCH_CATALOG: &[(&str, SearchAction)] = &[
     ("Epic Games Store", SearchAction::Install),
     ("Epic Fight", SearchAction::Run),
@@ -77,7 +76,6 @@ impl Default for Gallery {
 enum Message {
     SearchChanged(String),
     TextRowChanged(usize, String),
-    TextRowPressed(usize),
     OptionSelected(&'static str),
     SelectorToggled,
     ExpanderToggled,
@@ -97,9 +95,6 @@ impl Gallery {
         match message {
             Message::SearchChanged(value) => self.search = value,
             Message::TextRowChanged(index, value) => self.text_rows[index] = value,
-            Message::TextRowPressed(index) => {
-                return iced::widget::operation::focus(TEXT_ROW_IDS[index]);
-            }
             Message::OptionSelected(value) => {
                 self.selected_option = Some(value);
                 self.selector_expanded = false;
@@ -216,33 +211,19 @@ impl Gallery {
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
         let fields = column![
-            text_row::TextRow::new()
-                .title("Input Name")
+            text_row::TextRow::new("Input Name", &self.text_rows[0])
                 .placeholder("Placeholder")
-                .value(&self.text_rows[0])
                 .icon(Icon::Person)
-                .on_input(|value| Message::TextRowChanged(0, value))
-                .id(TEXT_ROW_IDS[0])
-                .on_press(Message::TextRowPressed(0))
-                .variant_1(),
-            text_row::TextRow::new()
-                .title("Input Name")
+                .on_input(|value| Message::TextRowChanged(0, value)),
+            text_row::TextRow::new("Input Name", &self.text_rows[1])
                 .placeholder("Placeholder")
-                .value(&self.text_rows[1])
                 .icon(Icon::Person)
-                .on_input(|value| Message::TextRowChanged(1, value))
-                .id(TEXT_ROW_IDS[1])
-                .on_press(Message::TextRowPressed(1))
-                .variant_2(),
-            text_row::TextRow::new()
-                .title("Input Name")
+                .on_input(|value| Message::TextRowChanged(1, value)),
+            text_row::TextRow::new("Input Name", &self.text_rows[2])
                 .placeholder("Placeholder")
-                .value(&self.text_rows[2])
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
-                .id(TEXT_ROW_IDS[2])
-                .on_press(Message::TextRowPressed(2))
-                .variant_3(),
+                .error(Some("Example validation error")),
             selector_row::SelectorRow::new(
                 SELECTOR_OPTIONS,
                 Message::OptionSelected,
