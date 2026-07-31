@@ -44,7 +44,6 @@ struct Gallery {
     search: String,
     text_rows: [String; 3],
     selected_option: Option<&'static str>,
-    selector_expanded: bool,
     expander_expanded: bool,
     selected_tab: usize,
     switched_on: bool,
@@ -60,7 +59,6 @@ impl Default for Gallery {
             search: String::new(),
             text_rows: std::array::from_fn(|_| String::new()),
             selected_option: None,
-            selector_expanded: false,
             expander_expanded: false,
             selected_tab: 0,
             switched_on: false,
@@ -77,7 +75,6 @@ enum Message {
     SearchChanged(String),
     TextRowChanged(usize, String),
     OptionSelected(&'static str),
-    SelectorToggled,
     ExpanderToggled,
     TabSelected(usize),
     Switched(bool),
@@ -97,9 +94,7 @@ impl Gallery {
             Message::TextRowChanged(index, value) => self.text_rows[index] = value,
             Message::OptionSelected(value) => {
                 self.selected_option = Some(value);
-                self.selector_expanded = false;
             }
-            Message::SelectorToggled => self.selector_expanded = !self.selector_expanded,
             Message::ExpanderToggled => self.expander_expanded = !self.expander_expanded,
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
@@ -225,15 +220,13 @@ impl Gallery {
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
             selector_row::SelectorRow::new(
+                "Selector Name",
                 SELECTOR_OPTIONS,
+                selected,
                 Message::OptionSelected,
-                Message::SelectorToggled,
             )
-            .title("Selector Name")
             .placeholder("Placeholder")
-            .icon(Icon::Person)
-            .selected(selected)
-            .expanded(self.selector_expanded),
+            .icon(Icon::Person),
             action_row::ActionRow::new("Title", action_row::ActionRowState::Ready(Message::Noop),)
                 .description("Description"),
             info_row::InfoRow::new("Title")
@@ -303,15 +296,11 @@ impl Gallery {
                     .expanded(self.group_expanded)
                     .columns(2)
                     .add(
-                        selector_row::SelectorRow::new(
-                            SELECTOR_OPTIONS,
-                            Message::OptionSelected,
-                            Message::SelectorToggled,
+                        action_row::ActionRow::new(
+                            "Quality",
+                            action_row::ActionRowState::Ready(Message::Noop),
                         )
-                        .title("Quality")
-                        .placeholder("Balanced")
-                        .selected(selected)
-                        .expanded(self.selector_expanded),
+                        .description("Balanced"),
                     )
                     .add(
                         cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
