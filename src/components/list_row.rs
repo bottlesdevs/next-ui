@@ -17,9 +17,17 @@ pub struct ListRow<'a, Message> {
     on_press: Option<Message>,
     press_area: bool,
     raised: bool,
+    hover_tone: HoverTone,
     padding: Padding,
     height: Length,
     spacing: f32,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum HoverTone {
+    #[default]
+    Default,
+    Strong,
 }
 
 pub(crate) fn labels<'a, Message: 'a>(
@@ -47,6 +55,7 @@ impl<'a, Message> ListRow<'a, Message> {
             on_press: None,
             press_area: false,
             raised: false,
+            hover_tone: HoverTone::Default,
             padding: Padding::from([18, 24]),
             height: Length::Shrink,
             spacing: 16.0,
@@ -92,6 +101,10 @@ impl<'a, Message> ListRow<'a, Message> {
     pub fn raised(mut self, raised: bool) -> Self {
         self.raised = raised;
         self
+    }
+
+    pub(crate) fn set_hover_tone(&mut self, hover_tone: HoverTone) {
+        self.hover_tone = hover_tone;
     }
 
     pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
@@ -152,6 +165,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
 
         Surface::new(container(contents).width(Fill).clip(true))
             .raised(base.raised)
+            .hover_tone(base.hover_tone)
             .enabled(base.enabled)
             .into()
     }
@@ -172,6 +186,7 @@ struct Surface<'a, Message> {
     content: Element<'a, Message>,
     background: bool,
     raised: bool,
+    hover_tone: HoverTone,
     enabled: bool,
 }
 
@@ -181,6 +196,7 @@ impl<'a, Message> Surface<'a, Message> {
             content: content.into(),
             background: true,
             raised: false,
+            hover_tone: HoverTone::Default,
             enabled: true,
         }
     }
@@ -192,6 +208,11 @@ impl<'a, Message> Surface<'a, Message> {
 
     fn raised(mut self, raised: bool) -> Self {
         self.raised = raised;
+        self
+    }
+
+    fn hover_tone(mut self, hover_tone: HoverTone) -> Self {
+        self.hover_tone = hover_tone;
         self
     }
 
@@ -312,6 +333,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
                     theme,
                     self.raised,
                     self.enabled && cursor.is_over(bounds),
+                    self.hover_tone,
                 )),
             );
         }
@@ -365,8 +387,10 @@ impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {
     }
 }
 
-fn surface_color(theme: &Theme, raised: bool, hovered: bool) -> iced::Color {
-    if raised || hovered {
+fn surface_color(theme: &Theme, raised: bool, hovered: bool, hover_tone: HoverTone) -> iced::Color {
+    if hovered && hover_tone == HoverTone::Strong {
+        crate::theme::ROW_HOVER_STRONG
+    } else if raised || hovered {
         theme.extended_palette().background.neutral.color
     } else {
         theme.extended_palette().background.weak.color
@@ -377,14 +401,27 @@ fn surface_color(theme: &Theme, raised: bool, hovered: bool) -> iced::Color {
 mod tests {
     use crate::theme;
 
-    use super::surface_color;
+    use super::{HoverTone, surface_color};
 
     #[test]
-    fn hover_uses_the_raised_row_color() {
+    fn hover_uses_the_configured_tone() {
         let theme = theme::theme();
 
-        assert_eq!(surface_color(&theme, false, false), theme::SURFACE);
-        assert_eq!(surface_color(&theme, false, true), theme::BORDER);
-        assert_eq!(surface_color(&theme, true, false), theme::BORDER);
+        assert_eq!(
+            surface_color(&theme, false, false, HoverTone::Default),
+            theme::SURFACE
+        );
+        assert_eq!(
+            surface_color(&theme, false, true, HoverTone::Default),
+            theme::BORDER
+        );
+        assert_eq!(
+            surface_color(&theme, true, false, HoverTone::Default),
+            theme::BORDER
+        );
+        assert_eq!(
+            surface_color(&theme, false, true, HoverTone::Strong),
+            theme::ROW_HOVER_STRONG
+        );
     }
 }

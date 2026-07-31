@@ -60,15 +60,6 @@ impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for RowGroupEntry<'
     }
 }
 
-impl<'a, Message: 'a, T> From<T> for RowGroup<'a, Message>
-where
-    T: Into<RowGroupEntry<'a, Message>>,
-{
-    fn from(entry: T) -> Self {
-        Self::new().add(entry)
-    }
-}
-
 impl<'a, Message: 'a> RowGroup<'a, Message> {
     pub fn new() -> Self {
         Self {

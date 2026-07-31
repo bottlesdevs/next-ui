@@ -16,6 +16,7 @@ pub const SURFACE_DEEP: Color = Color::from_rgb8(54, 44, 49);
 pub const PANEL: Color = BACKGROUND;
 pub const SURFACE: Color = Color::from_rgb8(65, 57, 60);
 pub const BORDER: Color = Color::from_rgb8(76, 66, 70);
+pub const ROW_HOVER_STRONG: Color = Color::from_rgb8(96, 85, 89);
 pub const SURFACE_SELECTED: Color = Color::from_rgb8(89, 78, 82);
 
 pub const MUTED: Color = Color::from_rgb8(166, 147, 154);

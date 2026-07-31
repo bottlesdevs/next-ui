@@ -4,7 +4,7 @@ use iced::{
 };
 
 use super::{
-    list_row::{ListRow, labels},
+    list_row::{HoverTone, ListRow, labels},
     row_group::RowGroup,
     style,
 };
@@ -15,7 +15,8 @@ pub struct ExpanderRow<'a, Message> {
     header: Option<ListRow<'a, Message>>,
     expanded: bool,
     on_toggle: Message,
-    content: Option<RowGroup<'a, Message>>,
+    columns: usize,
+    content: Vec<ListRow<'a, Message>>,
     content_enabled: bool,
 }
 
@@ -25,7 +26,7 @@ pub(crate) struct ExpanderParts<'a, Message> {
     pub content: Option<Element<'a, Message>>,
 }
 
-impl<'a, Message> ExpanderRow<'a, Message> {
+impl<'a, Message: 'a> ExpanderRow<'a, Message> {
     pub fn new(on_toggle: Message) -> Self {
         Self {
             title: "",
@@ -33,7 +34,8 @@ impl<'a, Message> ExpanderRow<'a, Message> {
             header: None,
             expanded: false,
             on_toggle,
-            content: None,
+            columns: 1,
+            content: Vec::new(),
             content_enabled: true,
         }
     }
@@ -58,8 +60,15 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         self
     }
 
-    pub fn content(mut self, content: impl Into<RowGroup<'a, Message>>) -> Self {
-        self.content = Some(content.into());
+    pub fn columns(mut self, columns: usize) -> Self {
+        self.columns = columns.max(1);
+        self
+    }
+
+    pub fn add(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
+        let mut row = row.into();
+        row.set_hover_tone(HoverTone::Strong);
+        self.content.push(row);
         self
     }
 
@@ -93,12 +102,23 @@ impl<'a, Message: Clone + 'a> ExpanderRow<'a, Message> {
         }
         .raised(expanded);
 
+        let content = if self.content.is_empty() {
+            None
+        } else {
+            let content = self.content.into_iter().fold(
+                RowGroup::new()
+                    .columns(self.columns)
+                    .enabled(self.content_enabled),
+                RowGroup::add,
+            );
+
+            Some(content.into())
+        };
+
         ExpanderParts {
             header,
             expanded,
-            content: self
-                .content
-                .map(|content| content.enabled(self.content_enabled).into()),
+            content,
         }
     }
 }
@@ -128,9 +148,11 @@ mod tests {
     fn accepts_an_interactive_row_as_its_header() {
         let expander = ExpanderRow::new(())
             .header(SwitcherRow::new(false, |_| ()))
-            .content(ActionRow::new().title("child"));
+            .columns(2)
+            .add(ActionRow::new().title("child"));
 
         assert!(expander.header.is_some());
-        assert!(expander.content.is_some());
+        assert_eq!(expander.columns, 2);
+        assert_eq!(expander.content.len(), 1);
     }
 }

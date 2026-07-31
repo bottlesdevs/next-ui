@@ -281,22 +281,19 @@ impl Gallery {
                         .description("FidelityFX Super Resolution"),
                 )
                 .expanded(self.expander_expanded)
-                .content(
-                    row_group::RowGroup::new()
-                        .columns(2)
-                        .add(
-                            action_row::ActionRow::new()
-                                .title("Quality")
-                                .description("Balanced")
-                                .on_press(Message::Noop),
-                        )
-                        .add(
-                            cycle_row::CycleRow::new()
-                                .title("Sharpening")
-                                .value("5")
-                                .on_previous(Message::Previous)
-                                .on_next(Message::Next),
-                        ),
+                .columns(2)
+                .add(
+                    action_row::ActionRow::new()
+                        .title("Quality")
+                        .description("Balanced")
+                        .on_press(Message::Noop),
+                )
+                .add(
+                    cycle_row::CycleRow::new()
+                        .title("Sharpening")
+                        .value("5")
+                        .on_previous(Message::Previous)
+                        .on_next(Message::Next),
                 )
                 .content_enabled(self.switched_on),
         ]
@@ -334,27 +331,24 @@ impl Gallery {
                         .description("FidelityFX Super Resolution"),
                     )
                     .expanded(self.group_expanded)
-                    .content(
-                        row_group::RowGroup::new()
-                            .columns(2)
-                            .add(
-                                selector_row::SelectorRow::new(
-                                    SELECTOR_OPTIONS,
-                                    Message::OptionSelected,
-                                    Message::SelectorToggled,
-                                )
-                                .title("Quality")
-                                .placeholder("Balanced")
-                                .selected(selected)
-                                .expanded(self.selector_expanded),
-                            )
-                            .add(
-                                cycle_row::CycleRow::new()
-                                    .title("Sharpening")
-                                    .value(DLSS_LEVELS[self.value])
-                                    .on_previous(Message::Previous)
-                                    .on_next(Message::Next),
-                            ),
+                    .columns(2)
+                    .add(
+                        selector_row::SelectorRow::new(
+                            SELECTOR_OPTIONS,
+                            Message::OptionSelected,
+                            Message::SelectorToggled,
+                        )
+                        .title("Quality")
+                        .placeholder("Balanced")
+                        .selected(selected)
+                        .expanded(self.selector_expanded),
+                    )
+                    .add(
+                        cycle_row::CycleRow::new()
+                            .title("Sharpening")
+                            .value(DLSS_LEVELS[self.value])
+                            .on_previous(Message::Previous)
+                            .on_next(Message::Next),
                     )
                     .content_enabled(self.group_switched_on),
             );
