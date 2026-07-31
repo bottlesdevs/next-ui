@@ -174,18 +174,7 @@ fn header_style(theme: &Theme, status: PressableStatus) -> button::Style {
             theme.extended_palette().background.stronger.color,
         )),
         text_color: theme.palette().text,
-        border: Border::default()
-            .rounded(8)
-            .color(if status == PressableStatus::Focused {
-                theme.palette().primary
-            } else {
-                iced::Color::TRANSPARENT
-            })
-            .width(if status == PressableStatus::Focused {
-                2
-            } else {
-                0
-            }),
+        border: Border::default().rounded(8),
         ..button::Style::default()
     }
 }

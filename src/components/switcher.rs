@@ -67,19 +67,12 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
     }
 }
 
-fn track_style(theme: &Theme, status: Status) -> button::Style {
+fn track_style(theme: &Theme, _status: Status) -> button::Style {
     button::Style {
         background: Some(Background::Color(
             theme.extended_palette().background.weaker.color,
         )),
-        border: Border::default()
-            .rounded(HEIGHT / 2.0)
-            .color(if status == Status::Focused {
-                theme.palette().primary
-            } else {
-                iced::Color::TRANSPARENT
-            })
-            .width(if status == Status::Focused { 2 } else { 0 }),
+        border: Border::default().rounded(HEIGHT / 2.0),
         ..button::Style::default()
     }
 }

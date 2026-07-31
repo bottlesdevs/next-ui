@@ -307,14 +307,7 @@ fn tab_style(theme: &Theme, status: Status, selected: bool) -> button::Style {
         } else {
             theme.extended_palette().secondary.weak.text
         },
-        border: Border::default()
-            .rounded(4)
-            .color(if status == Status::Focused {
-                theme.palette().primary
-            } else {
-                iced::Color::TRANSPARENT
-            })
-            .width(if status == Status::Focused { 2 } else { 0 }),
+        border: Border::default().rounded(4),
         ..button::Style::default()
     }
 }

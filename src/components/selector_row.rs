@@ -454,14 +454,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
-                border: Border::default()
-                    .rounded(8)
-                    .color(if state.focused {
-                        theme.palette().primary
-                    } else {
-                        iced::Color::TRANSPARENT
-                    })
-                    .width(if state.focused { 2 } else { 0 }),
+                border: Border::default().rounded(8),
                 shadow: Shadow::default(),
                 snap: true,
             },

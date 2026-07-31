@@ -136,17 +136,10 @@ impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Mes
     }
 }
 
-fn caret_style(theme: &Theme, status: Status) -> button::Style {
+fn caret_style(theme: &Theme, _status: Status) -> button::Style {
     button::Style {
         text_color: theme.palette().text,
-        border: Border::default()
-            .rounded(4)
-            .color(if status == Status::Focused {
-                theme.palette().primary
-            } else {
-                iced::Color::TRANSPARENT
-            })
-            .width(if status == Status::Focused { 2 } else { 0 }),
+        border: Border::default().rounded(4),
         ..button::Style::default()
     }
 }

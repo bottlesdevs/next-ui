@@ -188,17 +188,10 @@ fn appearance(
     iced::widget::button::Style {
         background: Some(Background::Color(colors.color)),
         text_color: colors.text,
-        border: Border::default()
-            .rounded(match shape {
-                Shape::Rectangular => 8,
-                Shape::Pill | Shape::IconOnly => 999,
-            })
-            .color(if status == Status::Focused {
-                theme.palette().primary
-            } else {
-                iced::Color::TRANSPARENT
-            })
-            .width(if status == Status::Focused { 2 } else { 0 }),
+        border: Border::default().rounded(match shape {
+            Shape::Rectangular => 8,
+            Shape::Pill | Shape::IconOnly => 999,
+        }),
         ..iced::widget::button::Style::default()
     }
 }
