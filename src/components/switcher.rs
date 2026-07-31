@@ -12,7 +12,6 @@ const KNOB: f32 = 24.0;
 pub struct Switcher<'a, Message> {
     is_on: bool,
     on_toggle: Option<Box<dyn Fn(bool) -> Message + 'a>>,
-    enabled: bool,
 }
 
 impl<'a, Message> Switcher<'a, Message> {
@@ -20,7 +19,6 @@ impl<'a, Message> Switcher<'a, Message> {
         Self {
             is_on,
             on_toggle: None,
-            enabled: true,
         }
     }
 
@@ -33,16 +31,11 @@ impl<'a, Message> Switcher<'a, Message> {
         self.on_toggle = on_toggle.map(|on_toggle| Box::new(on_toggle) as _);
         self
     }
-
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
 }
 
 impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Message> {
     fn from(switcher: Switcher<'a, Message>) -> Self {
-        let active = switcher.enabled && switcher.on_toggle.is_some();
+        let active = switcher.on_toggle.is_some();
         let knob = container(Space::new())
             .width(KNOB)
             .height(KNOB)
@@ -54,7 +47,6 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
         };
         let message = switcher
             .on_toggle
-            .filter(|_| switcher.enabled)
             .map(|on_toggle| on_toggle(!switcher.is_on));
 
         Pressable::new(content.width(Fill))

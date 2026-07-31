@@ -46,8 +46,7 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Mes
         ListRow::new(labels(switcher.title, switcher.description))
             .trailing(
                 Switcher::new(switcher.value)
-                    .on_toggle(switcher.on_toggle)
-                    .enabled(switcher.enabled),
+                    .on_toggle_maybe(switcher.enabled.then_some(switcher.on_toggle)),
             )
             .enabled(switcher.enabled)
     }
