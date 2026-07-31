@@ -564,17 +564,26 @@ impl<'a, Message: 'a> From<Selector<'a, Message>> for Element<'a, Message> {
 
 fn draw_caret(renderer: &mut iced::Renderer, header: Layout<'_>, open: bool) {
     let header = header.bounds();
+    let handle = Icon::DownCaret.handle();
+    let Size { width, height } = renderer.measure_svg(&handle);
+    let slot = Size::new(20.0, 20.0);
+    let size = ContentFit::Contain.fit(Size::new(width as f32, height as f32), slot);
+    let bounds = Rectangle::new(
+        Point::new(
+            header.x + header.width - 44.0 + (slot.width - size.width) / 2.0,
+            header.center_y() - size.height / 2.0,
+        ),
+        size,
+    );
+
     renderer.draw_svg(
         iced::advanced::svg::Svg {
-            handle: Icon::DownCaret.handle(),
+            handle,
             color: None,
             rotation: (if open { std::f32::consts::PI } else { 0.0 }).into(),
             opacity: 1.0,
         },
-        Rectangle::new(
-            Point::new(header.x + header.width - 44.0, header.center_y() - 10.0),
-            Size::new(20.0, 20.0),
-        ),
+        bounds,
         header,
     );
 }
