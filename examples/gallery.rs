@@ -177,7 +177,14 @@ impl Gallery {
         ]
         .spacing(16);
 
-        let tabs = tabs::Tabs::new(TAB_LABELS, Message::TabSelected).selected(self.selected_tab);
+        let tabs = tabs::Tabs::new(
+            TAB_LABELS
+                .iter()
+                .enumerate()
+                .map(|(index, label)| tabs::Tab::new(index, label)),
+            Some(self.selected_tab),
+            Message::TabSelected,
+        );
 
         let query = self.search.trim().to_lowercase();
         let search_results = SEARCH_CATALOG
