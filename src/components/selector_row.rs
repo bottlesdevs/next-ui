@@ -21,29 +21,22 @@ pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
     options: &'a [T],
     selected: Option<&'a T>,
-    on_selected: Box<dyn Fn(T) -> Message + 'a>,
+    on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
     label: Box<dyn Fn(&T) -> String + 'a>,
     icon: Option<Icon>,
-    enabled: bool,
 }
 
 impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
-    pub fn new(
-        title: &'a str,
-        options: &'a [T],
-        selected: Option<&'a T>,
-        on_selected: impl Fn(T) -> Message + 'a,
-    ) -> Self {
+    pub fn new(title: &'a str, options: &'a [T], selected: Option<&'a T>) -> Self {
         Self {
             title,
             options,
             selected,
-            on_selected: Box::new(on_selected),
+            on_selected: None,
             placeholder: "",
             label: Box::new(ToString::to_string),
             icon: None,
-            enabled: true,
         }
     }
 
@@ -62,8 +55,13 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
+    pub fn on_selected(mut self, on_selected: impl Fn(T) -> Message + 'a) -> Self {
+        self.on_selected = Some(Box::new(on_selected));
+        self
+    }
+
+    pub fn on_selected_maybe(mut self, on_selected: Option<impl Fn(T) -> Message + 'a>) -> Self {
+        self.on_selected = on_selected.map(|on_selected| Box::new(on_selected) as _);
         self
     }
 }
@@ -88,12 +86,9 @@ where
         let value = selected
             .map(|index| labels[index].clone())
             .unwrap_or_else(|| selector.placeholder.to_owned());
-        let messages: Vec<_> = selector
-            .options
-            .iter()
-            .cloned()
-            .map(selector.on_selected)
-            .collect();
+        let messages: Vec<_> = selector.on_selected.map_or_else(Vec::new, |on_selected| {
+            selector.options.iter().cloned().map(on_selected).collect()
+        });
         let highlights: Vec<_> = labels.iter().map(|_| SharedFlag::default()).collect();
         let children = [false, true]
             .into_iter()
@@ -118,7 +113,6 @@ where
             messages,
             highlights,
             selected,
-            enabled: selector.enabled,
         })
     }
 }
@@ -166,7 +160,12 @@ struct Selector<'a, Message> {
     messages: Vec<Message>,
     highlights: Vec<SharedFlag>,
     selected: Option<usize>,
-    enabled: bool,
+}
+
+impl<Message> Selector<'_, Message> {
+    fn is_enabled(&self) -> bool {
+        !self.messages.is_empty()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -285,7 +284,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         _renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        if self.enabled {
+        if self.is_enabled() {
             operation.focusable(None, layout.bounds(), tree.state.downcast_mut::<State>());
         }
     }
@@ -301,7 +300,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if !self.enabled {
+        if !self.is_enabled() {
             return;
         }
 
@@ -494,7 +493,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let header = if state.open { expanded } else { collapsed };
         let options: Vec<_> = children.collect();
 
-        if self.enabled && hit_target(state.open, header, &options, cursor).is_some() {
+        if self.is_enabled() && hit_target(state.open, header, &options, cursor).is_some() {
             mouse::Interaction::Pointer
         } else {
             mouse::Interaction::default()
@@ -513,7 +512,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
     ) {
         let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
-        let hovered = self.enabled && cursor.is_over(bounds);
+        let hovered = self.is_enabled() && cursor.is_over(bounds);
 
         renderer.fill_quad(
             renderer::Quad {
@@ -582,7 +581,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             }
         }
 
-        if !self.enabled {
+        if !self.is_enabled() {
             renderer.fill_quad(
                 renderer::Quad {
                     bounds,
@@ -663,7 +662,17 @@ fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
 
 #[cfg(test)]
 mod tests {
-    use super::{Pressed, State, Status, option_style};
+    use super::{Pressed, SelectorRow, State, Status, option_style};
+
+    #[test]
+    fn selection_action_controls_availability() {
+        let options = ["One"];
+        let disabled = SelectorRow::<_, ()>::new("Selector", &options, None);
+        let enabled = SelectorRow::new("Selector", &options, None).on_selected(|_| ());
+
+        assert!(disabled.on_selected.is_none());
+        assert!(enabled.on_selected.is_some());
+    }
 
     #[test]
     fn changing_options_clamps_the_keyboard_highlight() {

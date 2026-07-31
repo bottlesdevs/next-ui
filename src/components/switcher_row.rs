@@ -9,18 +9,16 @@ pub struct SwitcherRow<'a, Message> {
     title: &'a str,
     description: &'a str,
     value: bool,
-    on_toggle: Box<dyn Fn(bool) -> Message + 'a>,
-    enabled: bool,
+    on_toggle: Option<Box<dyn Fn(bool) -> Message + 'a>>,
 }
 
 impl<'a, Message> SwitcherRow<'a, Message> {
-    pub fn new(title: &'a str, value: bool, on_toggle: impl Fn(bool) -> Message + 'a) -> Self {
+    pub fn new(title: &'a str, value: bool) -> Self {
         Self {
             title,
             description: "",
             value,
-            on_toggle: Box::new(on_toggle),
-            enabled: true,
+            on_toggle: None,
         }
     }
 
@@ -29,8 +27,13 @@ impl<'a, Message> SwitcherRow<'a, Message> {
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
+    pub fn on_toggle(mut self, on_toggle: impl Fn(bool) -> Message + 'a) -> Self {
+        self.on_toggle = Some(Box::new(on_toggle));
+        self
+    }
+
+    pub fn on_toggle_maybe(mut self, on_toggle: Option<impl Fn(bool) -> Message + 'a>) -> Self {
+        self.on_toggle = on_toggle.map(|on_toggle| Box::new(on_toggle) as _);
         self
     }
 }
@@ -43,11 +46,26 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Mes
 
 impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Message> {
     fn from(switcher: SwitcherRow<'a, Message>) -> Self {
+        let enabled = switcher.on_toggle.is_some();
+
         ListRow::new(labels(switcher.title, switcher.description))
-            .trailing(
-                Switcher::new(switcher.value)
-                    .on_toggle_maybe(switcher.enabled.then_some(switcher.on_toggle)),
-            )
-            .enabled(switcher.enabled)
+            .trailing(Switcher::new(switcher.value).on_toggle_maybe(switcher.on_toggle))
+            .enabled(enabled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SwitcherRow;
+
+    #[test]
+    fn toggle_action_controls_availability() {
+        assert!(SwitcherRow::<()>::new("Switch", false).on_toggle.is_none());
+        assert!(
+            SwitcherRow::new("Switch", false)
+                .on_toggle(|_| ())
+                .on_toggle
+                .is_some()
+        );
     }
 }

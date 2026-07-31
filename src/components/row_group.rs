@@ -673,7 +673,7 @@ mod tests {
     fn expanders_require_no_application_state() {
         let group = RowGroup::new()
             .columns(2)
-            .add(SwitcherRow::new("Switch", false, |_| ()))
+            .add(SwitcherRow::new("Switch", false).on_toggle(|_| ()))
             .add(
                 ExpanderRow::new("Expander")
                     .add(ActionRow::new("Child", ActionRowState::Ready(()))),

@@ -261,21 +261,12 @@ impl Gallery {
             text_row::TextRow::<Message>::new("Disabled", "Unavailable")
                 .icon(Icon::Error)
                 .enabled(false),
-            selector_row::SelectorRow::new(
-                "Selector Name",
-                SELECTOR_OPTIONS,
-                selected,
-                Message::OptionSelected,
-            )
-            .placeholder("Placeholder")
-            .icon(Icon::Person),
-            selector_row::SelectorRow::new(
-                "Empty selector",
-                EMPTY_OPTIONS,
-                None,
-                Message::OptionSelected,
-            )
-            .placeholder("No options available"),
+            selector_row::SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected,)
+                .on_selected(Message::OptionSelected)
+                .placeholder("Placeholder")
+                .icon(Icon::Person),
+            selector_row::SelectorRow::new("Empty selector", EMPTY_OPTIONS, None)
+                .placeholder("No options available"),
             action_row::ActionRow::new("Title", action_row::ActionRowState::Ready(Message::Noop),)
                 .description("Description"),
             action_row::ActionRow::new("Unavailable action", action_row::ActionRowState::Disabled,)
@@ -288,7 +279,8 @@ impl Gallery {
             info_row::InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
-            switcher_row::SwitcherRow::new("Title", self.switched_on, Message::Switched)
+            switcher_row::SwitcherRow::new("Title", self.switched_on)
+                .on_toggle(Message::Switched)
                 .description("Description"),
             cycle_row::CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
                 .on_previous(Message::Previous)
@@ -297,7 +289,8 @@ impl Gallery {
                 .description("Choose the location")
                 .on_press(Message::Noop),
             expander_row::ExpanderRow::with_header(
-                switcher_row::SwitcherRow::new("FSR", self.switched_on, Message::Switched)
+                switcher_row::SwitcherRow::new("FSR", self.switched_on)
+                    .on_toggle(Message::Switched)
                     .description("FidelityFX Super Resolution"),
             )
             .columns(2)
@@ -322,7 +315,8 @@ impl Gallery {
             .description("Rows wrap according to the configured column count.")
             .columns(2)
             .add(
-                switcher_row::SwitcherRow::new("DLSS", self.switched_on, Message::Switched)
+                switcher_row::SwitcherRow::new("DLSS", self.switched_on)
+                    .on_toggle(Message::Switched)
                     .description("Deep Learning Super Sampling"),
             )
             .add(
@@ -339,12 +333,9 @@ impl Gallery {
             )
             .add(
                 expander_row::ExpanderRow::with_header(
-                    switcher_row::SwitcherRow::new(
-                        "FSR",
-                        self.group_switched_on,
-                        Message::GroupSwitched,
-                    )
-                    .description("FidelityFX Super Resolution"),
+                    switcher_row::SwitcherRow::new("FSR", self.group_switched_on)
+                        .on_toggle(Message::GroupSwitched)
+                        .description("FidelityFX Super Resolution"),
                 )
                 .columns(2)
                 .add(

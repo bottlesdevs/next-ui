@@ -239,9 +239,10 @@ mod tests {
 
     #[test]
     fn accepts_an_interactive_row_as_its_header() {
-        let expander = ExpanderRow::with_header(SwitcherRow::new("Switch", false, |_| ()))
-            .columns(2)
-            .add(ActionRow::new("child", ActionRowState::Ready(())));
+        let expander =
+            ExpanderRow::with_header(SwitcherRow::new("Switch", false).on_toggle(|_| ()))
+                .columns(2)
+                .add(ActionRow::new("child", ActionRowState::Ready(())));
         let parts = expander.into_parts();
 
         assert!(matches!(parts.header, Header::Custom(_)));
