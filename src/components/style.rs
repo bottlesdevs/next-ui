@@ -4,15 +4,11 @@ use iced::{
     widget::{button, container, text},
 };
 
-pub fn surface(theme: &Theme) -> container::Style {
+pub(crate) fn surface(theme: &Theme) -> container::Style {
     surface_style(theme.extended_palette().background.weak)
 }
 
-pub fn bordered_surface(theme: &Theme) -> container::Style {
-    surface_style(theme.extended_palette().background.neutral)
-}
-
-pub fn panel(theme: &Theme) -> container::Style {
+pub(crate) fn panel(theme: &Theme) -> container::Style {
     surface_style(theme.extended_palette().background.weaker)
 }
 
@@ -23,7 +19,7 @@ fn surface_style(colors: Pair) -> container::Style {
         .border(Border::default().rounded(8))
 }
 
-pub fn action(theme: &Theme, status: button::Status) -> button::Style {
+pub(crate) fn action(theme: &Theme, status: button::Status) -> button::Style {
     let background = match status {
         button::Status::Hovered => Some(crate::theme::ROW_HOVER_STRONG),
         button::Status::Pressed => Some(theme.extended_palette().background.stronger.color),
@@ -38,7 +34,7 @@ pub fn action(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-pub fn tab(theme: &Theme, status: button::Status) -> button::Style {
+pub(crate) fn tab(theme: &Theme, status: button::Status) -> button::Style {
     button::Style {
         text_color: match status {
             button::Status::Disabled => theme.extended_palette().secondary.weak.text,
@@ -48,7 +44,7 @@ pub fn tab(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-pub fn muted_text(theme: &Theme) -> text::Style {
+pub(crate) fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.extended_palette().secondary.weak.text),
     }

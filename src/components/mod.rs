@@ -1,6 +1,5 @@
-pub mod style;
-
 mod pressable;
+mod style;
 
 pub mod action_row;
 pub mod artwork_card;
