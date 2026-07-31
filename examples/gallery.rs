@@ -51,8 +51,7 @@ struct Gallery {
     switched_on: bool,
     group_switched_on: bool,
     group_expanded: bool,
-    first_grid_expanded: bool,
-    second_grid_expanded: bool,
+    grid_expanded: Option<usize>,
     status_expanded: bool,
     value: usize,
 }
@@ -68,8 +67,7 @@ impl Default for Gallery {
             switched_on: false,
             group_switched_on: false,
             group_expanded: true,
-            first_grid_expanded: false,
-            second_grid_expanded: false,
+            grid_expanded: None,
             status_expanded: false,
             value: 1,
         }
@@ -86,8 +84,7 @@ enum Message {
     Switched(bool),
     GroupSwitched(bool),
     GroupToggled,
-    FirstGridToggled,
-    SecondGridToggled,
+    GridToggled(usize),
     HeaderBar(header_bar::Action),
     StatusToggled,
     Previous,
@@ -109,11 +106,8 @@ impl Gallery {
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
             Message::GroupToggled => self.group_expanded = !self.group_expanded,
-            Message::FirstGridToggled => {
-                self.first_grid_expanded = !self.first_grid_expanded;
-            }
-            Message::SecondGridToggled => {
-                self.second_grid_expanded = !self.second_grid_expanded;
+            Message::GridToggled(index) => {
+                self.grid_expanded = (self.grid_expanded != Some(index)).then_some(index);
             }
             Message::HeaderBar(action) => return action.task(),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
@@ -388,13 +382,13 @@ impl Gallery {
 
         let multiple_expanders = row_group::RowGroup::new()
             .title("Multiple expanders")
-            .description("Three columns with two independently controlled expansions")
+            .description("Only one expander on the grid line remains open")
             .columns(3)
             .add(
                 expander_row::ExpanderRow::new(
                     "First expander",
-                    self.first_grid_expanded,
-                    Message::FirstGridToggled,
+                    self.grid_expanded == Some(0),
+                    Message::GridToggled(0),
                 )
                 .description("Open in the first column")
                 .add(
@@ -408,8 +402,8 @@ impl Gallery {
             .add(
                 expander_row::ExpanderRow::new(
                     "Second expander",
-                    self.second_grid_expanded,
-                    Message::SecondGridToggled,
+                    self.grid_expanded == Some(1),
+                    Message::GridToggled(1),
                 )
                 .description("Open in the second column")
                 .add(cycle_row::CycleRow::new("Quality", "Balanced")),
