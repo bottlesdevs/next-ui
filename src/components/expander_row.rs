@@ -140,7 +140,10 @@ impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Mes
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{action_row::ActionRow, switcher_row::SwitcherRow};
+    use crate::components::{
+        action_row::{ActionRow, ActionRowState},
+        switcher_row::SwitcherRow,
+    };
 
     use super::ExpanderRow;
 
@@ -149,7 +152,7 @@ mod tests {
         let expander = ExpanderRow::new(())
             .header(SwitcherRow::new("Switch", false, |_| ()))
             .columns(2)
-            .add(ActionRow::new().title("child"));
+            .add(ActionRow::new("child", ActionRowState::Ready(())));
 
         assert!(expander.header.is_some());
         assert_eq!(expander.columns, 2);

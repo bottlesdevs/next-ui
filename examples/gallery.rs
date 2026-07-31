@@ -253,10 +253,8 @@ impl Gallery {
             .icon(Icon::Person)
             .selected(selected)
             .expanded(self.selector_expanded),
-            action_row::ActionRow::new()
-                .title("Title")
-                .description("Description")
-                .on_press(Message::Noop),
+            action_row::ActionRow::new("Title", action_row::ActionRowState::Ready(Message::Noop),)
+                .description("Description"),
             info_row::InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
@@ -276,10 +274,11 @@ impl Gallery {
                 .expanded(self.expander_expanded)
                 .columns(2)
                 .add(
-                    action_row::ActionRow::new()
-                        .title("Quality")
-                        .description("Balanced")
-                        .on_press(Message::Noop),
+                    action_row::ActionRow::new(
+                        "Quality",
+                        action_row::ActionRowState::Ready(Message::Noop),
+                    )
+                    .description("Balanced"),
                 )
                 .add(
                     cycle_row::CycleRow::new("Sharpening", "5")
@@ -304,10 +303,11 @@ impl Gallery {
                     .on_press(Message::Noop),
             )
             .add(
-                action_row::ActionRow::new()
-                    .title("Discrete GPU")
-                    .description("Configure graphics adapter")
-                    .on_press(Message::Noop),
+                action_row::ActionRow::new(
+                    "Discrete GPU",
+                    action_row::ActionRowState::Ready(Message::Noop),
+                )
+                .description("Configure graphics adapter"),
             )
             .add(
                 expander_row::ExpanderRow::new(Message::GroupToggled)
