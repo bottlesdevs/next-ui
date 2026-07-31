@@ -104,10 +104,6 @@ impl<'a, Message> Button<'a, Message> {
         self
     }
 
-    pub(crate) fn surface(self) -> Self {
-        self.kind(ButtonKind::Surface)
-    }
-
     pub fn on_press(mut self, message: Message) -> Self {
         self.on_press = Some(message);
         self
