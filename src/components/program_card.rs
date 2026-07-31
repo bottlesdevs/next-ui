@@ -55,14 +55,10 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
             container(
                 row![
                     Space::new().width(Fill),
-                    Button::new("Settings")
-                        .icon(Icon::Gear)
-                        .circular()
+                    Button::icon_only("Settings", Icon::Gear)
                         .diameter(ACTION_DIAMETER)
                         .on_press(card.settings),
-                    Button::new("Play")
-                        .icon(Icon::Play)
-                        .circular()
+                    Button::icon_only("Play", Icon::Play)
                         .diameter(PRIMARY_ACTION_DIAMETER)
                         .primary()
                         .on_press(card.play),

@@ -69,9 +69,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                 container(
                     row![
                         Space::new().width(Fill),
-                        Button::new("Play")
-                            .icon(Icon::Play)
-                            .circular()
+                        Button::icon_only("Play", Icon::Play)
                             .diameter(ACTION_DIAMETER)
                             .on_press(card.play)
                     ]

@@ -5,10 +5,13 @@ use iced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree},
     },
-    widget::{Row as IcedRow, button, column, container, mouse_area, text},
+    widget::{Row as IcedRow, button, column, container, text},
 };
 
-use super::text::TextExt as _;
+use super::{
+    pressable::{Pressable, Status as PressableStatus},
+    text::TextExt as _,
+};
 
 pub struct ListRow<'a, Message> {
     body: Element<'a, Message>,
@@ -17,7 +20,6 @@ pub struct ListRow<'a, Message> {
     content: Option<Element<'a, Message>>,
     enabled: bool,
     on_press: Option<Message>,
-    press_area: bool,
     raised: bool,
     hover_tone: HoverTone,
     padding: Padding,
@@ -50,7 +52,6 @@ impl<'a, Message> ListRow<'a, Message> {
             content: None,
             enabled: true,
             on_press: None,
-            press_area: false,
             raised: false,
             hover_tone: HoverTone::Default,
             padding: Padding::from([18, 24]),
@@ -91,7 +92,6 @@ impl<'a, Message> ListRow<'a, Message> {
 
     pub(crate) fn on_press_area(mut self, message: Message) -> Self {
         self.on_press = Some(message);
-        self.press_area = true;
         self
     }
 
@@ -129,24 +129,15 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
             .push(container(base.body).width(Fill))
             .extend(base.trailing);
 
-        let header: Element<'a, Message> = match (base.on_press, base.press_area) {
-            (Some(message), false) => button(header)
+        let header: Element<'a, Message> = match base.on_press {
+            Some(message) => Pressable::new(header)
                 .width(Fill)
                 .height(base.height)
                 .padding(base.padding)
                 .on_press(message)
                 .style(header_style)
                 .into(),
-            (Some(message), true) => mouse_area(
-                container(header)
-                    .width(Fill)
-                    .height(base.height)
-                    .padding(base.padding)
-                    .align_y(Alignment::Center),
-            )
-            .on_press(message)
-            .into(),
-            (None, _) => container(header)
+            None => container(header)
                 .width(Fill)
                 .height(base.height)
                 .padding(base.padding)
@@ -168,13 +159,24 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
     }
 }
 
-fn header_style(theme: &Theme, status: button::Status) -> button::Style {
+fn header_style(theme: &Theme, status: PressableStatus) -> button::Style {
     button::Style {
-        background: matches!(status, button::Status::Pressed).then_some(Background::Color(
+        background: matches!(status, PressableStatus::Pressed).then_some(Background::Color(
             theme.extended_palette().background.stronger.color,
         )),
         text_color: theme.palette().text,
-        border: Border::default().rounded(8),
+        border: Border::default()
+            .rounded(8)
+            .color(if status == PressableStatus::Focused {
+                theme.palette().primary
+            } else {
+                iced::Color::TRANSPARENT
+            })
+            .width(if status == PressableStatus::Focused {
+                2
+            } else {
+                0
+            }),
         ..button::Style::default()
     }
 }
@@ -185,7 +187,6 @@ struct Surface<'a, Message> {
     raised: bool,
     hover_tone: HoverTone,
     enabled: bool,
-    hovered: Option<bool>, // This is how iced tracks state for it's own widgets too
 }
 
 impl<'a, Message> Surface<'a, Message> {
@@ -196,7 +197,6 @@ impl<'a, Message> Surface<'a, Message> {
             raised: false,
             hover_tone: HoverTone::Default,
             enabled: true,
-            hovered: None,
         }
     }
 
@@ -222,6 +222,14 @@ impl<'a, Message> Surface<'a, Message> {
 }
 
 impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
+    fn tag(&self) -> iced::advanced::widget::tree::Tag {
+        iced::advanced::widget::tree::Tag::of::<SurfaceState>()
+    }
+
+    fn state(&self) -> iced::advanced::widget::tree::State {
+        iced::advanced::widget::tree::State::new(SurfaceState::default())
+    }
+
     fn children(&self) -> Vec<Tree> {
         vec![Tree::new(&self.content)]
     }
@@ -287,13 +295,14 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         }
 
         let hovered = self.background && self.enabled && cursor.is_over(layout.bounds());
+        let state = tree.state.downcast_mut::<SurfaceState>();
 
         if matches!(
             event,
             Event::Window(iced::window::Event::RedrawRequested(_))
         ) {
-            self.hovered = Some(hovered);
-        } else if self.hovered.is_some_and(|previous| previous != hovered) {
+            state.hovered = hovered;
+        } else if state.hovered != hovered {
             shell.request_redraw();
         }
     }
@@ -330,9 +339,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
-        let hovered = self
-            .hovered
-            .unwrap_or(self.enabled && cursor.is_over(bounds));
+        let hovered = tree.state.downcast_ref::<SurfaceState>().hovered
+            || self.enabled && cursor.is_over(bounds);
 
         if self.background {
             renderer.fill_quad(
@@ -387,6 +395,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
             )
         })?
     }
+}
+
+#[derive(Debug, Default)]
+struct SurfaceState {
+    hovered: bool,
 }
 
 impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {

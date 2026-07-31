@@ -42,6 +42,6 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Mes
 impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Message> {
     fn from(switcher: SwitcherRow<'a, Message>) -> Self {
         ListRow::new(labels(switcher.title, switcher.description))
-            .trailing(Switcher::new(switcher.value, switcher.on_toggle))
+            .trailing(Switcher::new(switcher.value).on_toggle(switcher.on_toggle))
     }
 }

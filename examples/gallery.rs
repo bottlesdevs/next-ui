@@ -144,10 +144,7 @@ impl Gallery {
                 .rectangular()
                 .on_press(Message::Noop),
             button::Button::new("Pill").pill().on_press(Message::Noop),
-            button::Button::new("Play")
-                .icon(Icon::Play)
-                .circular()
-                .on_press(Message::Noop),
+            button::Button::icon_only("Play", Icon::Play).on_press(Message::Noop),
         ]
         .spacing(12);
 

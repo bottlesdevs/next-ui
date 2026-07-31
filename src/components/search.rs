@@ -252,9 +252,7 @@ fn action<'a, Message: Clone + 'a>(action: Action) -> Element<'a, Message> {
         .padding([10, 16])
         .style(install_action_style)
         .into(),
-        Action::Run => Button::new(action.label())
-            .icon(Icon::Play)
-            .circular()
+        Action::Run => Button::icon_only(action.label(), Icon::Play)
             .surface()
             .into(),
     }
