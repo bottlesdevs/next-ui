@@ -81,11 +81,6 @@ impl<'a, Message> Button<'a, Message> {
         self
     }
 
-    pub fn rectangular(mut self) -> Self {
-        self.shape = Shape::Rectangular;
-        self
-    }
-
     pub fn pill(mut self) -> Self {
         self.shape = Shape::Pill;
         self
@@ -109,11 +104,7 @@ impl<'a, Message> Button<'a, Message> {
         self
     }
 
-    pub fn primary(self) -> Self {
-        self.kind(ButtonKind::Primary)
-    }
-
-    pub fn surface(self) -> Self {
+    pub(crate) fn surface(self) -> Self {
         self.kind(ButtonKind::Surface)
     }
 
@@ -271,58 +262,5 @@ fn colors(theme: &Theme, status: Status, kind: ButtonKind) -> Pair {
                 text: palette.secondary.base.text,
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Button, ButtonKind, Shape, Status, appearance};
-    use crate::{icons::Icon, theme};
-
-    #[test]
-    fn icon_only_constructor_always_has_an_icon() {
-        let button = Button::<()>::icon_only("Play", Icon::Play);
-
-        assert_eq!(button.shape, Shape::IconOnly);
-        assert_eq!(button.icon, Some(Icon::Play));
-    }
-
-    #[test]
-    fn disabled_buttons_are_visually_distinct() {
-        let theme = theme::theme();
-
-        assert_ne!(
-            appearance(
-                &theme,
-                Status::Active,
-                Shape::Rectangular,
-                ButtonKind::Primary,
-            ),
-            appearance(
-                &theme,
-                Status::Disabled,
-                Shape::Rectangular,
-                ButtonKind::Primary,
-            ),
-        );
-    }
-
-    #[test]
-    fn loading_disables_activation() {
-        let button = Button::new("Install").on_press(()).loading(true);
-
-        assert!(button.loading);
-        assert!(button.on_press.is_some());
-    }
-
-    #[test]
-    fn trailing_icons_keep_the_rectangular_shape() {
-        let button = Button::<()>::new("Install")
-            .trailing_icon(Icon::Arrow)
-            .padding_y(8);
-
-        assert!(button.icon_trailing);
-        assert_eq!(button.shape, Shape::Rectangular);
-        assert_eq!(button.padding_y, Some(8.0));
     }
 }

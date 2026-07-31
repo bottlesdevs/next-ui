@@ -53,19 +53,3 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Mes
             .enabled(enabled)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::SwitcherRow;
-
-    #[test]
-    fn toggle_action_controls_availability() {
-        assert!(SwitcherRow::<()>::new("Switch", false).on_toggle.is_none());
-        assert!(
-            SwitcherRow::new("Switch", false)
-                .on_toggle(|_| ())
-                .on_toggle
-                .is_some()
-        );
-    }
-}

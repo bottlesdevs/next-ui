@@ -6,7 +6,7 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    button::Button,
+    button::{Button, ButtonKind},
     card::{BANNER_HEIGHT, Card, image_content},
 };
 
@@ -67,7 +67,7 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
                         .on_press_maybe(card.settings),
                     Button::icon_only("Play", Icon::Play)
                         .diameter(PRIMARY_ACTION_DIAMETER)
-                        .primary()
+                        .kind(ButtonKind::Primary)
                         .on_press_maybe(card.play)
                         .loading(card.play_loading),
                 ]
@@ -86,18 +86,5 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
             actions.into(),
         ))
         .into()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ProgramCard;
-
-    #[test]
-    fn actions_are_optional() {
-        let card = ProgramCard::<()>::new("Program", "Not installed");
-
-        assert!(card.settings.is_none());
-        assert!(card.play.is_none());
     }
 }

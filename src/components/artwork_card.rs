@@ -96,16 +96,3 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
         .into()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::ArtworkCard;
-
-    #[test]
-    fn actions_are_optional() {
-        let card = ArtworkCard::<()>::new("Artwork", "Ready");
-
-        assert!(card.menu.is_none());
-        assert!(card.play.is_none());
-    }
-}

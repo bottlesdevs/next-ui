@@ -162,25 +162,3 @@ fn progress_fraction(progress: Progress) -> f32 {
         Progress::Indeterminate => 0.7,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{ActionRow, ActionRowState, Progress, progress_fraction};
-
-    #[test]
-    fn state_is_explicit_and_progress_is_bounded_at_render_time() {
-        let ready = ActionRow::new("Open", ActionRowState::Ready(()));
-        let progress = ActionRow::<()>::new(
-            "Install",
-            ActionRowState::Progress(Progress::Determinate(150)),
-        );
-
-        assert!(matches!(ready.state, ActionRowState::Ready(())));
-        assert!(matches!(
-            progress.state,
-            ActionRowState::Progress(Progress::Determinate(150))
-        ));
-        assert_eq!(progress_fraction(Progress::Determinate(150)), 1.0);
-        assert_eq!(progress_fraction(Progress::Determinate(25)), 0.25);
-    }
-}

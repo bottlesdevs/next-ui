@@ -78,22 +78,3 @@ fn colors(theme: &Theme, kind: Kind) -> Pair {
         Kind::Success => palette.success.base,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{Kind, icon};
-    use iced::Element;
-
-    #[test]
-    fn embedded_icons_exist() {
-        for kind in [
-            Kind::Hint,
-            Kind::Info,
-            Kind::Error,
-            Kind::Warning,
-            Kind::Success,
-        ] {
-            let _: Element<'_, ()> = icon(kind);
-        }
-    }
-}

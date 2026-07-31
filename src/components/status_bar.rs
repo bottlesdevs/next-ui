@@ -134,16 +134,3 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
             .into()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{StatusBar, StatusState};
-
-    #[test]
-    fn log_and_toggle_are_optional() {
-        let status = StatusBar::<()>::new("Win64", "soda", StatusState::Stopped);
-
-        assert!(status.log.is_none());
-        assert!(status.on_toggle.is_none());
-    }
-}

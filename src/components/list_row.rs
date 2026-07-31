@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Length, Padding, Rectangle, Shadow, Size,
-    Theme, Vector,
+    Alignment, Background, Border, Element, Event, Fill, Length, Rectangle, Shadow, Size, Theme,
+    Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation},
@@ -18,15 +18,11 @@ pub struct ListRow<'a, Message> {
     body: Element<'a, Message>,
     leading: Vec<Element<'a, Message>>,
     trailing: Vec<Element<'a, Message>>,
-    content: Option<Element<'a, Message>>,
     enabled: bool,
     on_press: Option<Message>,
     on_activate: Option<SharedFlag>,
-    raised: bool,
     raised_when: Option<SharedFlag>,
     hover_tone: HoverTone,
-    padding: Padding,
-    height: Length,
     spacing: f32,
     focus_content_on_press: bool,
 }
@@ -53,15 +49,11 @@ impl<'a, Message> ListRow<'a, Message> {
             body: body.into(),
             leading: Vec::new(),
             trailing: Vec::new(),
-            content: None,
             enabled: true,
             on_press: None,
             on_activate: None,
-            raised: false,
             raised_when: None,
             hover_tone: HoverTone::Default,
-            padding: Padding::from([18, 24]),
-            height: Length::Shrink,
             spacing: 16.0,
             focus_content_on_press: false,
         }
@@ -79,11 +71,6 @@ impl<'a, Message> ListRow<'a, Message> {
 
     pub fn prepend_trailing(mut self, control: impl Into<Element<'a, Message>>) -> Self {
         self.trailing.insert(0, control.into());
-        self
-    }
-
-    pub fn content(mut self, content: impl Into<Element<'a, Message>>) -> Self {
-        self.content = Some(content.into());
         self
     }
 
@@ -109,11 +96,6 @@ impl<'a, Message> ListRow<'a, Message> {
         self
     }
 
-    pub fn raised(mut self, raised: bool) -> Self {
-        self.raised = raised;
-        self
-    }
-
     pub(crate) fn raised_when(mut self, raised: SharedFlag) -> Self {
         self.raised_when = Some(raised);
         self
@@ -128,17 +110,7 @@ impl<'a, Message> ListRow<'a, Message> {
         self
     }
 
-    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
-        self.padding = padding.into();
-        self
-    }
-
-    pub fn height(mut self, height: impl Into<Length>) -> Self {
-        self.height = height.into();
-        self
-    }
-
-    pub fn spacing(mut self, spacing: f32) -> Self {
+    pub(crate) fn spacing(mut self, spacing: f32) -> Self {
         self.spacing = spacing;
         self
     }
@@ -156,34 +128,24 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
         let header: Element<'a, Message> = match (base.on_press, base.on_activate) {
             (Some(message), _) => Pressable::new(header)
                 .width(Fill)
-                .height(base.height)
-                .padding(base.padding)
+                .padding([18, 24])
                 .on_press(message)
                 .style(header_style)
                 .into(),
             (None, Some(activation)) => Pressable::new(header)
                 .width(Fill)
-                .height(base.height)
-                .padding(base.padding)
+                .padding([18, 24])
                 .on_activate(activation)
                 .style(header_style)
                 .into(),
             (None, None) => container(header)
                 .width(Fill)
-                .height(base.height)
-                .padding(base.padding)
+                .padding([18, 24])
                 .align_y(Alignment::Center)
                 .into(),
         };
 
-        let mut contents = column![header].width(Fill);
-
-        if let Some(content) = base.content {
-            contents = contents.push(Surface::new(content).background(false));
-        }
-
-        Surface::new(container(contents).width(Fill).clip(true))
-            .raised(base.raised)
+        Surface::new(container(header).width(Fill).clip(true))
             .raised_when(base.raised_when)
             .hover_tone(base.hover_tone)
             .enabled(base.enabled)
@@ -205,8 +167,6 @@ fn header_style(theme: &Theme, status: PressableStatus) -> button::Style {
 
 struct Surface<'a, Message> {
     content: Element<'a, Message>,
-    background: bool,
-    raised: bool,
     raised_when: Option<SharedFlag>,
     hover_tone: HoverTone,
     enabled: bool,
@@ -217,23 +177,11 @@ impl<'a, Message> Surface<'a, Message> {
     fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
-            background: true,
-            raised: false,
             raised_when: None,
             hover_tone: HoverTone::Default,
             enabled: true,
             focus_content_on_press: false,
         }
-    }
-
-    fn background(mut self, background: bool) -> Self {
-        self.background = background;
-        self
-    }
-
-    fn raised(mut self, raised: bool) -> Self {
-        self.raised = raised;
-        self
     }
 
     fn raised_when(mut self, raised: Option<SharedFlag>) -> Self {
@@ -347,7 +295,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
             }
         }
 
-        let hovered = self.background && self.enabled && cursor.is_over(layout.bounds());
+        let hovered = self.enabled && cursor.is_over(layout.bounds());
 
         if matches!(
             event,
@@ -407,24 +355,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         let state = tree.state.downcast_ref::<SurfaceState>();
         let hovered = state.hovered || self.enabled && cursor.is_over(bounds);
 
-        if self.background {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds,
-                    border: Border::default().rounded(8),
-                    shadow: Shadow::default(),
-                    snap: true,
-                },
-                Background::Color(surface_color(
-                    theme,
-                    self.raised
-                        || self.raised_when.as_ref().is_some_and(SharedFlag::get)
-                        || state.focused,
-                    hovered,
-                    self.hover_tone,
-                )),
-            );
-        }
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds,
+                border: Border::default().rounded(8),
+                shadow: Shadow::default(),
+                snap: true,
+            },
+            Background::Color(surface_color(
+                theme,
+                self.raised_when.as_ref().is_some_and(SharedFlag::get) || state.focused,
+                hovered,
+                self.hover_tone,
+            )),
+        );
 
         self.content.as_widget().draw(
             &tree.children[0],

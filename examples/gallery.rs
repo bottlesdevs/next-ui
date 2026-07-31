@@ -148,7 +148,6 @@ impl Gallery {
         let buttons = row![
             button::Button::new("Play")
                 .icon(Icon::Play)
-                .rectangular()
                 .on_press(Message::Noop),
             button::Button::new("Pill").pill().on_press(Message::Noop),
             button::Button::icon_only("Play", Icon::Play).on_press(Message::Noop),

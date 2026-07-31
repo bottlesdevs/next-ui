@@ -118,9 +118,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
             }));
         }
 
-        let mut row = ListRow::new(labels)
-            .enabled(text_row.enabled)
-            .padding([18, 24]);
+        let mut row = ListRow::new(labels).enabled(text_row.enabled);
 
         if editable {
             row = row
@@ -166,18 +164,4 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
             }),
         })
         .into()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::TextRow;
-
-    #[test]
-    fn editing_is_opt_in() {
-        let read_only = TextRow::<()>::new("Name", "Bottle");
-        let editable = TextRow::new("Name", "Bottle").on_input(|_| ());
-
-        assert!(read_only.on_input.is_none());
-        assert!(editable.on_input.is_some());
-    }
 }

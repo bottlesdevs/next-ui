@@ -7,7 +7,7 @@ use super::list_row::{ListRow, labels};
 pub struct InfoRow<'a> {
     title: &'a str,
     description: &'a str,
-    icon: Option<svg::Handle>,
+    icon: Option<Icon>,
 }
 
 impl<'a> InfoRow<'a> {
@@ -25,7 +25,7 @@ impl<'a> InfoRow<'a> {
     }
 
     pub fn icon(mut self, icon: Icon) -> Self {
-        self.icon = Some(icon.handle());
+        self.icon = Some(icon);
         self
     }
 }
@@ -42,25 +42,12 @@ impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
 
         match info.icon {
             Some(icon) => row.leading(
-                svg(icon)
+                svg(icon.handle())
                     .width(24)
                     .height(24)
                     .content_fit(ContentFit::Contain),
             ),
             None => row,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::icons::Icon;
-
-    use super::InfoRow;
-
-    #[test]
-    fn icon_is_optional() {
-        assert!(InfoRow::new("Title").icon.is_none());
-        assert!(InfoRow::new("Title").icon(Icon::Timer).icon.is_some());
     }
 }

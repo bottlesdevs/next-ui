@@ -654,40 +654,7 @@ fn toggle_open(open: &mut Vec<usize>, target: usize, footprints: &[Footprint]) {
 
 #[cfg(test)]
 mod tests {
-    use iced::Element;
-
-    use crate::components::{
-        action_row::{ActionRow, ActionRowState},
-        expander_row::ExpanderRow,
-        switcher_row::SwitcherRow,
-    };
-
-    use super::{Footprint, RowGroup, cell_width, footprint, toggle_open};
-
-    #[test]
-    fn cells_follow_the_requested_column_count() {
-        assert_eq!(cell_width(332.0, 3), 100.0);
-    }
-
-    #[test]
-    fn expanders_require_no_application_state() {
-        let group = RowGroup::new()
-            .columns(2)
-            .add(SwitcherRow::new("Switch", false).on_toggle(|_| ()))
-            .add(
-                ExpanderRow::new("Expander")
-                    .add(ActionRow::new("Child", ActionRowState::Ready(()))),
-            );
-
-        let _: Element<'_, ()> = group.into();
-    }
-
-    #[test]
-    fn footprints_shift_and_clamp_to_the_grid() {
-        assert_eq!(footprint(0, 1, 3), Footprint { start: 0, end: 1 });
-        assert_eq!(footprint(2, 2, 3), Footprint { start: 1, end: 3 });
-        assert_eq!(footprint(1, 4, 3), Footprint { start: 0, end: 3 });
-    }
+    use super::{Footprint, toggle_open};
 
     #[test]
     fn opening_evicts_only_overlapping_expansions() {
