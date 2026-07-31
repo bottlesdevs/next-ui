@@ -17,6 +17,8 @@ use super::{
     text::TextExt as _,
 };
 
+const RESULT_INSET: f32 = 20.0;
+
 pub struct SearchResult<'a, Message> {
     key: String,
     title: &'a str,
@@ -255,8 +257,13 @@ fn result_row<'a, Message: Clone + 'a>(result: SearchResult<'a, Message>) -> Ele
     if let Some((label, icon, message)) = result.action {
         content = content.push(
             Button::new(label)
-                .icon(icon)
-                .pill()
+                .trailing_icon(icon)
+                .icon_rotation(if icon == Icon::Arrow {
+                    std::f32::consts::PI
+                } else {
+                    0.0
+                })
+                .padding_y(8)
                 .surface()
                 .on_press(message),
         );
@@ -264,7 +271,7 @@ fn result_row<'a, Message: Clone + 'a>(result: SearchResult<'a, Message>) -> Ele
 
     Pressable::new(content)
         .width(Fill)
-        .padding([14, 20])
+        .padding([8, 20])
         .on_press(result.on_select)
         .style(result_style)
         .into()
@@ -566,11 +573,17 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Panel<'_, Message> {
         let mut y = 0.0;
         let mut children = Vec::with_capacity(self.children.len());
 
-        for (child, tree) in self.children.iter_mut().zip(&mut tree.children) {
+        for (index, (child, tree)) in self.children.iter_mut().zip(&mut tree.children).enumerate() {
+            let is_result = index < self.result_count;
+            let child_limits = if is_result {
+                limits.shrink(Size::new(RESULT_INSET * 2.0, 0.0))
+            } else {
+                limits
+            };
             let node = child
                 .as_widget_mut()
-                .layout(tree, renderer, &limits)
-                .move_to(Point::new(0.0, y));
+                .layout(tree, renderer, &child_limits)
+                .move_to(Point::new(if is_result { RESULT_INSET } else { 0.0 }, y));
             y += node.size().height;
             children.push(node);
         }

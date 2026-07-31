@@ -499,7 +499,6 @@ impl Gallery {
             .filter(|(title, _, _)| title.to_lowercase().contains(&query))
             .map(|(title, action, action_icon)| {
                 search::SearchResult::new(*title, *title, Message::Noop)
-                    .subtitle("Catalog result")
                     .icon(Icon::Bottles)
                     .action(action, *action_icon, Message::Noop)
             })

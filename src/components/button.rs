@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, ContentFit, Element, Fill, Length, Theme,
+    Background, Border, Center, ContentFit, Element, Fill, Length, Pixels, Theme,
     theme::palette::Pair,
     widget::{Row, container, svg, text, tooltip},
 };
@@ -30,8 +30,11 @@ pub enum ButtonKind {
 pub struct Button<'a, Message> {
     label: &'a str,
     icon: Option<Icon>,
+    icon_trailing: bool,
+    icon_rotation: f32,
     shape: Shape,
     diameter: f32,
+    padding_y: Option<f32>,
     kind: ButtonKind,
     on_press: Option<Message>,
     loading: bool,
@@ -42,8 +45,11 @@ impl<'a, Message> Button<'a, Message> {
         Self {
             label,
             icon: None,
+            icon_trailing: false,
+            icon_rotation: 0.0,
             shape: Shape::Rectangular,
             diameter: 52.0,
+            padding_y: None,
             kind: ButtonKind::Secondary,
             on_press: None,
             loading: false,
@@ -60,6 +66,18 @@ impl<'a, Message> Button<'a, Message> {
 
     pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
+        self.icon_trailing = false;
+        self
+    }
+
+    pub fn trailing_icon(mut self, icon: Icon) -> Self {
+        self.icon = Some(icon);
+        self.icon_trailing = true;
+        self
+    }
+
+    pub fn icon_rotation(mut self, rotation: f32) -> Self {
+        self.icon_rotation = rotation;
         self
     }
 
@@ -78,6 +96,11 @@ impl<'a, Message> Button<'a, Message> {
             self.diameter = diameter.max(1.0);
         }
 
+        self
+    }
+
+    pub fn padding_y(mut self, padding: impl Into<Pixels>) -> Self {
+        self.padding_y = Some(padding.into().0);
         self
     }
 
@@ -118,6 +141,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         } else if button.shape == Shape::IconOnly {
             container(icon_element(
                 button.icon.expect("icon-only buttons always have an icon"),
+                button.icon_rotation,
                 button.kind,
                 disabled,
             ))
@@ -126,11 +150,27 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         } else {
             let mut content = Row::new().spacing(8).align_y(Center);
 
-            if let Some(icon) = button.icon {
-                content = content.push(icon_element(icon, button.kind, disabled));
+            if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
+                content = content.push(icon_element(
+                    icon,
+                    button.icon_rotation,
+                    button.kind,
+                    disabled,
+                ));
             }
 
-            content.push(text(button.label).label()).into()
+            content = content.push(text(button.label).label());
+
+            if let Some(icon) = button.icon.filter(|_| button.icon_trailing) {
+                content = content.push(icon_element(
+                    icon,
+                    button.icon_rotation,
+                    button.kind,
+                    disabled,
+                ));
+            }
+
+            content.into()
         };
         let shape = button.shape;
         let kind = button.kind;
@@ -139,8 +179,8 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
         pressable = match shape {
-            Shape::Rectangular => pressable.padding([12, 18]),
-            Shape::Pill => pressable.padding([10, 16]),
+            Shape::Rectangular => pressable.padding([button.padding_y.unwrap_or(12.0), 18.0]),
+            Shape::Pill => pressable.padding([button.padding_y.unwrap_or(10.0), 16.0]),
             Shape::IconOnly => pressable
                 .width(Length::Fixed(button.diameter))
                 .height(Length::Fixed(button.diameter)),
@@ -160,6 +200,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
 fn icon_element<'a, Message: 'a>(
     icon: Icon,
+    rotation: f32,
     kind: ButtonKind,
     disabled: bool,
 ) -> Element<'a, Message> {
@@ -167,6 +208,7 @@ fn icon_element<'a, Message: 'a>(
         .width(icons::SIZE)
         .height(icons::SIZE)
         .content_fit(ContentFit::Contain)
+        .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if disabled {
                 theme.extended_palette().secondary.weak.text
@@ -271,5 +313,16 @@ mod tests {
 
         assert!(button.loading);
         assert!(button.on_press.is_some());
+    }
+
+    #[test]
+    fn trailing_icons_keep_the_rectangular_shape() {
+        let button = Button::<()>::new("Install")
+            .trailing_icon(Icon::Arrow)
+            .padding_y(8);
+
+        assert!(button.icon_trailing);
+        assert_eq!(button.shape, Shape::Rectangular);
+        assert_eq!(button.padding_y, Some(8.0));
     }
 }
