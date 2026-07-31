@@ -9,6 +9,24 @@ use iced::{
     widget::button,
     window,
 };
+use std::{cell::Cell, rc::Rc};
+
+#[derive(Clone, Default)]
+pub(crate) struct SharedFlag(Rc<Cell<bool>>);
+
+impl SharedFlag {
+    pub(crate) fn get(&self) -> bool {
+        self.0.get()
+    }
+
+    pub(crate) fn set(&self, value: bool) {
+        self.0.set(value);
+    }
+
+    pub(crate) fn take(&self) -> bool {
+        self.0.replace(false)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Status {
@@ -21,7 +39,7 @@ pub(crate) enum Status {
 
 pub(crate) struct Pressable<'a, Message> {
     content: Element<'a, Message>,
-    on_press: Option<Message>,
+    action: Option<Action<Message>>,
     width: Length,
     height: Length,
     padding: Padding,
@@ -29,11 +47,16 @@ pub(crate) struct Pressable<'a, Message> {
     last_status: Option<Status>,
 }
 
+enum Action<Message> {
+    Message(Message),
+    Internal(SharedFlag),
+}
+
 impl<'a, Message> Pressable<'a, Message> {
     pub(crate) fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
-            on_press: None,
+            action: None,
             width: Length::Shrink,
             height: Length::Shrink,
             padding: Padding::ZERO,
@@ -43,12 +66,17 @@ impl<'a, Message> Pressable<'a, Message> {
     }
 
     pub(crate) fn on_press(mut self, message: Message) -> Self {
-        self.on_press = Some(message);
+        self.action = Some(Action::Message(message));
         self
     }
 
     pub(crate) fn on_press_maybe(mut self, message: Option<Message>) -> Self {
-        self.on_press = message;
+        self.action = message.map(Action::Message);
+        self
+    }
+
+    pub(crate) fn on_activate(mut self, activation: SharedFlag) -> Self {
+        self.action = Some(Action::Internal(activation));
         self
     }
 
@@ -137,7 +165,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
     ) {
         let state = tree.state.downcast_mut::<State>();
 
-        if self.on_press.is_some() {
+        if self.action.is_some() {
             operation.focusable(None, layout.bounds(), state);
         }
 
@@ -175,7 +203,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
         );
 
         let child_captured = shell.is_event_captured();
-        let enabled = self.on_press.is_some();
+        let enabled = self.action.is_some();
         let pointer = match event {
             Event::Touch(
                 touch::Event::FingerPressed { position, .. }
@@ -204,8 +232,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
                     if state.pressed {
                         state.pressed = false;
 
-                        if hovered && let Some(message) = &self.on_press {
-                            shell.publish(message.clone());
+                        if hovered {
+                            activate(self.action.as_ref(), shell);
                         }
 
                         shell.capture_event();
@@ -226,9 +254,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
                 }) if enabled && state.focused && state.pressed => {
                     state.pressed = false;
 
-                    if let Some(message) = &self.on_press {
-                        shell.publish(message.clone());
-                    }
+                    activate(self.action.as_ref(), shell);
 
                     shell.capture_event();
                 }
@@ -258,7 +284,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
         let state = tree.state.downcast_ref::<State>();
         let status = self.last_status.unwrap_or_else(|| {
             status(
-                self.on_press.is_some(),
+                self.action.is_some(),
                 cursor.is_over(layout.bounds()),
                 state,
             )
@@ -310,7 +336,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
 
         if child != mouse::Interaction::default() {
             child
-        } else if self.on_press.is_some() && cursor.is_over(layout.bounds()) {
+        } else if self.action.is_some() && cursor.is_over(layout.bounds()) {
             mouse::Interaction::Pointer
         } else {
             mouse::Interaction::default()
@@ -332,6 +358,14 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
             viewport,
             translation,
         )
+    }
+}
+
+fn activate<Message: Clone>(action: Option<&Action<Message>>, shell: &mut Shell<'_, Message>) {
+    match action {
+        Some(Action::Message(message)) => shell.publish(message.clone()),
+        Some(Action::Internal(activation)) => activation.set(true),
+        None => {}
     }
 }
 
@@ -357,7 +391,16 @@ fn status(enabled: bool, hovered: bool, state: &State) -> Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, Status, status};
+    use super::{SharedFlag, State, Status, status};
+
+    #[test]
+    fn shared_flags_are_consumed_once() {
+        let flag = SharedFlag::default();
+
+        flag.set(true);
+        assert!(flag.take());
+        assert!(!flag.take());
+    }
 
     #[test]
     fn interaction_status_has_stable_priority() {

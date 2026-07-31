@@ -10,7 +10,7 @@ use iced::{
 };
 
 use super::{
-    pressable::{Pressable, Status as PressableStatus},
+    pressable::{Pressable, SharedFlag, Status as PressableStatus},
     text::TextExt as _,
 };
 
@@ -21,7 +21,9 @@ pub struct ListRow<'a, Message> {
     content: Option<Element<'a, Message>>,
     enabled: bool,
     on_press: Option<Message>,
+    on_activate: Option<SharedFlag>,
     raised: bool,
+    raised_when: Option<SharedFlag>,
     hover_tone: HoverTone,
     padding: Padding,
     height: Length,
@@ -54,7 +56,9 @@ impl<'a, Message> ListRow<'a, Message> {
             content: None,
             enabled: true,
             on_press: None,
+            on_activate: None,
             raised: false,
+            raised_when: None,
             hover_tone: HoverTone::Default,
             padding: Padding::from([18, 24]),
             height: Length::Shrink,
@@ -95,11 +99,23 @@ impl<'a, Message> ListRow<'a, Message> {
 
     pub fn on_press(mut self, message: Message) -> Self {
         self.on_press = Some(message);
+        self.on_activate = None;
+        self
+    }
+
+    pub(crate) fn on_activate(mut self, activation: SharedFlag) -> Self {
+        self.on_press = None;
+        self.on_activate = Some(activation);
         self
     }
 
     pub fn raised(mut self, raised: bool) -> Self {
         self.raised = raised;
+        self
+    }
+
+    pub(crate) fn raised_when(mut self, raised: SharedFlag) -> Self {
+        self.raised_when = Some(raised);
         self
     }
 
@@ -137,15 +153,22 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
             .push(container(base.body).width(Fill))
             .extend(base.trailing);
 
-        let header: Element<'a, Message> = match base.on_press {
-            Some(message) => Pressable::new(header)
+        let header: Element<'a, Message> = match (base.on_press, base.on_activate) {
+            (Some(message), _) => Pressable::new(header)
                 .width(Fill)
                 .height(base.height)
                 .padding(base.padding)
                 .on_press(message)
                 .style(header_style)
                 .into(),
-            None => container(header)
+            (None, Some(activation)) => Pressable::new(header)
+                .width(Fill)
+                .height(base.height)
+                .padding(base.padding)
+                .on_activate(activation)
+                .style(header_style)
+                .into(),
+            (None, None) => container(header)
                 .width(Fill)
                 .height(base.height)
                 .padding(base.padding)
@@ -161,6 +184,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
 
         Surface::new(container(contents).width(Fill).clip(true))
             .raised(base.raised)
+            .raised_when(base.raised_when)
             .hover_tone(base.hover_tone)
             .enabled(base.enabled)
             .focus_content_on_press(base.focus_content_on_press)
@@ -183,6 +207,7 @@ struct Surface<'a, Message> {
     content: Element<'a, Message>,
     background: bool,
     raised: bool,
+    raised_when: Option<SharedFlag>,
     hover_tone: HoverTone,
     enabled: bool,
     focus_content_on_press: bool,
@@ -194,6 +219,7 @@ impl<'a, Message> Surface<'a, Message> {
             content: content.into(),
             background: true,
             raised: false,
+            raised_when: None,
             hover_tone: HoverTone::Default,
             enabled: true,
             focus_content_on_press: false,
@@ -207,6 +233,11 @@ impl<'a, Message> Surface<'a, Message> {
 
     fn raised(mut self, raised: bool) -> Self {
         self.raised = raised;
+        self
+    }
+
+    fn raised_when(mut self, raised: Option<SharedFlag>) -> Self {
+        self.raised_when = raised;
         self
     }
 
@@ -386,7 +417,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
                 },
                 Background::Color(surface_color(
                     theme,
-                    self.raised || state.focused,
+                    self.raised
+                        || self.raised_when.as_ref().is_some_and(SharedFlag::get)
+                        || state.focused,
                     hovered,
                     self.hover_tone,
                 )),
