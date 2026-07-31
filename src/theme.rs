@@ -7,7 +7,7 @@ use iced::{
             Warning,
         },
     },
-    widget::container,
+    widget::{container, scrollable},
 };
 
 pub const BACKGROUND: Color = Color::from_rgb8(58, 50, 53);
@@ -107,6 +107,22 @@ pub fn panel(_: &Theme) -> container::Style {
         border: Border::default().rounded(11),
         ..container::Style::default()
     }
+}
+
+pub fn scrollbar(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
+    let mut style = scrollable::default(theme, status);
+    let rail = scrollable::Rail {
+        background: None,
+        border: Border::default(),
+        scroller: scrollable::Scroller {
+            background: Background::Color(MUTED),
+            border: Border::default().rounded(999),
+        },
+    };
+
+    style.vertical_rail = rail;
+    style.horizontal_rail = rail;
+    style
 }
 
 pub const fn info() -> Pair {

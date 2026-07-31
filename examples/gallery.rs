@@ -379,30 +379,36 @@ impl Gallery {
         );
 
         let gallery = scrollable(
-            column![
-                section("Headings", headings),
-                section("Title", titles),
-                section("Buttons", buttons),
-                section("Cards", cards),
-                section("Tabs", tabs),
-                section("Search", search),
-                section("Rows", fields),
-                section("Row group", row_group),
-                section("Status bar", status),
-            ]
-            .spacing(24)
-            .padding(24)
-            .max_width(1150),
+            container(
+                column![
+                    section("Headings", headings),
+                    section("Title", titles),
+                    section("Buttons", buttons),
+                    section("Cards", cards),
+                    section("Tabs", tabs),
+                    section("Search", search),
+                    section("Rows", fields),
+                    section("Row group", row_group),
+                    section("Status bar", status),
+                ]
+                .spacing(12)
+                .padding(12)
+                .width(Fill)
+                .max_width(1150),
+            )
+            .center_x(Fill),
         )
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(4)
+                .scroller_width(4)
+                .margin(12),
+        ))
+        .style(theme::scrollbar)
         .width(Fill)
         .height(Fill);
 
-        let panel = container(gallery)
-            .width(Fill)
-            .height(Fill)
-            .style(theme::panel);
-
-        container(column![header, panel])
+        container(column![header, gallery])
             .width(Fill)
             .height(Fill)
             .padding(1)
@@ -413,8 +419,10 @@ impl Gallery {
 }
 
 fn section<'a>(label: &'a str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    column![text(label).title(), content.into()]
-        .spacing(12)
+    container(column![text(label).title(), content.into()].spacing(12))
+        .width(Fill)
+        .padding(24)
+        .style(theme::panel)
         .into()
 }
 
