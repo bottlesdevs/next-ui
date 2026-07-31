@@ -1,5 +1,5 @@
 use iced::{
-    Border, Element, Length, Rectangle, Size, Theme,
+    Border, ContentFit, Element, Length, Point, Rectangle, Size, Theme,
     advanced::{Layout, Widget, layout, mouse, renderer, svg::Renderer as _, widget::Tree},
     widget::button,
 };
@@ -187,10 +187,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for DynamicCaret {
         _viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
+        let handle = crate::icons::Icon::DownCaret.handle();
+        let Size { width, height } = renderer.measure_svg(&handle);
+        let drawing_bounds = contained_bounds(bounds, Size::new(width as f32, height as f32));
 
         renderer.draw_svg(
             iced::advanced::svg::Svg {
-                handle: crate::icons::Icon::DownCaret.handle(),
+                handle,
                 color: None,
                 rotation: if self.expanded.get() {
                     std::f32::consts::PI.into()
@@ -199,10 +202,22 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for DynamicCaret {
                 },
                 opacity: 1.0,
             },
-            bounds,
+            drawing_bounds,
             bounds,
         );
     }
+}
+
+fn contained_bounds(bounds: Rectangle, image_size: Size) -> Rectangle {
+    let size = ContentFit::Contain.fit(image_size, bounds.size());
+
+    Rectangle::new(
+        Point::new(
+            bounds.center_x() - size.width / 2.0,
+            bounds.center_y() - size.height / 2.0,
+        ),
+        size,
+    )
 }
 
 impl<'a, Message: 'a> From<DynamicCaret> for Element<'a, Message> {
@@ -218,7 +233,9 @@ mod tests {
         switcher_row::SwitcherRow,
     };
 
-    use super::{ExpanderRow, Header};
+    use iced::{Point, Rectangle, Size};
+
+    use super::{ExpanderRow, Header, contained_bounds};
 
     #[test]
     fn accepts_an_interactive_row_as_its_header() {
@@ -239,6 +256,17 @@ mod tests {
                 .into_parts()
                 .content
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn caret_preserves_its_aspect_ratio() {
+        assert_eq!(
+            contained_bounds(
+                Rectangle::new(Point::new(10.0, 20.0), Size::new(20.0, 20.0)),
+                Size::new(16.0, 10.0),
+            ),
+            Rectangle::new(Point::new(10.0, 23.75), Size::new(20.0, 12.5)),
         );
     }
 }
