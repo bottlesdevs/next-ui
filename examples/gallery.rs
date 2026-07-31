@@ -3,10 +3,10 @@ use iced::{
     widget::{Space, column, image, row, scrollable, text},
 };
 use next_ui::components::{
-    action_row, button, card, cycle_row, expander_row,
+    action_row, artwork_card, button, card, cycle_row, expander_row,
     heading::{self, Level},
-    info_panel::{self, Kind},
-    info_row, picker_row, popover, row_group,
+    info_card::{self, Kind},
+    info_row, picker_row, popover, program_card, row_group,
     search::{self, Action as SearchAction},
     selector_row, status_bar, switcher_row, tab, tabs, text_row, title,
 };
@@ -151,33 +151,48 @@ impl Gallery {
         ]
         .spacing(12);
 
-        let cards = row![
-            card::Card::new()
-                .title("Text card")
-                .subtitle("Subtitle")
-                .description("Cards accept a title, subtitle, description, and banner.")
-                .text(),
-            card::Card::new()
-                .title("Artwork card")
-                .subtitle("Ready")
-                .banner(sample_image())
-                .artwork(Message::Noop, Message::Noop),
-            card::Card::new()
-                .title("Program card")
-                .subtitle("Last played today")
-                .banner(sample_image())
-                .program(Message::Noop, Message::Noop),
+        let cards = column![
+            row![
+                card::Card::new(
+                    column![
+                        text("Text card").size(28),
+                        text("Subtitle")
+                            .size(22)
+                            .style(next_ui::components::style::muted_text),
+                        text("Cards accept arbitrary content.")
+                            .size(20)
+                            .style(next_ui::components::style::muted_text),
+                    ]
+                    .spacing(8),
+                )
+                .padding(24),
+                artwork_card::ArtworkCard::new(Message::Noop, Message::Noop)
+                    .title("Artwork card")
+                    .subtitle("Ready")
+                    .banner(sample_image()),
+                program_card::ProgramCard::new(Message::Noop, Message::Noop)
+                    .title("Program card")
+                    .subtitle("Last played today")
+                    .banner(sample_image()),
+            ]
+            .spacing(16),
+            row![
+                info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information."),
+                info_card::InfoCard::new(Kind::Info, "Info", "General information for the user."),
+            ]
+            .spacing(12),
+            row![
+                info_card::InfoCard::new(Kind::Error, "Error", "Something needs attention."),
+                info_card::InfoCard::new(Kind::Warning, "Warning", "Proceed with care."),
+            ]
+            .spacing(12),
+            row![
+                info_card::InfoCard::new(Kind::Success, "Success", "The operation completed."),
+                Space::new().width(Fill),
+            ]
+            .spacing(12),
         ]
         .spacing(16);
-
-        let panels = column![
-            info_panel::InfoPanel::new(Kind::Hint, "Hint", "Helpful contextual information."),
-            info_panel::InfoPanel::new(Kind::Info, "Info", "General information for the user."),
-            info_panel::InfoPanel::new(Kind::Error, "Error", "Something needs attention."),
-            info_panel::InfoPanel::new(Kind::Warning, "Warning", "Proceed with care."),
-            info_panel::InfoPanel::new(Kind::Success, "Success", "The operation completed."),
-        ]
-        .spacing(12);
 
         let navigation = column![
             row![
@@ -370,7 +385,6 @@ impl Gallery {
                 section("Title", titles),
                 section("Buttons", buttons),
                 section("Cards", cards),
-                section("Information panels", panels),
                 section("Navigation and selection", navigation),
                 section("Search", search),
                 section("Rows", fields),

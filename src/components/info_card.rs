@@ -1,10 +1,12 @@
 use iced::{
-    Background, Border, Center, Element, Fill, Theme,
+    Background, Border, Center, Element, Theme,
     theme::palette::Pair,
     widget::{column, container, row, text},
 };
 
 use crate::{icons, theme};
+
+use super::card::Card;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -15,23 +17,23 @@ pub enum Kind {
     Success,
 }
 
-pub struct InfoPanel<'a> {
+pub struct InfoCard<'a> {
     kind: Kind,
     title: &'a str,
     body: &'a str,
 }
 
-impl<'a> InfoPanel<'a> {
+impl<'a> InfoCard<'a> {
     pub fn new(kind: Kind, title: &'a str, body: &'a str) -> Self {
         Self { kind, title, body }
     }
 }
 
-impl<'a, Message: 'a> From<InfoPanel<'a>> for Element<'a, Message> {
-    fn from(panel: InfoPanel<'a>) -> Self {
-        let InfoPanel { kind, title, body } = panel;
+impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
+    fn from(card: InfoCard<'a>) -> Self {
+        let InfoCard { kind, title, body } = card;
 
-        container(
+        Card::new(
             column![
                 row![icon(kind), text(title).size(28),]
                     .spacing(14)
@@ -41,7 +43,6 @@ impl<'a, Message: 'a> From<InfoPanel<'a>> for Element<'a, Message> {
             .spacing(18),
         )
         .padding(28)
-        .width(Fill)
         .style(move |theme| {
             let colors = colors(theme, kind);
 

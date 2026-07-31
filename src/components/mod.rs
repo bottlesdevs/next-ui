@@ -1,16 +1,18 @@
 pub mod style;
 
 pub mod action_row;
+pub mod artwork_card;
 pub mod button;
 pub mod card;
 pub mod cycle_row;
 pub mod expander_row;
 pub mod heading;
-pub mod info_panel;
+pub mod info_card;
 pub mod info_row;
 pub mod list_row;
 pub mod picker_row;
 pub mod popover;
+pub mod program_card;
 pub mod row_group;
 pub mod search;
 pub mod selector_row;
