@@ -10,20 +10,13 @@ pub struct PickerRow<'a, Message> {
     on_press: Option<Message>,
 }
 
-impl<Message> PickerRow<'_, Message> {
-    pub fn new() -> Self {
+impl<'a, Message> PickerRow<'a, Message> {
+    pub fn new(title: &'a str) -> Self {
         Self {
-            title: "",
+            title,
             description: "",
             on_press: None,
         }
-    }
-}
-
-impl<'a, Message> PickerRow<'a, Message> {
-    pub fn title(mut self, title: &'a str) -> Self {
-        self.title = title;
-        self
     }
 
     pub fn description(mut self, description: &'a str) -> Self {
@@ -33,6 +26,11 @@ impl<'a, Message> PickerRow<'a, Message> {
 
     pub fn on_press(mut self, on_press: Message) -> Self {
         self.on_press = Some(on_press);
+        self
+    }
+
+    pub fn on_press_maybe(mut self, on_press: Option<Message>) -> Self {
+        self.on_press = on_press;
         self
     }
 }
@@ -64,7 +62,7 @@ mod tests {
 
     #[test]
     fn click_action_is_optional() {
-        assert!(PickerRow::<()>::new().on_press.is_none());
-        assert!(PickerRow::new().on_press(()).on_press.is_some());
+        assert!(PickerRow::<()>::new("Folder").on_press.is_none());
+        assert!(PickerRow::new("Folder").on_press(()).on_press.is_some());
     }
 }

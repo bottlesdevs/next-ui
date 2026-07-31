@@ -1,5 +1,7 @@
 use iced::{ContentFit, Element, widget::svg};
 
+use crate::icons::Icon;
+
 use super::list_row::{ListRow, labels};
 
 pub struct InfoRow<'a> {
@@ -8,20 +10,13 @@ pub struct InfoRow<'a> {
     icon: Option<svg::Handle>,
 }
 
-impl InfoRow<'_> {
-    pub fn new() -> Self {
+impl<'a> InfoRow<'a> {
+    pub fn new(title: &'a str) -> Self {
         Self {
-            title: "",
+            title,
             description: "",
             icon: None,
         }
-    }
-}
-
-impl<'a> InfoRow<'a> {
-    pub fn title(mut self, title: &'a str) -> Self {
-        self.title = title;
-        self
     }
 
     pub fn description(mut self, description: &'a str) -> Self {
@@ -29,8 +24,8 @@ impl<'a> InfoRow<'a> {
         self
     }
 
-    pub fn icon(mut self, icon: impl Into<svg::Handle>) -> Self {
-        self.icon = Some(icon.into());
+    pub fn icon(mut self, icon: Icon) -> Self {
+        self.icon = Some(icon.handle());
         self
     }
 }
@@ -65,7 +60,7 @@ mod tests {
 
     #[test]
     fn icon_is_optional() {
-        assert!(InfoRow::new().icon.is_none());
-        assert!(InfoRow::new().icon(Icon::Timer).icon.is_some());
+        assert!(InfoRow::new("Title").icon.is_none());
+        assert!(InfoRow::new("Title").icon(Icon::Timer).icon.is_some());
     }
 }

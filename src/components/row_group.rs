@@ -298,7 +298,7 @@ mod tests {
     fn add_accepts_rows_and_expanders() {
         let group = RowGroup::new()
             .columns(3)
-            .add(SwitcherRow::new(false, |_| ()))
+            .add(SwitcherRow::new("Switch", false, |_| ()))
             .add(ExpanderRow::new(()));
 
         assert_eq!(group.columns, 3);

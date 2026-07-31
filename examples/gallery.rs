@@ -257,26 +257,20 @@ impl Gallery {
                 .title("Title")
                 .description("Description")
                 .on_press(Message::Noop),
-            info_row::InfoRow::new()
-                .title("Title")
+            info_row::InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
-            switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
-                .title("Title")
+            switcher_row::SwitcherRow::new("Title", self.switched_on, Message::Switched)
                 .description("Description"),
-            cycle_row::CycleRow::new()
-                .title("DLSS Level")
-                .value(DLSS_LEVELS[self.value])
+            cycle_row::CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
                 .on_previous(Message::Previous)
                 .on_next(Message::Next),
-            picker_row::PickerRow::new()
-                .title("Title")
+            picker_row::PickerRow::new("Title")
                 .description("Choose the location")
                 .on_press(Message::Noop),
             expander_row::ExpanderRow::new(Message::ExpanderToggled)
                 .header(
-                    switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
-                        .title("FSR")
+                    switcher_row::SwitcherRow::new("FSR", self.switched_on, Message::Switched)
                         .description("FidelityFX Super Resolution"),
                 )
                 .expanded(self.expander_expanded)
@@ -288,9 +282,7 @@ impl Gallery {
                         .on_press(Message::Noop),
                 )
                 .add(
-                    cycle_row::CycleRow::new()
-                        .title("Sharpening")
-                        .value("5")
+                    cycle_row::CycleRow::new("Sharpening", "5")
                         .on_previous(Message::Previous)
                         .on_next(Message::Next),
                 )
@@ -303,13 +295,11 @@ impl Gallery {
             .description("Rows wrap according to the configured column count.")
             .columns(2)
             .add(
-                switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
-                    .title("DLSS")
+                switcher_row::SwitcherRow::new("DLSS", self.switched_on, Message::Switched)
                     .description("Deep Learning Super Sampling"),
             )
             .add(
-                picker_row::PickerRow::new()
-                    .title("Shader directory")
+                picker_row::PickerRow::new("Shader directory")
                     .description("Choose the location")
                     .on_press(Message::Noop),
             )
@@ -323,10 +313,10 @@ impl Gallery {
                 expander_row::ExpanderRow::new(Message::GroupToggled)
                     .header(
                         switcher_row::SwitcherRow::new(
+                            "FSR",
                             self.group_switched_on,
                             Message::GroupSwitched,
                         )
-                        .title("FSR")
                         .description("FidelityFX Super Resolution"),
                     )
                     .expanded(self.group_expanded)
@@ -343,9 +333,7 @@ impl Gallery {
                         .expanded(self.selector_expanded),
                     )
                     .add(
-                        cycle_row::CycleRow::new()
-                            .title("Sharpening")
-                            .value(DLSS_LEVELS[self.value])
+                        cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
                             .on_previous(Message::Previous)
                             .on_next(Message::Next),
                     )

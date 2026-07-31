@@ -10,25 +10,27 @@ pub struct SwitcherRow<'a, Message> {
     description: &'a str,
     value: bool,
     on_toggle: Box<dyn Fn(bool) -> Message + 'a>,
+    enabled: bool,
 }
 
 impl<'a, Message> SwitcherRow<'a, Message> {
-    pub fn new(value: bool, on_toggle: impl Fn(bool) -> Message + 'a) -> Self {
+    pub fn new(title: &'a str, value: bool, on_toggle: impl Fn(bool) -> Message + 'a) -> Self {
         Self {
-            title: "",
+            title,
             description: "",
             value,
             on_toggle: Box::new(on_toggle),
+            enabled: true,
         }
-    }
-
-    pub fn title(mut self, title: &'a str) -> Self {
-        self.title = title;
-        self
     }
 
     pub fn description(mut self, description: &'a str) -> Self {
         self.description = description;
+        self
+    }
+
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
         self
     }
 }
@@ -42,6 +44,11 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Mes
 impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Message> {
     fn from(switcher: SwitcherRow<'a, Message>) -> Self {
         ListRow::new(labels(switcher.title, switcher.description))
-            .trailing(Switcher::new(switcher.value).on_toggle(switcher.on_toggle))
+            .trailing(
+                Switcher::new(switcher.value)
+                    .on_toggle(switcher.on_toggle)
+                    .enabled(switcher.enabled),
+            )
+            .enabled(switcher.enabled)
     }
 }

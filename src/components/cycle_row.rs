@@ -14,26 +14,14 @@ pub struct CycleRow<'a, Message> {
     next: Option<Message>,
 }
 
-impl<Message> CycleRow<'_, Message> {
-    pub fn new() -> Self {
+impl<'a, Message> CycleRow<'a, Message> {
+    pub fn new(title: &'a str, value: &'a str) -> Self {
         Self {
-            title: "",
-            value: "",
+            title,
+            value,
             previous: None,
             next: None,
         }
-    }
-}
-
-impl<'a, Message> CycleRow<'a, Message> {
-    pub fn title(mut self, title: &'a str) -> Self {
-        self.title = title;
-        self
-    }
-
-    pub fn value(mut self, value: &'a str) -> Self {
-        self.value = value;
-        self
     }
 
     pub fn on_previous(mut self, previous: Message) -> Self {
@@ -43,6 +31,16 @@ impl<'a, Message> CycleRow<'a, Message> {
 
     pub fn on_next(mut self, next: Message) -> Self {
         self.next = Some(next);
+        self
+    }
+
+    pub fn on_previous_maybe(mut self, previous: Option<Message>) -> Self {
+        self.previous = previous;
+        self
+    }
+
+    pub fn on_next_maybe(mut self, next: Option<Message>) -> Self {
+        self.next = next;
         self
     }
 }
@@ -83,7 +81,7 @@ mod tests {
 
     #[test]
     fn each_direction_can_be_disabled() {
-        let cycle = CycleRow::new().on_next(());
+        let cycle = CycleRow::new("Quality", "Balanced").on_next(());
 
         assert!(cycle.previous.is_none());
         assert!(cycle.next.is_some());
