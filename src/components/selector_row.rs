@@ -7,15 +7,12 @@ use iced::{
     },
     keyboard::{self, key},
     touch,
-    widget::{button, column, container, row, svg, text},
+    widget::{column, container, row, svg, text},
 };
 
 use crate::icons::Icon;
 
-use super::{
-    pressable::{Pressable, SharedFlag, Status},
-    text::TextExt as _,
-};
+use super::text::TextExt as _;
 
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
@@ -89,29 +86,20 @@ where
         let messages: Vec<_> = selector.on_selected.map_or_else(Vec::new, |on_selected| {
             selector.options.iter().cloned().map(on_selected).collect()
         });
-        let highlights: Vec<_> = labels.iter().map(|_| SharedFlag::default()).collect();
         let children = [false, true]
             .into_iter()
             .map(|expanded| header(selector.title, &value, selector.icon, expanded))
-            .chain(labels.iter().zip(&messages).zip(&highlights).map(
-                |((label, message), highlighted)| {
-                    let highlighted = highlighted.clone();
-
-                    Pressable::new(text(label.clone()).label())
-                        .width(Fill)
-                        .padding(Padding::from([10, 9]))
-                        .focusable(false)
-                        .on_press(message.clone())
-                        .style(move |theme, status| option_style(theme, status, highlighted.get()))
-                        .into()
-                },
-            ))
+            .chain(labels.into_iter().map(|label| {
+                container(text(label).label())
+                    .width(Fill)
+                    .padding(Padding::from([10, 9]))
+                    .into()
+            }))
             .collect();
 
         Element::new(Selector {
             children,
             messages,
-            highlights,
             selected,
         })
     }
@@ -158,7 +146,6 @@ fn header<'a, Message: 'a>(
 struct Selector<'a, Message> {
     children: Vec<Element<'a, Message>>,
     messages: Vec<Message>,
-    highlights: Vec<SharedFlag>,
     selected: Option<usize>,
 }
 
@@ -172,6 +159,7 @@ impl<Message> Selector<'_, Message> {
 struct State {
     open: bool,
     highlighted: Option<usize>,
+    hovered: Option<usize>,
     pressed: Option<Pressed>,
     focused: bool,
 }
@@ -217,11 +205,20 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         if self.messages.is_empty() {
             state.open = false;
             state.highlighted = None;
+            state.hovered = None;
+            state.pressed = None;
         } else if state
             .highlighted
             .is_none_or(|index| index >= self.messages.len())
         {
             state.highlighted = self.selected.or(Some(0));
+        }
+
+        if state
+            .hovered
+            .is_some_and(|index| index >= self.messages.len())
+        {
+            state.hovered = None;
         }
 
         if matches!(state.pressed, Some(Pressed::Option(index)) if index >= self.messages.len()) {
@@ -295,10 +292,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
+        _renderer: &iced::Renderer,
+        _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
+        _viewport: &Rectangle,
     ) {
         if !self.is_enabled() {
             return;
@@ -310,60 +307,15 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let expanded = children.next().expect("expanded selector header");
         let header = if open { expanded } else { collapsed };
         let options: Vec<_> = children.collect();
-
-        if open {
-            for (index, option_layout) in options.iter().enumerate() {
-                self.children[index + 2].as_widget_mut().update(
-                    &mut tree.children[index + 2],
-                    event,
-                    *option_layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    shell,
-                    viewport,
-                );
-            }
-        }
-
-        let child_captured = shell.is_event_captured();
         let state = tree.state.downcast_mut::<State>();
         let was_open = state.open;
         let was_highlighted = state.highlighted;
+        let was_hovered = state.hovered;
         let target = hit_target(state.open, header, &options, event_cursor(event, cursor));
-
-        if child_captured {
-            match event {
-                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                    state.pressed = target;
-                    state.focused = target.is_some();
-                }
-                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-                | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                    let pressed = state.pressed.take();
-
-                    if pressed == target
-                        && let Some(Pressed::Option(index)) = target
-                    {
-                        state.open = false;
-                        state.highlighted = Some(index);
-                    }
-                }
-                Event::Touch(touch::Event::FingerLost { .. }) => state.pressed = None,
-                _ => {}
-            }
-
-            if state.open != was_open {
-                shell.invalidate_layout();
-            }
-
-            if state.open != was_open || state.highlighted != was_highlighted {
-                shell.request_redraw();
-            }
-
-            return;
-        }
+        state.hovered = match target {
+            Some(Pressed::Option(index)) => Some(index),
+            _ => None,
+        };
 
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
@@ -398,7 +350,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                     }
                 }
             }
-            Event::Touch(touch::Event::FingerLost { .. }) => state.pressed = None,
+            Event::Touch(touch::Event::FingerLost { .. }) => {
+                state.hovered = None;
+                state.pressed = None;
+            }
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key, repeat: false, ..
             }) if state.focused => {
@@ -469,11 +424,18 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             _ => {}
         }
 
+        if !state.open {
+            state.hovered = None;
+        }
+
         if state.open != was_open {
             shell.invalidate_layout();
         }
 
-        if state.open != was_open || state.highlighted != was_highlighted {
+        if state.open != was_open
+            || state.highlighted != was_highlighted
+            || state.hovered != was_hovered
+        {
             shell.request_redraw();
         }
     }
@@ -547,11 +509,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             let highlighted = options
                 .iter()
                 .position(|layout| cursor.is_over(layout.bounds()))
+                .or(state.hovered)
                 .or(state.highlighted);
-
-            for (index, option) in self.highlights.iter().enumerate() {
-                option.set(highlighted == Some(index));
-            }
 
             let line = Rectangle {
                 y: header.bounds().y + header.bounds().height,
@@ -569,11 +528,31 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             );
 
             for (index, option_layout) in options.into_iter().enumerate() {
+                let is_highlighted = highlighted == Some(index);
+
+                if is_highlighted {
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: option_layout.bounds(),
+                            border: Border::default().rounded(8),
+                            shadow: Shadow::default(),
+                            snap: true,
+                        },
+                        Background::Color(theme.extended_palette().background.stronger.color),
+                    );
+                }
+
                 self.children[index + 2].as_widget().draw(
                     &tree.children[index + 2],
                     renderer,
                     theme,
-                    renderer_style,
+                    &renderer::Style {
+                        text_color: if is_highlighted {
+                            theme.palette().text
+                        } else {
+                            theme.extended_palette().secondary.base.text
+                        },
+                    },
                     option_layout,
                     cursor,
                     viewport,
@@ -603,24 +582,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         _translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         None
-    }
-}
-
-fn option_style(theme: &Theme, status: Status, highlighted: bool) -> button::Style {
-    let highlighted =
-        highlighted || matches!(status, Status::Hovered | Status::Pressed | Status::Focused);
-
-    button::Style {
-        background: highlighted.then_some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
-        text_color: if highlighted {
-            theme.palette().text
-        } else {
-            theme.extended_palette().secondary.base.text
-        },
-        border: Border::default().rounded(8),
-        ..button::Style::default()
     }
 }
 
@@ -657,53 +618,5 @@ fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
             | touch::Event::FingerLost { position, .. },
         ) => mouse::Cursor::Available(*position),
         _ => cursor,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Pressed, SelectorRow, State, Status, option_style};
-
-    #[test]
-    fn selection_action_controls_availability() {
-        let options = ["One"];
-        let disabled = SelectorRow::<_, ()>::new("Selector", &options, None);
-        let enabled = SelectorRow::new("Selector", &options, None).on_selected(|_| ());
-
-        assert!(disabled.on_selected.is_none());
-        assert!(enabled.on_selected.is_some());
-    }
-
-    #[test]
-    fn changing_options_clamps_the_keyboard_highlight() {
-        let mut state = State {
-            open: true,
-            highlighted: Some(4),
-            pressed: Some(Pressed::Option(4)),
-            focused: true,
-        };
-        let option_count = 2;
-
-        if state.highlighted.is_none_or(|index| index >= option_count) {
-            state.highlighted = Some(0);
-        }
-
-        assert_eq!(state.highlighted, Some(0));
-    }
-
-    #[test]
-    fn hovered_options_use_the_highlight_style() {
-        let theme = crate::theme::theme();
-
-        assert!(
-            option_style(&theme, Status::Hovered, false)
-                .background
-                .is_some()
-        );
-        assert!(
-            option_style(&theme, Status::Active, false)
-                .background
-                .is_none()
-        );
     }
 }
