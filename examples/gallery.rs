@@ -1,5 +1,6 @@
 use iced::{
-    Element, Fill, Task, Theme,
+    Element, Fill, Subscription, Task, Theme, event,
+    keyboard::{self, key},
     widget::{Space, column, container, image, row, scrollable, text},
 };
 use next_ui::components::text::TextExt as _;
@@ -12,6 +13,7 @@ use next_ui::components::{
 use next_ui::{icons::Icon, theme};
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
+const EMPTY_OPTIONS: &[&str] = &[];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
 const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
@@ -28,6 +30,7 @@ fn main() -> iced::Result {
     iced::application(Gallery::default, Gallery::update, Gallery::view)
         .title("Bottles Next component gallery")
         .theme(theme)
+        .subscription(Gallery::subscription)
         .style(|_, current_theme| theme::application(current_theme))
         .window_size((1200.0, 900.0))
         .decorations(false)
@@ -83,6 +86,7 @@ enum Message {
     StatusToggled,
     Previous,
     Next,
+    MoveFocus(bool),
     Noop,
 }
 
@@ -105,10 +109,32 @@ impl Gallery {
                 self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
             }
             Message::Next => self.value = (self.value + 1) % DLSS_LEVELS.len(),
+            Message::MoveFocus(previous) => {
+                return if previous {
+                    iced::widget::operation::focus_previous()
+                } else {
+                    iced::widget::operation::focus_next()
+                };
+            }
             Message::Noop => {}
         }
 
         Task::none()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        event::listen_with(|event, status, _| match (event, status) {
+            (
+                iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(key::Named::Tab),
+                    modifiers,
+                    repeat: false,
+                    ..
+                }),
+                event::Status::Ignored,
+            ) => Some(Message::MoveFocus(modifiers.shift())),
+            _ => None,
+        })
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -134,6 +160,10 @@ impl Gallery {
                 .on_press(Message::Noop),
             button::Button::new("Pill").pill().on_press(Message::Noop),
             button::Button::icon_only("Play", Icon::Play).on_press(Message::Noop),
+            button::Button::new("Disabled"),
+            button::Button::new("Loading")
+                .on_press(Message::Noop)
+                .loading(true),
         ]
         .spacing(12);
 
@@ -155,6 +185,7 @@ impl Gallery {
                 program_card::ProgramCard::new("Program card", "Last played today")
                     .settings(Message::Noop)
                     .play(Message::Noop)
+                    .play_loading(true)
                     .banner(sample_image()),
             ]
             .spacing(16),
@@ -198,6 +229,20 @@ impl Gallery {
             )
             .state(self.search_state())
             .footer("Not listed, install manually", Message::Noop),
+            search::Search::new(
+                "Focus to see loading state…",
+                &self.search,
+                Message::SearchChanged,
+            )
+            .state(search::SearchState::Loading),
+            search::Search::new(
+                "Focus to see error state…",
+                &self.search,
+                Message::SearchChanged,
+            )
+            .state(search::SearchState::Error(
+                "The catalog could not be loaded"
+            )),
         ]
         .spacing(16);
 
@@ -212,12 +257,18 @@ impl Gallery {
             text_row::TextRow::new("Input Name", &self.text_rows[1])
                 .placeholder("Placeholder")
                 .icon(Icon::Person)
+                .secure(true)
                 .on_input(|value| Message::TextRowChanged(1, value)),
             text_row::TextRow::new("Input Name", &self.text_rows[2])
                 .placeholder("Placeholder")
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
+            text_row::TextRow::<Message>::new("Read-only", "Application-owned value")
+                .icon(Icon::Info),
+            text_row::TextRow::<Message>::new("Disabled", "Unavailable")
+                .icon(Icon::Error)
+                .enabled(false),
             selector_row::SelectorRow::new(
                 "Selector Name",
                 SELECTOR_OPTIONS,
@@ -226,8 +277,22 @@ impl Gallery {
             )
             .placeholder("Placeholder")
             .icon(Icon::Person),
+            selector_row::SelectorRow::new(
+                "Empty selector",
+                EMPTY_OPTIONS,
+                None,
+                Message::OptionSelected,
+            )
+            .placeholder("No options available"),
             action_row::ActionRow::new("Title", action_row::ActionRowState::Ready(Message::Noop),)
                 .description("Description"),
+            action_row::ActionRow::new("Unavailable action", action_row::ActionRowState::Disabled,)
+                .description("This action cannot currently run"),
+            action_row::ActionRow::new(
+                "Installing",
+                action_row::ActionRowState::Progress(action_row::Progress::Determinate(50)),
+            )
+            .description("Halfway complete"),
             info_row::InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
@@ -309,6 +374,34 @@ impl Gallery {
                 .content_enabled(self.group_switched_on),
             );
 
+        let multiple_expanders = row_group::RowGroup::new()
+            .title("Multiple open expanders")
+            .description("Three columns with wrapping labels and two connected expansions")
+            .columns(3)
+            .add(
+                expander_row::ExpanderRow::new("First expander", true, Message::Noop)
+                    .description("Open in the first column")
+                    .add(
+                        action_row::ActionRow::new(
+                            "First child with a deliberately long label",
+                            action_row::ActionRowState::Ready(Message::Noop),
+                        )
+                        .description("Content sizes the row instead of clipping it"),
+                    ),
+            )
+            .add(
+                expander_row::ExpanderRow::new("Second expander", true, Message::Noop)
+                    .description("Open in the second column")
+                    .add(cycle_row::CycleRow::new("Quality", "Balanced")),
+            )
+            .add(
+                action_row::ActionRow::new(
+                    "A long third-column title that wraps safely",
+                    action_row::ActionRowState::Disabled,
+                )
+                .description("Partial and full grid lines use content-driven height"),
+            );
+
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)
                 .log(LOG),
@@ -316,6 +409,16 @@ impl Gallery {
                 .log(LOG)
                 .expanded(self.status_expanded)
                 .on_toggle(Message::StatusToggled),
+            status_bar::StatusBar::<Message>::new(
+                "Win64",
+                "soda-7.0.9",
+                status_bar::StatusState::Starting,
+            ),
+            status_bar::StatusBar::<Message>::new(
+                "Win64",
+                "soda-7.0.9",
+                status_bar::StatusState::Failed,
+            ),
         ]
         .spacing(16);
 
@@ -343,6 +446,7 @@ impl Gallery {
                     section("Search", search),
                     section("Rows", fields),
                     section("Row group", row_group),
+                    section("Multiple expanders", multiple_expanders),
                     section("Status bar", status),
                 ]
                 .spacing(12)
