@@ -1,13 +1,14 @@
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Event, Fill, Length, Padding, Point,
-    Rectangle, Shadow, Size, Theme, Vector,
+    Rectangle, Shadow, Size, Theme,
     advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
+        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, renderer,
+        svg::Renderer as _,
         widget::{Operation, Tree, operation, tree},
     },
     keyboard::{self, key},
     touch,
-    widget::{column, container, row, svg, text},
+    widget::{Space, column, container, row, svg, text},
 };
 
 use crate::icons::Icon;
@@ -66,29 +67,22 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
 impl<'a, T, Message> From<SelectorRow<'a, T, Message>> for Element<'a, Message>
 where
     T: Clone + PartialEq + ToString + 'a,
-    Message: Clone + 'a,
+    Message: 'a,
 {
     fn from(selector: SelectorRow<'a, T, Message>) -> Self {
-        let selected = selector.selected.and_then(|selected| {
-            selector
-                .options
-                .iter()
-                .position(|option| option == selected)
-        });
-        let labels: Vec<_> = selector
-            .options
-            .iter()
-            .map(|option| (selector.label)(option))
-            .collect();
+        let options = selector.options;
+        let selected = selector
+            .selected
+            .and_then(|selected| options.iter().position(|option| option == selected));
+        let labels: Vec<_> = options.iter().map(selector.label).collect();
         let value = selected
             .map(|index| labels[index].clone())
             .unwrap_or_else(|| selector.placeholder.to_owned());
-        let messages: Vec<_> = selector.on_selected.map_or_else(Vec::new, |on_selected| {
-            selector.options.iter().cloned().map(on_selected).collect()
+        let on_selected = selector.on_selected.map(|on_selected| {
+            Box::new(move |index: usize| on_selected(options[index].clone()))
+                as Box<dyn Fn(usize) -> Message>
         });
-        let children = [false, true]
-            .into_iter()
-            .map(|expanded| header(selector.title, &value, selector.icon, expanded))
+        let children = std::iter::once(header(selector.title, &value, selector.icon))
             .chain(labels.into_iter().map(|label| {
                 container(text(label).label())
                     .width(Fill)
@@ -99,7 +93,7 @@ where
 
         Element::new(Selector {
             children,
-            messages,
+            on_selected,
             selected,
         })
     }
@@ -109,7 +103,6 @@ fn header<'a, Message: 'a>(
     title: &'a str,
     value: &str,
     icon: Option<Icon>,
-    expanded: bool,
 ) -> Element<'a, Message> {
     let mut value_row = row![].spacing(12).align_y(Alignment::Center);
 
@@ -129,11 +122,7 @@ fn header<'a, Message: 'a>(
             column![text(title).label(), value_row]
                 .width(Fill)
                 .spacing(8),
-            svg(Icon::DownCaret.handle())
-                .width(20)
-                .height(20)
-                .content_fit(ContentFit::Contain)
-                .rotation(if expanded { std::f32::consts::PI } else { 0.0 }),
+            Space::new().width(20).height(20),
         ]
         .align_y(Alignment::Center)
         .spacing(16),
@@ -145,13 +134,17 @@ fn header<'a, Message: 'a>(
 
 struct Selector<'a, Message> {
     children: Vec<Element<'a, Message>>,
-    messages: Vec<Message>,
+    on_selected: Option<Box<dyn Fn(usize) -> Message + 'a>>,
     selected: Option<usize>,
 }
 
 impl<Message> Selector<'_, Message> {
+    fn option_count(&self) -> usize {
+        self.children.len().saturating_sub(1)
+    }
+
     fn is_enabled(&self) -> bool {
-        !self.messages.is_empty()
+        self.on_selected.is_some() && self.option_count() > 0
     }
 }
 
@@ -185,7 +178,7 @@ impl operation::Focusable for State {
     }
 }
 
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
+impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }
@@ -202,26 +195,22 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         tree.diff_children(&self.children);
         let state = tree.state.downcast_mut::<State>();
 
-        if self.messages.is_empty() {
+        let option_count = self.option_count();
+
+        if !self.is_enabled() {
             state.open = false;
             state.highlighted = None;
             state.hovered = None;
             state.pressed = None;
-        } else if state
-            .highlighted
-            .is_none_or(|index| index >= self.messages.len())
-        {
+        } else if state.highlighted.is_none_or(|index| index >= option_count) {
             state.highlighted = self.selected.or(Some(0));
         }
 
-        if state
-            .hovered
-            .is_some_and(|index| index >= self.messages.len())
-        {
+        if state.hovered.is_some_and(|index| index >= option_count) {
             state.hovered = None;
         }
 
-        if matches!(state.pressed, Some(Pressed::Option(index)) if index >= self.messages.len()) {
+        if matches!(state.pressed, Some(Pressed::Option(index)) if index >= option_count) {
             state.pressed = None;
         }
     }
@@ -238,25 +227,20 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
     ) -> layout::Node {
         let limits = limits.width(Length::Fill).height(Length::Shrink);
         let mut children = Vec::with_capacity(self.children.len());
-        let collapsed =
+        let header =
             self.children[0]
                 .as_widget_mut()
                 .layout(&mut tree.children[0], renderer, &limits);
-        let expanded =
-            self.children[1]
-                .as_widget_mut()
-                .layout(&mut tree.children[1], renderer, &limits);
-        let header_height = collapsed.size().height.max(expanded.size().height);
-        let width = collapsed.size().width.max(expanded.size().width);
-        children.push(collapsed);
-        children.push(expanded);
+        let header_height = header.size().height;
+        let width = header.size().width;
+        children.push(header);
 
         let open = tree.state.downcast_ref::<State>().open;
         let mut y = header_height + if open { 17.0 } else { 0.0 };
 
-        for (index, child) in self.children[2..].iter_mut().enumerate() {
+        for (index, child) in self.children[1..].iter_mut().enumerate() {
             let node = child.as_widget_mut().layout(
-                &mut tree.children[index + 2],
+                &mut tree.children[index + 1],
                 renderer,
                 &limits.shrink(Size::new(20.0, 0.0)),
             );
@@ -301,11 +285,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             return;
         }
 
-        let open = tree.state.downcast_ref::<State>().open;
         let mut children = layout.children();
-        let collapsed = children.next().expect("collapsed selector header");
-        let expanded = children.next().expect("expanded selector header");
-        let header = if open { expanded } else { collapsed };
+        let header = children.next().expect("selector header");
         let options: Vec<_> = children.collect();
         let state = tree.state.downcast_mut::<State>();
         let was_open = state.open;
@@ -335,13 +316,15 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
 
                 if pressed == target {
                     match target {
-                        Some(Pressed::Header) if !self.messages.is_empty() => {
+                        Some(Pressed::Header) => {
                             state.open = !state.open;
                             state.highlighted = self.selected.or(Some(0));
                             shell.capture_event();
                         }
                         Some(Pressed::Option(index)) => {
-                            shell.publish(self.messages[index].clone());
+                            if let Some(on_selected) = &self.on_selected {
+                                shell.publish(on_selected(index));
+                            }
                             state.open = false;
                             state.highlighted = Some(index);
                             shell.capture_event();
@@ -357,7 +340,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key, repeat: false, ..
             }) if state.focused => {
-                let last = self.messages.len().checked_sub(1);
+                let last = self.option_count().checked_sub(1);
 
                 match key.as_ref() {
                     keyboard::Key::Named(key::Named::ArrowDown) => {
@@ -404,10 +387,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                     keyboard::Key::Named(key::Named::Enter | key::Named::Space) => {
                         if state.open {
                             if let Some(index) = state.highlighted {
-                                shell.publish(self.messages[index].clone());
+                                if let Some(on_selected) = &self.on_selected {
+                                    shell.publish(on_selected(index));
+                                }
                                 state.open = false;
                             }
-                        } else if !self.messages.is_empty() {
+                        } else {
                             state.open = true;
                             state.highlighted = self.selected.or(Some(0));
                         }
@@ -450,9 +435,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
     ) -> mouse::Interaction {
         let state = tree.state.downcast_ref::<State>();
         let mut children = layout.children();
-        let collapsed = children.next().expect("collapsed selector header");
-        let expanded = children.next().expect("expanded selector header");
-        let header = if state.open { expanded } else { collapsed };
+        let header = children.next().expect("selector header");
         let options: Vec<_> = children.collect();
 
         if self.is_enabled() && hit_target(state.open, header, &options, cursor).is_some() {
@@ -491,12 +474,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         );
 
         let mut children = layout.children();
-        let collapsed = children.next().expect("collapsed selector header");
-        let expanded = children.next().expect("expanded selector header");
-        let header = if state.open { expanded } else { collapsed };
+        let header = children.next().expect("selector header");
         let options: Vec<_> = children.collect();
-        self.children[usize::from(state.open)].as_widget().draw(
-            &tree.children[usize::from(state.open)],
+        self.children[0].as_widget().draw(
+            &tree.children[0],
             renderer,
             theme,
             renderer_style,
@@ -504,6 +485,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             cursor,
             viewport,
         );
+        draw_caret(renderer, header, state.open);
 
         if state.open {
             let highlighted = options
@@ -542,8 +524,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                     );
                 }
 
-                self.children[index + 2].as_widget().draw(
-                    &tree.children[index + 2],
+                self.children[index + 1].as_widget().draw(
+                    &tree.children[index + 1],
                     renderer,
                     theme,
                     &renderer::Style {
@@ -572,23 +554,29 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             );
         }
     }
-
-    fn overlay<'a>(
-        &'a mut self,
-        _tree: &'a mut Tree,
-        _layout: Layout<'a>,
-        _renderer: &iced::Renderer,
-        _viewport: &Rectangle,
-        _translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        None
-    }
 }
 
-impl<'a, Message: Clone + 'a> From<Selector<'a, Message>> for Element<'a, Message> {
+impl<'a, Message: 'a> From<Selector<'a, Message>> for Element<'a, Message> {
     fn from(selector: Selector<'a, Message>) -> Self {
         Element::new(selector)
     }
+}
+
+fn draw_caret(renderer: &mut iced::Renderer, header: Layout<'_>, open: bool) {
+    let header = header.bounds();
+    renderer.draw_svg(
+        iced::advanced::svg::Svg {
+            handle: Icon::DownCaret.handle(),
+            color: None,
+            rotation: (if open { std::f32::consts::PI } else { 0.0 }).into(),
+            opacity: 1.0,
+        },
+        Rectangle::new(
+            Point::new(header.x + header.width - 44.0, header.center_y() - 10.0),
+            Size::new(20.0, 20.0),
+        ),
+        header,
+    );
 }
 
 fn hit_target(
