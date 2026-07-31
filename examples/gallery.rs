@@ -6,7 +6,7 @@ use next_ui::components::{
     action_row, button, card, cycle_row, expander_row,
     heading::{self, Level},
     info_panel::{self, Kind},
-    info_row, picker_row, popover,
+    info_row, picker_row, popover, row_group,
     search::{self, Action as SearchAction},
     selector_row, status_bar, switcher_row, tab, tabs, text_row, title,
 };
@@ -48,6 +48,8 @@ struct Gallery {
     selected_popover: usize,
     selected_tab: usize,
     switched_on: bool,
+    group_switched_on: bool,
+    group_expanded: bool,
     status_expanded: bool,
     value: usize,
 }
@@ -63,6 +65,8 @@ impl Default for Gallery {
             selected_popover: 2,
             selected_tab: 0,
             switched_on: false,
+            group_switched_on: false,
+            group_expanded: true,
             status_expanded: false,
             value: 1,
         }
@@ -80,6 +84,8 @@ enum Message {
     PopoverSelected(usize),
     TabSelected(usize),
     Switched(bool),
+    GroupSwitched(bool),
+    GroupToggled,
     StatusToggled,
     Previous,
     Next,
@@ -103,6 +109,8 @@ impl Gallery {
             Message::PopoverSelected(index) => self.selected_popover = index,
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
+            Message::GroupSwitched(value) => self.group_switched_on = value,
+            Message::GroupToggled => self.group_expanded = !self.group_expanded,
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
                 self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
@@ -140,25 +148,6 @@ impl Gallery {
                 .icon(icons::play())
                 .circular()
                 .on_press(Message::Noop),
-        ]
-        .spacing(12);
-
-        let bottles = column![
-            action_row::ActionRow::new()
-                .title("Gaming bottle")
-                .description("Gaming")
-                .icon(icons::get("controller"))
-                .on_press(Message::Noop),
-            action_row::ActionRow::new()
-                .title("Development bottle")
-                .description("Software")
-                .icon(icons::get("hollow-gear"))
-                .on_press(Message::Noop),
-            action_row::ActionRow::new()
-                .title("Custom bottle")
-                .description("Custom")
-                .icon(icons::get("custom"))
-                .progress(50),
         ]
         .spacing(12);
 
@@ -293,22 +282,82 @@ impl Gallery {
                 )
                 .expanded(self.expander_expanded)
                 .content(
-                    row![
-                        action_row::ActionRow::new()
-                            .title("Quality")
-                            .description("Balanced")
-                            .on_press(Message::Noop),
-                        cycle_row::CycleRow::new()
-                            .title("Sharpening")
-                            .value("5")
-                            .on_previous(Message::Previous)
-                            .on_next(Message::Next),
-                    ]
-                    .spacing(18),
+                    row_group::RowGroup::new()
+                        .columns(2)
+                        .add(
+                            action_row::ActionRow::new()
+                                .title("Quality")
+                                .description("Balanced")
+                                .on_press(Message::Noop),
+                        )
+                        .add(
+                            cycle_row::CycleRow::new()
+                                .title("Sharpening")
+                                .value("5")
+                                .on_previous(Message::Previous)
+                                .on_next(Message::Next),
+                        ),
                 )
                 .content_enabled(self.switched_on),
         ]
         .spacing(32);
+
+        let row_group = row_group::RowGroup::new()
+            .title("Graphics")
+            .description("Rows wrap according to the configured column count.")
+            .columns(2)
+            .add(
+                switcher_row::SwitcherRow::new(self.switched_on, Message::Switched)
+                    .title("DLSS")
+                    .description("Deep Learning Super Sampling"),
+            )
+            .add(
+                picker_row::PickerRow::new()
+                    .title("Shader directory")
+                    .description("Choose the location")
+                    .on_press(Message::Noop),
+            )
+            .add(
+                action_row::ActionRow::new()
+                    .title("Discrete GPU")
+                    .description("Configure graphics adapter")
+                    .on_press(Message::Noop),
+            )
+            .add(
+                expander_row::ExpanderRow::new(Message::GroupToggled)
+                    .header(
+                        switcher_row::SwitcherRow::new(
+                            self.group_switched_on,
+                            Message::GroupSwitched,
+                        )
+                        .title("FSR")
+                        .description("FidelityFX Super Resolution"),
+                    )
+                    .expanded(self.group_expanded)
+                    .content(
+                        row_group::RowGroup::new()
+                            .columns(2)
+                            .add(
+                                selector_row::SelectorRow::new(
+                                    SELECTOR_OPTIONS,
+                                    Message::OptionSelected,
+                                    Message::SelectorToggled,
+                                )
+                                .title("Quality")
+                                .placeholder("Balanced")
+                                .selected(selected)
+                                .expanded(self.selector_expanded),
+                            )
+                            .add(
+                                cycle_row::CycleRow::new()
+                                    .title("Sharpening")
+                                    .value(DLSS_LEVELS[self.value])
+                                    .on_previous(Message::Previous)
+                                    .on_next(Message::Next),
+                            ),
+                    )
+                    .content_enabled(self.group_switched_on),
+            );
 
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", Message::Noop)
@@ -326,12 +375,12 @@ impl Gallery {
                 section("Headings", headings),
                 section("Title", titles),
                 section("Buttons", buttons),
-                section("Bottle entry", bottles),
                 section("Cards", cards),
                 section("Information panels", panels),
                 section("Navigation and selection", navigation),
                 section("Search", search),
-                section("Text fields", fields),
+                section("Rows", fields),
+                section("Row group", row_group),
                 section("Status bar", status),
             ]
             .spacing(24)
