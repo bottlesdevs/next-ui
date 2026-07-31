@@ -188,6 +188,7 @@ struct Surface<'a, Message> {
     raised: bool,
     hover_tone: HoverTone,
     enabled: bool,
+    hovered: Option<bool>, // This is how iced tracks state for it's own widgets too
 }
 
 impl<'a, Message> Surface<'a, Message> {
@@ -198,6 +199,7 @@ impl<'a, Message> Surface<'a, Message> {
             raised: false,
             hover_tone: HoverTone::Default,
             enabled: true,
+            hovered: None,
         }
     }
 
@@ -286,6 +288,17 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
                 viewport,
             );
         }
+
+        let hovered = self.background && self.enabled && cursor.is_over(layout.bounds());
+
+        if matches!(
+            event,
+            Event::Window(iced::window::Event::RedrawRequested(_))
+        ) {
+            self.hovered = Some(hovered);
+        } else if self.hovered.is_some_and(|previous| previous != hovered) {
+            shell.request_redraw();
+        }
     }
 
     fn mouse_interaction(
@@ -320,6 +333,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
+        let hovered = self
+            .hovered
+            .unwrap_or(self.enabled && cursor.is_over(bounds));
 
         if self.background {
             renderer.fill_quad(
@@ -329,12 +345,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
                     shadow: Shadow::default(),
                     snap: true,
                 },
-                Background::Color(surface_color(
-                    theme,
-                    self.raised,
-                    self.enabled && cursor.is_over(bounds),
-                    self.hover_tone,
-                )),
+                Background::Color(surface_color(theme, self.raised, hovered, self.hover_tone)),
             );
         }
 

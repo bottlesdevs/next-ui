@@ -24,16 +24,15 @@ fn surface_style(colors: Pair) -> container::Style {
 }
 
 pub fn action(theme: &Theme, status: button::Status) -> button::Style {
-    let colors = theme.extended_palette();
-    let colors = match status {
-        button::Status::Hovered => colors.background.strong,
-        button::Status::Pressed => colors.background.stronger,
-        _ => colors.background.weak,
+    let background = match status {
+        button::Status::Hovered => Some(crate::theme::ROW_HOVER_STRONG),
+        button::Status::Pressed => Some(theme.extended_palette().background.stronger.color),
+        _ => None,
     };
 
     button::Style {
-        background: Some(Background::Color(colors.color)),
-        text_color: colors.text,
+        background: background.map(Background::Color),
+        text_color: theme.palette().text,
         border: Border::default().rounded(8),
         ..button::Style::default()
     }
