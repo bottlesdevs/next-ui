@@ -6,20 +6,19 @@ use next_ui::components::text::TextExt as _;
 use next_ui::components::{
     action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
-    info_row, picker_row, program_card, row_group,
-    search::{self, Action as SearchAction},
-    selector_row, status_bar, switcher_row, tabs, text_row, title,
+    info_row, picker_row, program_card, row_group, search, selector_row, status_bar, switcher_row,
+    tabs, text_row, title,
 };
 use next_ui::{icons::Icon, theme};
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
-const SEARCH_CATALOG: &[(&str, SearchAction)] = &[
-    ("Epic Games Store", SearchAction::Install),
-    ("Epic Fight", SearchAction::Run),
-    ("GOG Galaxy", SearchAction::Install),
-    ("Steam", SearchAction::Run),
+const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
+    ("Epic Games Store", "Install", Icon::Arrow),
+    ("Epic Fight", "Run", Icon::Play),
+    ("GOG Galaxy", "Install", Icon::Arrow),
+    ("Steam", "Run", Icon::Play),
 ];
 const LOG: &str = "11:42:12 (INFO) Doing runner update for bottle: games\n\
 11:42:12 (INFO) Setting Key Runner=caffe-8.18\n\
@@ -186,13 +185,6 @@ impl Gallery {
             Message::TabSelected,
         );
 
-        let query = self.search.trim().to_lowercase();
-        let search_results = SEARCH_CATALOG
-            .iter()
-            .filter(|item| item.0.to_lowercase().contains(&query))
-            .map(|(title, action)| {
-                search::SearchResultRow::new(*title, Message::Noop).action(*action)
-            });
         let search = column![
             search::Search::new(
                 "Search for software and games…",
@@ -204,7 +196,7 @@ impl Gallery {
                 &self.search,
                 Message::SearchChanged,
             )
-            .results(search_results)
+            .state(self.search_state())
             .footer("Not listed, install manually", Message::Noop),
         ]
         .spacing(16);
@@ -334,6 +326,7 @@ impl Gallery {
                     &self.search,
                     Message::SearchChanged,
                 )
+                .state(self.search_state())
                 .padding_y(8),
             )
             .width(370),
@@ -376,6 +369,31 @@ impl Gallery {
             .style(theme::window)
             .clip(true)
             .into()
+    }
+
+    fn search_state(&self) -> search::SearchState<'_, Message> {
+        let query = self.search.trim().to_lowercase();
+
+        if query.is_empty() {
+            return search::SearchState::Hidden;
+        }
+
+        let results: Vec<_> = SEARCH_CATALOG
+            .iter()
+            .filter(|(title, _, _)| title.to_lowercase().contains(&query))
+            .map(|(title, action, action_icon)| {
+                search::SearchResult::new(*title, *title, Message::Noop)
+                    .subtitle("Catalog result")
+                    .icon(Icon::Bottles)
+                    .action(action, *action_icon, Message::Noop)
+            })
+            .collect();
+
+        if results.is_empty() {
+            search::SearchState::Empty
+        } else {
+            search::SearchState::Results(results)
+        }
     }
 }
 
