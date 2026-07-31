@@ -653,11 +653,11 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             &self.viewport,
         );
 
-        if let Some((footer, tree)) = self.footer.as_mut() {
+        if let Some(((footer, tree), footer_layout)) = self.footer.as_mut().zip(children.next()) {
             footer.as_widget_mut().update(
                 tree,
                 event,
-                children.next().expect("search panel footer layout"),
+                footer_layout,
                 cursor,
                 renderer,
                 clipboard,
@@ -682,15 +682,18 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             renderer,
         );
 
-        self.footer.as_ref().map_or(body, |(footer, tree)| {
-            body.max(footer.as_widget().mouse_interaction(
-                tree,
-                children.next().expect("search panel footer layout"),
-                cursor,
-                &self.viewport,
-                renderer,
-            ))
-        })
+        self.footer
+            .as_ref()
+            .zip(children.next())
+            .map_or(body, |((footer, tree), footer_layout)| {
+                body.max(footer.as_widget().mouse_interaction(
+                    tree,
+                    footer_layout,
+                    cursor,
+                    &self.viewport,
+                    renderer,
+                ))
+            })
     }
 
     fn draw(
@@ -722,13 +725,13 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             &self.viewport,
         );
 
-        if let Some((footer, tree)) = &self.footer {
+        if let Some(((footer, tree), footer_layout)) = self.footer.as_ref().zip(children.next()) {
             footer.as_widget().draw(
                 tree,
                 renderer,
                 theme,
                 style,
-                children.next().expect("search panel footer layout"),
+                footer_layout,
                 cursor,
                 &self.viewport,
             );
@@ -741,9 +744,9 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        let mut children = layout.children();
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
+            let mut children = layout.children();
             self.body.as_widget_mut().operate(
                 self.body_tree,
                 children.next().expect("search panel body layout"),
@@ -751,13 +754,11 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
                 operation,
             );
 
-            if let Some((footer, tree)) = self.footer.as_mut() {
-                footer.as_widget_mut().operate(
-                    tree,
-                    children.next().expect("search panel footer layout"),
-                    renderer,
-                    operation,
-                );
+            if let Some(((footer, tree), footer_layout)) = self.footer.as_mut().zip(children.next())
+            {
+                footer
+                    .as_widget_mut()
+                    .operate(tree, footer_layout, renderer, operation);
             }
         });
     }
