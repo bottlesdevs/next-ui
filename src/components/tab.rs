@@ -3,7 +3,7 @@ use iced::{
     widget::{button, column, rule, text},
 };
 
-use super::style;
+use super::{style, text::TextExt as _};
 
 pub struct Tab<'a, Message> {
     label: &'a str,
@@ -36,7 +36,7 @@ impl<'a, Message: Clone + 'a> From<Tab<'a, Message>> for Element<'a, Message> {
 
         button(
             column![
-                text(label).size(18),
+                text(label).label(),
                 rule::horizontal(3).style(move |theme: &iced::Theme| rule::Style {
                     color: if selected {
                         theme.palette().primary

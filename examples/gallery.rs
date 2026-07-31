@@ -2,9 +2,9 @@ use iced::{
     Element, Fill, Task, Theme,
     widget::{Space, column, image, row, scrollable, text},
 };
+use next_ui::components::text::TextExt as _;
 use next_ui::components::{
     action_row, artwork_card, button, card, cycle_row, expander_row,
-    heading::{self, Level},
     info_card::{self, Kind},
     info_row, picker_row, program_card, row_group,
     search::{self, Action as SearchAction},
@@ -119,11 +119,11 @@ impl Gallery {
 
     fn view(&self) -> Element<'_, Message> {
         let headings = column![
-            heading::Heading::new(Level::H1, "Heading 1"),
-            heading::Heading::new(Level::H2, "Heading 2"),
-            heading::Heading::new(Level::H3, "Heading 3"),
-            heading::Heading::new(Level::H4, "Heading 4"),
-            heading::Heading::new(Level::H5, "Heading 5"),
+            text("Heading 1").h1(),
+            text("Heading 2").h2(),
+            text("Heading 3").h3(),
+            text("Heading 4").h4(),
+            text("Heading 5").h5(),
         ]
         .spacing(8);
 
@@ -150,13 +150,9 @@ impl Gallery {
             row![
                 card::Card::new(
                     column![
-                        text("Text card").size(28),
-                        text("Subtitle")
-                            .size(22)
-                            .style(next_ui::components::style::muted_text),
-                        text("Cards accept arbitrary content.")
-                            .size(20)
-                            .style(next_ui::components::style::muted_text),
+                        text("Text card").title(),
+                        text("Subtitle").subtitle().muted(),
+                        text("Cards accept arbitrary content.").body().muted(),
                     ]
                     .spacing(8),
                 )
@@ -395,7 +391,7 @@ impl Gallery {
 }
 
 fn section<'a>(label: &'a str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    column![text(label).size(28), content.into()]
+    column![text(label).title(), content.into()]
         .spacing(12)
         .into()
 }

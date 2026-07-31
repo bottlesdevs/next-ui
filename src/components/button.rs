@@ -4,6 +4,8 @@ use iced::{
     widget::{Row, Space, button as iced_button, container, svg, text},
 };
 
+use super::text::TextExt as _;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum Shape {
     #[default]
@@ -98,7 +100,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 content = content.push(icon_element(icon, button.tone));
             }
 
-            content.push(text(button.label).size(18)).into()
+            content.push(text(button.label).label()).into()
         };
         let shape = button.shape;
         let tone = button.tone;

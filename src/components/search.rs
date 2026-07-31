@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons;
 
-use super::button::Button;
+use super::{button::Button, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -45,7 +45,7 @@ impl<'a, Message> SearchResultRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<SearchResultRow<'a, Message>> for Element<'a, Message> {
     fn from(result: SearchResultRow<'a, Message>) -> Self {
-        let mut content = row![text(result.title).size(22)]
+        let mut content = row![text(result.title).subtitle()]
             .spacing(16)
             .align_y(Center);
 
@@ -214,7 +214,7 @@ fn action<'a, Message: Clone + 'a>(action: Action) -> Element<'a, Message> {
     match action {
         Action::Install => button(
             row![
-                text(action.label()).size(18),
+                text(action.label()).label(),
                 icons::rotated("arrow", std::f32::consts::PI),
             ]
             .spacing(8)

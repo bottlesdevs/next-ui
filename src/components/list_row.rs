@@ -8,6 +8,8 @@ use iced::{
     widget::{Row as IcedRow, button, column, container, mouse_area, text},
 };
 
+use super::text::TextExt as _;
+
 pub struct ListRow<'a, Message> {
     body: Element<'a, Message>,
     leading: Vec<Element<'a, Message>>,
@@ -34,14 +36,9 @@ pub(crate) fn labels<'a, Message: 'a>(
     title: &'a str,
     description: &'a str,
 ) -> Element<'a, Message> {
-    column![
-        text(title).size(18).style(text::base),
-        text(description)
-            .size(16)
-            .style(crate::components::style::muted_text),
-    ]
-    .spacing(4)
-    .into()
+    column![text(title).label(), text(description).detail().muted(),]
+        .spacing(4)
+        .into()
 }
 
 impl<'a, Message> ListRow<'a, Message> {

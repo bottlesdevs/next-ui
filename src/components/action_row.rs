@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons;
 
-use super::{list_row::ListRow, style};
+use super::{list_row::ListRow, text::TextExt as _};
 
 pub struct ActionRow<'a, Message> {
     title: &'a str,
@@ -73,10 +73,9 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
             );
         }
 
-        description = description.push(text(action.description).size(16).style(style::muted_text));
+        description = description.push(text(action.description).detail().muted());
 
-        let labels =
-            column![text(action.title).size(18).style(text::base), description,].spacing(4);
+        let labels = column![text(action.title).label(), description,].spacing(4);
 
         let trailing: Element<'a, Message> = match action.progress {
             Some(progress) => progress_indicator(progress),
@@ -107,11 +106,7 @@ stroke-dasharray="{filled} {circumference}" transform="rotate(-90 40 40)"/>
             .width(40)
             .height(40),
         container(
-            column![
-                text(progress).size(14).style(text::base),
-                text("%").size(14).style(text::base),
-            ]
-            .align_x(Alignment::Center),
+            column![text(progress).caption(), text("%").caption(),].align_x(Alignment::Center),
         )
         .center(40),
     ]

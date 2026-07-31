@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons;
 
-use super::{list_row::ListRow, style};
+use super::{list_row::ListRow, style, text::TextExt as _};
 
 pub struct CycleRow<'a, Message> {
     title: &'a str,
@@ -66,8 +66,8 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
             .on_press_maybe(cycle.next);
 
         let labels = column![
-            text(cycle.title).size(18).style(text::base),
-            text(cycle.value).size(16).style(style::muted_text),
+            text(cycle.title).label(),
+            text(cycle.value).detail().muted(),
         ]
         .width(Fill)
         .align_x(Alignment::Center)

@@ -3,7 +3,7 @@ use iced::{
     widget::{Column, button, column, container, row, rule, svg, text},
 };
 
-use super::{list_row::ListRow, style};
+use super::{list_row::ListRow, text::TextExt as _};
 
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
@@ -88,9 +88,9 @@ where
             value_row = value_row.push(icon_view(icon));
         }
 
-        value_row = value_row.push(text(value).size(16).style(style::muted_text));
+        value_row = value_row.push(text(value).detail().muted());
 
-        let body = column![text(selector.title).size(18), value_row]
+        let body = column![text(selector.title).label(), value_row]
             .width(Fill)
             .spacing(8);
         let caret = svg(crate::icons::get("down_caret"))
@@ -111,7 +111,7 @@ where
             let rows = selector.options.iter().map(move |option| {
                 let is_selected = selected == Some(option);
 
-                button(text(option.to_string()).size(18))
+                button(text(option.to_string()).label())
                     .width(Fill)
                     .padding([10, 9])
                     .on_press(on_selected(option.clone()))

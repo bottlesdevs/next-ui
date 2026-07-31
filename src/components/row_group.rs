@@ -6,7 +6,7 @@ use iced::{
 use super::{
     expander_row::{ExpanderParts, ExpanderRow},
     list_row::ListRow,
-    style,
+    text::TextExt as _,
 };
 
 const HEADER_HEIGHT: f32 = 84.0;
@@ -124,11 +124,11 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
             let mut heading = column![].spacing(4);
 
             if let Some(title) = group.title {
-                heading = heading.push(text(title).size(22));
+                heading = heading.push(text(title).subtitle());
             }
 
             if let Some(description) = group.description {
-                heading = heading.push(text(description).size(16).style(style::muted_text));
+                heading = heading.push(text(description).detail().muted());
             }
 
             content = content.push(heading);

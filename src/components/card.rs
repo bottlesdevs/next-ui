@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, container, image, stack, text},
 };
 
-use super::style;
+use super::{style, text::TextExt as _};
 
 pub(crate) const BANNER_HEIGHT: f32 = 180.0;
 
@@ -45,12 +45,9 @@ impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
 }
 
 pub(crate) fn labels<'a, Message: 'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Message> {
-    column![
-        text(title).size(28).style(text::base),
-        text(subtitle).size(22).style(style::muted_text),
-    ]
-    .spacing(4)
-    .into()
+    column![text(title).title(), text(subtitle).subtitle().muted(),]
+        .spacing(4)
+        .into()
 }
 
 pub(crate) fn image_content<'a, Message: 'a>(

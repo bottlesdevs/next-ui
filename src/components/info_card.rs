@@ -6,7 +6,7 @@ use iced::{
 
 use crate::{icons, theme};
 
-use super::card::Card;
+use super::{card::Card, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -35,10 +35,10 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
 
         Card::new(
             column![
-                row![icon(kind), text(title).size(28),]
+                row![icon(kind), text(title).title(),]
                     .spacing(14)
                     .align_y(Center),
-                text(body).size(20),
+                text(body).body(),
             ]
             .spacing(18),
         )

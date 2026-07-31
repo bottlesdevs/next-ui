@@ -6,7 +6,7 @@ use iced::{
 
 use crate::icons;
 
-use super::style;
+use super::{style, text::TextExt as _};
 
 pub struct StatusBar<'a, Message> {
     architecture: &'a str,
@@ -56,24 +56,18 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
             toggle,
         } = status;
         let header = row![
-            row![
-                icons::view("chip"),
-                text(architecture).size(24).style(style::muted_text),
-            ]
-            .spacing(12)
-            .align_y(Vertical::Center),
-            row![
-                icons::view("run"),
-                text(runner).size(24).style(style::muted_text),
-            ]
-            .spacing(12)
-            .align_y(Vertical::Center),
+            row![icons::view("chip"), text(architecture).supporting().muted(),]
+                .spacing(12)
+                .align_y(Vertical::Center),
+            row![icons::view("run"), text(runner).supporting().muted(),]
+                .spacing(12)
+                .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
                 icons::view(if is_running { "lightning" } else { "power" }),
                 text(if is_running { "Running" } else { "Stopped" })
-                    .size(24)
-                    .style(style::muted_text),
+                    .supporting()
+                    .muted(),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
@@ -90,7 +84,7 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
 
         if expanded {
             content = content.push(
-                container(text(log).size(24).style(text::base))
+                container(text(log).supporting())
                     .padding([16, 22])
                     .width(Fill)
                     .style(|_| container::background(crate::theme::HINT)),
