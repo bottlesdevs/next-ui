@@ -157,7 +157,7 @@ pub(crate) fn group_line<'a, Message: Clone + 'a>(
             expanded.push((index, content));
         }
 
-        headers.push(Element::from(entry.row.enabled(enabled)));
+        headers.push(Element::from(entry.row.parent_enabled(enabled)));
     }
 
     let header_count = headers.len();
@@ -170,6 +170,24 @@ pub(crate) fn group_line<'a, Message: Clone + 'a>(
         expanded_headers,
         columns: columns.max(1),
     })
+}
+
+pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
+    parts: ExpanderParts<'a, Message>,
+) -> Element<'a, Message> {
+    let expansion = Expansion {
+        expanded: parts.expanded,
+        content: parts.content,
+    };
+
+    group_line(
+        vec![RowGroupEntry {
+            row: parts.header,
+            expansion: Some(expansion),
+        }],
+        1,
+        true,
+    )
 }
 
 struct GroupLine<'a, Message> {
@@ -434,13 +452,11 @@ mod tests {
             .columns(3)
             .add(SwitcherRow::new("Switch", false, |_| ()))
             .add(
-                ExpanderRow::new(())
-                    .expanded(true)
+                ExpanderRow::new("First expander", true, ())
                     .add(ActionRow::new("First", ActionRowState::Ready(()))),
             )
             .add(
-                ExpanderRow::new(())
-                    .expanded(true)
+                ExpanderRow::new("Second expander", true, ())
                     .add(ActionRow::new("Second", ActionRowState::Ready(()))),
             );
 

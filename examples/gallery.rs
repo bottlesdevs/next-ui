@@ -247,26 +247,26 @@ impl Gallery {
             picker_row::PickerRow::new("Title")
                 .description("Choose the location")
                 .on_press(Message::Noop),
-            expander_row::ExpanderRow::new(Message::ExpanderToggled)
-                .header(
-                    switcher_row::SwitcherRow::new("FSR", self.switched_on, Message::Switched)
-                        .description("FidelityFX Super Resolution"),
+            expander_row::ExpanderRow::with_header(
+                switcher_row::SwitcherRow::new("FSR", self.switched_on, Message::Switched)
+                    .description("FidelityFX Super Resolution"),
+                self.expander_expanded,
+                Message::ExpanderToggled,
+            )
+            .columns(2)
+            .add(
+                action_row::ActionRow::new(
+                    "Quality",
+                    action_row::ActionRowState::Ready(Message::Noop),
                 )
-                .expanded(self.expander_expanded)
-                .columns(2)
-                .add(
-                    action_row::ActionRow::new(
-                        "Quality",
-                        action_row::ActionRowState::Ready(Message::Noop),
-                    )
-                    .description("Balanced"),
-                )
-                .add(
-                    cycle_row::CycleRow::new("Sharpening", "5")
-                        .on_previous(Message::Previous)
-                        .on_next(Message::Next),
-                )
-                .content_enabled(self.switched_on),
+                .description("Balanced"),
+            )
+            .add(
+                cycle_row::CycleRow::new("Sharpening", "5")
+                    .on_previous(Message::Previous)
+                    .on_next(Message::Next),
+            )
+            .content_enabled(self.switched_on),
         ]
         .spacing(32);
 
@@ -291,30 +291,30 @@ impl Gallery {
                 .description("Configure graphics adapter"),
             )
             .add(
-                expander_row::ExpanderRow::new(Message::GroupToggled)
-                    .header(
-                        switcher_row::SwitcherRow::new(
-                            "FSR",
-                            self.group_switched_on,
-                            Message::GroupSwitched,
-                        )
-                        .description("FidelityFX Super Resolution"),
+                expander_row::ExpanderRow::with_header(
+                    switcher_row::SwitcherRow::new(
+                        "FSR",
+                        self.group_switched_on,
+                        Message::GroupSwitched,
                     )
-                    .expanded(self.group_expanded)
-                    .columns(2)
-                    .add(
-                        action_row::ActionRow::new(
-                            "Quality",
-                            action_row::ActionRowState::Ready(Message::Noop),
-                        )
-                        .description("Balanced"),
+                    .description("FidelityFX Super Resolution"),
+                    self.group_expanded,
+                    Message::GroupToggled,
+                )
+                .columns(2)
+                .add(
+                    action_row::ActionRow::new(
+                        "Quality",
+                        action_row::ActionRowState::Ready(Message::Noop),
                     )
-                    .add(
-                        cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
-                            .on_previous(Message::Previous)
-                            .on_next(Message::Next),
-                    )
-                    .content_enabled(self.group_switched_on),
+                    .description("Balanced"),
+                )
+                .add(
+                    cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
+                        .on_previous(Message::Previous)
+                        .on_next(Message::Next),
+                )
+                .content_enabled(self.group_switched_on),
             );
 
         let status = column![

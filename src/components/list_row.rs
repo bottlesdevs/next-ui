@@ -88,6 +88,11 @@ impl<'a, Message> ListRow<'a, Message> {
         self
     }
 
+    pub(crate) fn parent_enabled(mut self, enabled: bool) -> Self {
+        self.enabled &= enabled;
+        self
+    }
+
     pub fn on_press(mut self, message: Message) -> Self {
         self.on_press = Some(message);
         self
