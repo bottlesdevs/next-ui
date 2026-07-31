@@ -176,7 +176,16 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
 
         let child_captured = shell.is_event_captured();
         let enabled = self.on_press.is_some();
-        let hovered = enabled && cursor.is_over(layout.bounds());
+        let pointer = match event {
+            Event::Touch(
+                touch::Event::FingerPressed { position, .. }
+                | touch::Event::FingerMoved { position, .. }
+                | touch::Event::FingerLifted { position, .. }
+                | touch::Event::FingerLost { position, .. },
+            ) => mouse::Cursor::Available(*position),
+            _ => cursor,
+        };
+        let hovered = enabled && pointer.is_over(layout.bounds());
         let state = tree.state.downcast_mut::<State>();
 
         if !child_captured {
