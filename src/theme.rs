@@ -1,5 +1,5 @@
 use iced::{
-    Color, Theme,
+    Background, Border, Color, Theme,
     theme::{
         Palette,
         palette::{
@@ -7,12 +7,15 @@ use iced::{
             Warning,
         },
     },
+    widget::container,
 };
 
 pub const BACKGROUND: Color = Color::from_rgb8(58, 50, 53);
-pub const HINT: Color = Color::from_rgb8(41, 34, 37);
+pub const WINDOW: Color = Color::from_rgb8(41, 34, 37);
+pub const WINDOW_BORDER: Color = Color::from_rgb8(54, 44, 49);
+pub const HINT: Color = WINDOW;
 pub const DEEP_BACKGROUND: Color = Color::from_rgb8(27, 25, 26);
-pub const SURFACE_DEEP: Color = Color::from_rgb8(54, 44, 49);
+pub const SURFACE_DEEP: Color = WINDOW_BORDER;
 pub const PANEL: Color = BACKGROUND;
 pub const SURFACE: Color = Color::from_rgb8(65, 57, 60);
 pub const BORDER: Color = Color::from_rgb8(76, 66, 70);
@@ -81,6 +84,21 @@ pub fn theme() -> Theme {
         },
         is_dark: true,
     })
+}
+
+pub fn window(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(WINDOW)),
+        border: Border::default().color(WINDOW_BORDER).width(1),
+        ..container::Style::default()
+    }
+}
+
+pub fn panel(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(PANEL)),
+        ..container::Style::default()
+    }
 }
 
 pub const fn info() -> Pair {

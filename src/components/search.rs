@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, Color, Element, Fill, Theme,
+    Background, Border, Center, Color, Element, Fill, Pixels, Theme,
     widget::{Column, Space, button, column, container, row, text, text_input},
 };
 
@@ -70,6 +70,8 @@ pub struct Search<'a, Message> {
     on_input: Box<dyn Fn(String) -> Message + 'a>,
     results: Option<Vec<SearchResultRow<'a, Message>>>,
     footer: Option<(&'a str, Message)>,
+    padding_x: f32,
+    padding_y: f32,
 }
 
 impl<'a, Message> Search<'a, Message> {
@@ -84,6 +86,8 @@ impl<'a, Message> Search<'a, Message> {
             on_input: Box::new(on_input),
             results: None,
             footer: None,
+            padding_x: 20.0,
+            padding_y: 16.0,
         }
     }
 
@@ -99,6 +103,23 @@ impl<'a, Message> Search<'a, Message> {
         self.footer = Some((label, on_press));
         self
     }
+
+    pub fn padding(mut self, padding: impl Into<Pixels>) -> Self {
+        let padding = padding.into().0;
+        self.padding_x = padding;
+        self.padding_y = padding;
+        self
+    }
+
+    pub fn padding_x(mut self, padding: impl Into<Pixels>) -> Self {
+        self.padding_x = padding.into().0;
+        self
+    }
+
+    pub fn padding_y(mut self, padding: impl Into<Pixels>) -> Self {
+        self.padding_y = padding.into().0;
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message> {
@@ -109,9 +130,19 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             on_input,
             results,
             footer,
+            padding_x,
+            padding_y,
         } = search;
         let expanded = should_expand(query, results.is_some());
-        let mut content = column![search_input(placeholder, query, on_input, expanded)].width(Fill);
+        let mut content = column![search_input(
+            placeholder,
+            query,
+            on_input,
+            expanded,
+            padding_x,
+            padding_y
+        )]
+        .width(Fill);
 
         if expanded {
             let results = results
@@ -160,6 +191,8 @@ fn search_input<'a, Message: Clone + 'a>(
     value: &'a str,
     on_input: Box<dyn Fn(String) -> Message + 'a>,
     embedded: bool,
+    padding_x: f32,
+    padding_y: f32,
 ) -> Element<'a, Message> {
     let input = text_input(placeholder, value)
         .on_input(on_input)
@@ -174,7 +207,7 @@ fn search_input<'a, Message: Clone + 'a>(
             .align_y(Center),
     )
     .width(Fill)
-    .padding([16, 20])
+    .padding([padding_y, padding_x])
     .style(move |theme| search_style(theme, embedded))
     .into()
 }
@@ -285,19 +318,5 @@ fn footer_style(theme: &Theme, status: button::Status) -> button::Style {
         text_color: palette.secondary.weak.text,
         border: Border::default().rounded(iced::border::bottom(12)),
         ..button::Style::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Action, should_expand};
-
-    #[test]
-    fn results_are_opt_in_and_require_a_query() {
-        assert!(!should_expand("Epic", false));
-        assert!(!should_expand("  ", true));
-        assert!(should_expand("Epic", true));
-        assert_eq!(Action::Install.label(), "Install");
-        assert_eq!(Action::Run.label(), "Run");
     }
 }

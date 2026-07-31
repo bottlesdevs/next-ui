@@ -6,6 +6,7 @@ pub mod button;
 pub mod card;
 pub mod cycle_row;
 pub mod expander_row;
+pub mod header_bar;
 pub mod info_card;
 pub mod info_row;
 pub mod list_row;

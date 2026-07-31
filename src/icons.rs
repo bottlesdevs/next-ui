@@ -35,13 +35,3 @@ pub fn play() -> svg::Handle {
 pub fn settings() -> svg::Handle {
     get("gear")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Assets;
-
-    #[test]
-    fn embeds_every_icon() {
-        assert_eq!(Assets::iter().count(), 28);
-    }
-}

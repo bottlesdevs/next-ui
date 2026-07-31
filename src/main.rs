@@ -1,8 +1,8 @@
 use iced::{
     Element, Fill, Task, Theme,
-    widget::{Space, button, column, container, mouse_area, row},
-    window,
+    widget::{column, container, text},
 };
+use next_ui::components::{header_bar, text::TextExt as _};
 
 fn main() -> iced::Result {
     iced::application(|| (), update, view)
@@ -20,25 +20,26 @@ fn theme(_: &()) -> Theme {
 
 #[derive(Debug, Clone)]
 enum Message {
-    Drag,
-    Close,
+    HeaderBar(header_bar::Action),
 }
 
 fn update(_: &mut (), message: Message) -> Task<Message> {
     match message {
-        Message::Drag => window::latest().and_then(window::drag),
-        Message::Close => iced::exit(),
+        Message::HeaderBar(action) => action.task(),
     }
 }
 
 fn view(_: &()) -> Element<'_, Message> {
-    let title_bar = mouse_area(row![
-        Space::new().width(Fill),
-        button("×").style(button::text).on_press(Message::Close),
-    ])
-    .on_press(Message::Drag);
+    let header = header_bar::HeaderBar::new(Message::HeaderBar).start(text("Bottles Next").title());
+    let panel = container("")
+        .width(Fill)
+        .height(Fill)
+        .style(next_ui::theme::panel);
 
-    column![title_bar, container("").width(Fill).height(Fill)]
-        .padding(16)
+    container(column![header, panel])
+        .width(Fill)
+        .height(Fill)
+        .padding(1)
+        .style(next_ui::theme::window)
         .into()
 }

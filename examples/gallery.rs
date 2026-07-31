@@ -1,10 +1,10 @@
 use iced::{
     Element, Fill, Task, Theme,
-    widget::{Space, column, image, row, scrollable, text},
+    widget::{Space, column, container, image, row, scrollable, text},
 };
 use next_ui::components::text::TextExt as _;
 use next_ui::components::{
-    action_row, artwork_card, button, card, cycle_row, expander_row,
+    action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
     info_row, picker_row, program_card, row_group,
     search::{self, Action as SearchAction},
@@ -31,6 +31,7 @@ fn main() -> iced::Result {
         .title("Bottles Next component gallery")
         .theme(theme)
         .window_size((1200.0, 900.0))
+        .decorations(false)
         .run()
 }
 
@@ -82,6 +83,7 @@ enum Message {
     Switched(bool),
     GroupSwitched(bool),
     GroupToggled,
+    HeaderBar(header_bar::Action),
     StatusToggled,
     Previous,
     Next,
@@ -106,6 +108,7 @@ impl Gallery {
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
             Message::GroupToggled => self.group_expanded = !self.group_expanded,
+            Message::HeaderBar(action) => return action.task(),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
                 self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
@@ -361,7 +364,19 @@ impl Gallery {
         ]
         .spacing(16);
 
-        scrollable(
+        let header = header_bar::HeaderBar::new(Message::HeaderBar).middle(
+            iced::widget::container(
+                search::Search::new(
+                    "Search for software and games…",
+                    &self.search,
+                    Message::SearchChanged,
+                )
+                .padding_y(8),
+            )
+            .width(370),
+        );
+
+        let gallery = scrollable(
             column![
                 section("Headings", headings),
                 section("Title", titles),
@@ -378,8 +393,19 @@ impl Gallery {
             .max_width(1150),
         )
         .width(Fill)
-        .height(Fill)
-        .into()
+        .height(Fill);
+
+        let panel = container(gallery)
+            .width(Fill)
+            .height(Fill)
+            .style(theme::panel);
+
+        container(column![header, panel])
+            .width(Fill)
+            .height(Fill)
+            .padding(1)
+            .style(theme::window)
+            .into()
     }
 }
 
