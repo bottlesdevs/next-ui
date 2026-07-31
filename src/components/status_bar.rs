@@ -1,41 +1,65 @@
 use iced::{
-    Element, Fill,
+    Element, Fill, Theme,
     alignment::Vertical,
-    widget::{Space, button, column, container, row, text},
+    widget::{Space, column, container, row, scrollable, text},
 };
 
 use crate::icons::Icon;
 
-use super::{style, text::TextExt as _};
+use super::{button::Button, style, text::TextExt as _};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusState {
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+    Failed,
+}
+
+impl StatusState {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Stopped => "Stopped",
+            Self::Starting => "Starting",
+            Self::Running => "Running",
+            Self::Stopping => "Stopping",
+            Self::Failed => "Failed",
+        }
+    }
+
+    const fn icon(self) -> Icon {
+        match self {
+            Self::Stopped | Self::Stopping => Icon::Power,
+            Self::Starting | Self::Running => Icon::Lightning,
+            Self::Failed => Icon::Cross,
+        }
+    }
+}
 
 pub struct StatusBar<'a, Message> {
     architecture: &'a str,
     runner: &'a str,
-    is_running: bool,
-    log: &'a str,
+    state: StatusState,
+    log: Option<&'a str>,
     expanded: bool,
-    toggle: Message,
+    on_toggle: Option<Message>,
 }
 
 impl<'a, Message> StatusBar<'a, Message> {
-    pub fn new(architecture: &'a str, runner: &'a str, toggle: Message) -> Self {
+    pub fn new(architecture: &'a str, runner: &'a str, state: StatusState) -> Self {
         Self {
             architecture,
             runner,
-            is_running: false,
-            log: "",
+            state,
+            log: None,
             expanded: false,
-            toggle,
+            on_toggle: None,
         }
     }
 
-    pub fn running(mut self, is_running: bool) -> Self {
-        self.is_running = is_running;
-        self
-    }
-
     pub fn log(mut self, log: &'a str) -> Self {
-        self.log = log;
+        self.log = Some(log);
         self
     }
 
@@ -43,54 +67,62 @@ impl<'a, Message> StatusBar<'a, Message> {
         self.expanded = expanded;
         self
     }
+
+    pub fn on_toggle(mut self, on_toggle: Message) -> Self {
+        self.on_toggle = Some(on_toggle);
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Message> {
     fn from(status: StatusBar<'a, Message>) -> Self {
-        let StatusBar {
-            architecture,
-            runner,
-            is_running,
-            log,
-            expanded,
-            toggle,
-        } = status;
-        let header = row![
-            row![Icon::Chip.view(), text(architecture).supporting().muted(),]
-                .spacing(12)
-                .align_y(Vertical::Center),
-            row![Icon::Run.view(), text(runner).supporting().muted(),]
+        let mut header = row![
+            row![
+                Icon::Chip.view(),
+                text(status.architecture).supporting().muted(),
+            ]
+            .spacing(12)
+            .align_y(Vertical::Center),
+            row![Icon::Run.view(), text(status.runner).supporting().muted(),]
                 .spacing(12)
                 .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
-                if is_running {
-                    Icon::Lightning.view()
-                } else {
-                    Icon::Power.view()
-                },
-                text(if is_running { "Running" } else { "Stopped" })
+                status.state.icon().view(),
+                text(status.state.label())
                     .supporting()
-                    .muted(),
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(if status.state == StatusState::Failed {
+                            theme.palette().danger
+                        } else {
+                            theme.extended_palette().secondary.weak.text
+                        }),
+                    }),
             ]
             .spacing(12)
             .align_y(Vertical::Center),
-            button(Icon::Computer.view())
-                .padding(0)
-                .style(style::tab)
-                .on_press(toggle),
         ]
         .spacing(42)
-        .align_y(Vertical::Center)
-        .padding([8, 32]);
+        .align_y(Vertical::Center);
 
-        let mut content = column![header].width(Fill);
+        if status.log.is_some() && status.on_toggle.is_some() {
+            header = header.push(
+                Button::icon_only("Toggle log", Icon::Computer)
+                    .diameter(32.0)
+                    .on_press_maybe(status.on_toggle),
+            );
+        }
 
-        if expanded {
+        let mut content = column![container(header).padding([8, 32])].width(Fill);
+
+        if status.expanded
+            && let Some(log) = status.log
+        {
             content = content.push(
-                container(text(log).supporting())
+                container(scrollable(text(log).supporting()).height(Fill))
                     .padding([16, 22])
                     .width(Fill)
+                    .max_height(180)
                     .style(|_| container::background(crate::theme::HINT)),
             );
         }
@@ -100,5 +132,18 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
             .clip(true)
             .style(style::panel)
             .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StatusBar, StatusState};
+
+    #[test]
+    fn log_and_toggle_are_optional() {
+        let status = StatusBar::<()>::new("Win64", "soda", StatusState::Stopped);
+
+        assert!(status.log.is_none());
+        assert!(status.on_toggle.is_none());
     }
 }

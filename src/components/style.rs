@@ -34,16 +34,6 @@ pub(crate) fn action(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-pub(crate) fn tab(theme: &Theme, status: button::Status) -> button::Style {
-    button::Style {
-        text_color: match status {
-            button::Status::Disabled => theme.extended_palette().secondary.weak.text,
-            _ => theme.palette().text,
-        },
-        ..button::Style::default()
-    }
-}
-
 pub(crate) fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.extended_palette().secondary.weak.text),

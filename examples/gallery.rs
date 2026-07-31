@@ -318,13 +318,12 @@ impl Gallery {
             );
 
         let status = column![
-            status_bar::StatusBar::new("Win64", "soda-7.0.9", Message::Noop)
-                .running(true)
+            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)
                 .log(LOG),
-            status_bar::StatusBar::new("Win64", "soda-7.0.9", Message::StatusToggled)
-                .running(true)
+            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Stopped,)
                 .log(LOG)
-                .expanded(self.status_expanded),
+                .expanded(self.status_expanded)
+                .on_toggle(Message::StatusToggled),
         ]
         .spacing(16);
 
