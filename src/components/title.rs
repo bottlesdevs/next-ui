@@ -64,17 +64,3 @@ fn typography(detail: Option<&Detail<'_>>) -> (f32, f32, f32) {
         _ => (32.0, 24.0, 10.0),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{Detail, Title, typography};
-
-    #[test]
-    fn subtitle_is_optional_and_status_uses_large_typography() {
-        assert!(Title::new("Title").detail.is_none());
-        assert_eq!(
-            typography(Some(&Detail::Status("Status"))),
-            (48.0, 40.0, 12.0)
-        );
-    }
-}

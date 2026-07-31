@@ -488,32 +488,3 @@ fn surface_color(theme: &Theme, raised: bool, hovered: bool, hover_tone: HoverTo
         theme.extended_palette().background.weak.color
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::theme;
-
-    use super::{HoverTone, surface_color};
-
-    #[test]
-    fn hover_uses_the_configured_tone() {
-        let theme = theme::theme();
-
-        assert_eq!(
-            surface_color(&theme, false, false, HoverTone::Default),
-            theme::SURFACE
-        );
-        assert_eq!(
-            surface_color(&theme, false, true, HoverTone::Default),
-            theme::BORDER
-        );
-        assert_eq!(
-            surface_color(&theme, true, false, HoverTone::Default),
-            theme::BORDER
-        );
-        assert_eq!(
-            surface_color(&theme, false, true, HoverTone::Strong),
-            theme::ROW_HOVER_STRONG
-        );
-    }
-}

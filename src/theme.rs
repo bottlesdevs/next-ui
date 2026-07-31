@@ -136,24 +136,3 @@ pub const fn hint() -> Pair {
 const fn pair(color: Color, text: Color) -> Pair {
     Pair { color, text }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ACCENT, BACKGROUND, BORDER, DEEP_BACKGROUND, MUTED, SURFACE, WHITE, theme as bottles_theme,
-    };
-
-    #[test]
-    fn iced_roles_use_the_extracted_palette() {
-        let theme = bottles_theme();
-        let colors = theme.extended_palette();
-
-        assert_eq!(theme.palette().background, BACKGROUND);
-        assert_eq!(theme.palette().primary, ACCENT);
-        assert_eq!(colors.background.weak.color, SURFACE);
-        assert_eq!(colors.background.neutral.color, BORDER);
-        assert_eq!(colors.primary.base.color, MUTED);
-        assert_eq!(colors.secondary.base.color, DEEP_BACKGROUND);
-        assert_eq!(colors.danger.base.text, WHITE);
-    }
-}

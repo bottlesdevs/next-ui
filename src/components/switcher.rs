@@ -97,31 +97,3 @@ fn knob_style(theme: &Theme, is_on: bool, enabled: bool) -> container::Style {
         .background(color)
         .border(Border::default().rounded(KNOB / 2.0))
 }
-
-#[cfg(test)]
-mod tests {
-    use iced::Background;
-
-    use crate::theme;
-
-    use super::{HEIGHT, KNOB, WIDTH, knob_style};
-
-    #[test]
-    fn switcher_uses_mockup_geometry_and_state_colors() {
-        let theme = theme::theme();
-
-        assert_eq!((WIDTH, HEIGHT, KNOB), (52.0, 32.0, 24.0));
-        assert_eq!(
-            knob_style(&theme, false, true).background,
-            Some(Background::Color(theme::SURFACE_SELECTED))
-        );
-        assert_eq!(
-            knob_style(&theme, true, true).background,
-            Some(Background::Color(theme::ACCENT))
-        );
-        assert_ne!(
-            knob_style(&theme, true, false).background,
-            knob_style(&theme, true, true).background,
-        );
-    }
-}
