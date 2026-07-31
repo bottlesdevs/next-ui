@@ -293,6 +293,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         }
 
         let state = tree.state.downcast_mut::<State>();
+        let was_open = state.open;
+        let was_highlighted = state.highlighted;
         let mut children = layout.children();
         let collapsed = children.next().expect("collapsed selector header");
         let expanded = children.next().expect("expanded selector header");
@@ -310,7 +312,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                     shell.capture_event();
                 } else if state.open {
                     state.open = false;
-                    shell.invalidate_layout();
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
@@ -322,14 +323,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                         Some(Pressed::Header) if !self.messages.is_empty() => {
                             state.open = !state.open;
                             state.highlighted = self.selected.or(Some(0));
-                            shell.invalidate_layout();
                             shell.capture_event();
                         }
                         Some(Pressed::Option(index)) => {
                             shell.publish(self.messages[index].clone());
                             state.open = false;
                             state.highlighted = Some(index);
-                            shell.invalidate_layout();
                             shell.capture_event();
                         }
                         _ => {}
@@ -355,7 +354,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                                 self.selected.unwrap_or(0)
                             });
                             state.open = true;
-                            shell.invalidate_layout();
                             shell.capture_event();
                         }
                     }
@@ -370,21 +368,18 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                                 self.selected.unwrap_or(last)
                             });
                             state.open = true;
-                            shell.invalidate_layout();
                             shell.capture_event();
                         }
                     }
                     keyboard::Key::Named(key::Named::Home) if last.is_some() => {
                         state.open = true;
                         state.highlighted = Some(0);
-                        shell.invalidate_layout();
                         shell.capture_event();
                     }
                     keyboard::Key::Named(key::Named::End) => {
                         if let Some(last) = last {
                             state.open = true;
                             state.highlighted = Some(last);
-                            shell.invalidate_layout();
                             shell.capture_event();
                         }
                     }
@@ -393,25 +388,30 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                             if let Some(index) = state.highlighted {
                                 shell.publish(self.messages[index].clone());
                                 state.open = false;
-                                shell.invalidate_layout();
                             }
                         } else if !self.messages.is_empty() {
                             state.open = true;
                             state.highlighted = self.selected.or(Some(0));
-                            shell.invalidate_layout();
                         }
 
                         shell.capture_event();
                     }
                     keyboard::Key::Named(key::Named::Escape) if state.open => {
                         state.open = false;
-                        shell.invalidate_layout();
                         shell.capture_event();
                     }
                     _ => {}
                 }
             }
             _ => {}
+        }
+
+        if state.open != was_open {
+            shell.invalidate_layout();
+        }
+
+        if state.open != was_open || state.highlighted != was_highlighted {
+            shell.request_redraw();
         }
     }
 
