@@ -363,36 +363,50 @@ impl Gallery {
             );
 
         let multiple_expanders = row_group::RowGroup::new()
-            .title("Multiple expanders")
-            .description("Only one expander on the grid line remains open")
+            .title("Non-overlapping expanders")
+            .description("Both expanders can remain open because their panels do not overlap")
             .columns(3)
             .add(
                 expander_row::ExpanderRow::new("First expander")
-                    .description("Open in the first column")
+                    .description("One-column panel")
                     .add(
                         action_row::ActionRow::new(
-                            "First child with a deliberately long label",
+                            "First action",
                             action_row::ActionRowState::Ready(Message::Noop),
                         )
-                        .description("Content sizes the row instead of clipping it"),
+                        .description("Inside the first column"),
                     ),
             )
             .add(
-                expander_row::ExpanderRow::new("Second expander")
-                    .description("Open in the second column")
-                    .add(cycle_row::CycleRow::new("Quality", "Balanced")),
+                action_row::ActionRow::new(
+                    "Independent action",
+                    action_row::ActionRowState::Ready(Message::Noop),
+                )
+                .description("Between the two expanders"),
             )
             .add(
-                action_row::ActionRow::new(
-                    "A long third-column title that wraps safely",
-                    action_row::ActionRowState::Disabled,
-                )
-                .description("Partial and full grid lines use content-driven height"),
+                expander_row::ExpanderRow::new("Second expander")
+                    .description("Two-column panel shifted left at the edge")
+                    .columns(2)
+                    .add(
+                        action_row::ActionRow::new(
+                            "Second action",
+                            action_row::ActionRowState::Ready(Message::Noop),
+                        )
+                        .description("First panel column"),
+                    )
+                    .add(
+                        action_row::ActionRow::new(
+                            "Third action",
+                            action_row::ActionRowState::Ready(Message::Noop),
+                        )
+                        .description("Second panel column"),
+                    ),
             );
 
         let expander_matrix = row_group::RowGroup::new()
             .title("2 × 2 expander grid")
-            .description("Each expander contains its own 2 × 2 action grid")
+            .description("Opening a sibling closes the overlapping panel on the same grid line")
             .columns(2)
             .add(action_grid_expander("Expander A"))
             .add(action_grid_expander("Expander B"))
@@ -443,7 +457,7 @@ impl Gallery {
                     section("Search", search),
                     section("Rows", fields),
                     section("Row group", row_group),
-                    section("Multiple expanders", multiple_expanders),
+                    section("Overlap-aware expanders", multiple_expanders),
                     section("Expander matrix", expander_matrix),
                     section("Status bar", status),
                 ]
