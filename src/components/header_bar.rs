@@ -126,6 +126,7 @@ fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Mess
 fn style(_: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(theme::WINDOW)),
+        border: Border::default().rounded(iced::border::top(11)),
         ..container::Style::default()
     }
 }

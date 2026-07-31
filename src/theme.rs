@@ -1,7 +1,7 @@
 use iced::{
     Background, Border, Color, Theme,
     theme::{
-        Palette,
+        Palette, Style as ApplicationStyle,
         palette::{
             Background as BackgroundPalette, Danger, Extended, Pair, Primary, Secondary, Success,
             Warning,
@@ -89,14 +89,22 @@ pub fn theme() -> Theme {
 pub fn window(_: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(WINDOW)),
-        border: Border::default().color(WINDOW_BORDER).width(1),
+        border: Border::default().rounded(12).color(WINDOW_BORDER).width(1),
         ..container::Style::default()
+    }
+}
+
+pub fn application(theme: &Theme) -> ApplicationStyle {
+    ApplicationStyle {
+        background_color: Color::TRANSPARENT,
+        text_color: theme.palette().text,
     }
 }
 
 pub fn panel(_: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(PANEL)),
+        border: Border::default().rounded(11),
         ..container::Style::default()
     }
 }

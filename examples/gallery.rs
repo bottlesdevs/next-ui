@@ -30,8 +30,10 @@ fn main() -> iced::Result {
     iced::application(Gallery::default, Gallery::update, Gallery::view)
         .title("Bottles Next component gallery")
         .theme(theme)
+        .style(|_, current_theme| theme::application(current_theme))
         .window_size((1200.0, 900.0))
         .decorations(false)
+        .transparent(true)
         .run()
 }
 
@@ -405,6 +407,7 @@ impl Gallery {
             .height(Fill)
             .padding(1)
             .style(theme::window)
+            .clip(true)
             .into()
     }
 }
