@@ -13,7 +13,7 @@ pub struct ListRow<'a, Message> {
     leading: Vec<Element<'a, Message>>,
     trailing: Vec<Element<'a, Message>>,
     content: Option<Element<'a, Message>>,
-    content_enabled: bool,
+    enabled: bool,
     on_press: Option<Message>,
     press_area: bool,
     raised: bool,
@@ -43,7 +43,7 @@ impl<'a, Message> ListRow<'a, Message> {
             leading: Vec::new(),
             trailing: Vec::new(),
             content: None,
-            content_enabled: true,
+            enabled: true,
             on_press: None,
             press_area: false,
             raised: false,
@@ -73,8 +73,8 @@ impl<'a, Message> ListRow<'a, Message> {
         self
     }
 
-    pub fn content_enabled(mut self, enabled: bool) -> Self {
-        self.content_enabled = enabled;
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
         self
     }
 
@@ -147,15 +147,12 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
         let mut contents = column![header].width(Fill);
 
         if let Some(content) = base.content {
-            contents = contents.push(
-                Surface::new(content)
-                    .background(false)
-                    .enabled(base.content_enabled),
-            );
+            contents = contents.push(Surface::new(content).background(false));
         }
 
         Surface::new(container(contents).width(Fill).clip(true))
             .raised(base.raised)
+            .enabled(base.enabled)
             .into()
     }
 }

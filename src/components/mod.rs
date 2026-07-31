@@ -11,6 +11,7 @@ pub mod info_row;
 pub mod list_row;
 pub mod picker_row;
 pub mod popover;
+pub mod row_group;
 pub mod search;
 pub mod selector_row;
 pub mod status_bar;

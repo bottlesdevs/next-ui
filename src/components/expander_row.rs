@@ -5,6 +5,7 @@ use iced::{
 
 use super::{
     list_row::{ListRow, labels},
+    row_group::RowGroup,
     style,
 };
 
@@ -14,8 +15,14 @@ pub struct ExpanderRow<'a, Message> {
     header: Option<ListRow<'a, Message>>,
     expanded: bool,
     on_toggle: Message,
-    content: Option<Element<'a, Message>>,
+    content: Option<RowGroup<'a, Message>>,
     content_enabled: bool,
+}
+
+pub(crate) struct ExpanderParts<'a, Message> {
+    pub header: ListRow<'a, Message>,
+    pub expanded: bool,
+    pub content: Option<Element<'a, Message>>,
 }
 
 impl<'a, Message> ExpanderRow<'a, Message> {
@@ -51,7 +58,7 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         self
     }
 
-    pub fn content(mut self, content: impl Into<Element<'a, Message>>) -> Self {
+    pub fn content(mut self, content: impl Into<RowGroup<'a, Message>>) -> Self {
         self.content = Some(content.into());
         self
     }
@@ -62,15 +69,9 @@ impl<'a, Message> ExpanderRow<'a, Message> {
     }
 }
 
-impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Message> {
-    fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        ListRow::from(expander).into()
-    }
-}
-
-impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for ListRow<'a, Message> {
-    fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        let expanded = expander.expanded;
+impl<'a, Message: Clone + 'a> ExpanderRow<'a, Message> {
+    pub(crate) fn into_parts(self) -> ExpanderParts<'a, Message> {
+        let expanded = self.expanded;
         let caret = || {
             svg(crate::icons::get("down_caret"))
                 .width(20)
@@ -79,34 +80,47 @@ impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for ListRow<'a, Mes
                 .rotation(if expanded { std::f32::consts::PI } else { 0.0 })
         };
 
-        let mut row = match expander.header {
+        let header = match self.header {
             Some(header) => header.prepend_trailing(
                 button(caret())
                     .padding(6)
-                    .on_press(expander.on_toggle)
+                    .on_press(self.on_toggle)
                     .style(style::tab),
             ),
-            None => ListRow::new(labels(expander.title, expander.description))
+            None => ListRow::new(labels(self.title, self.description))
                 .trailing(caret())
-                .on_press(expander.on_toggle),
+                .on_press(self.on_toggle),
         }
         .raised(expanded);
 
-        if expanded && let Some(content) = expander.content {
-            row = row
-                .content(container(content).width(Fill).padding(18))
-                .content_enabled(expander.content_enabled);
+        ExpanderParts {
+            header,
+            expanded,
+            content: self
+                .content
+                .map(|content| content.enabled(self.content_enabled).into()),
+        }
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Message> {
+    fn from(expander: ExpanderRow<'a, Message>) -> Self {
+        let parts = expander.into_parts();
+        let mut row = parts.header;
+
+        if parts.expanded
+            && let Some(content) = parts.content
+        {
+            row = row.content(container(content).width(Fill).padding(18));
         }
 
-        row
+        row.into()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use iced::widget::text;
-
-    use crate::components::switcher_row::SwitcherRow;
+    use crate::components::{action_row::ActionRow, switcher_row::SwitcherRow};
 
     use super::ExpanderRow;
 
@@ -114,7 +128,7 @@ mod tests {
     fn accepts_an_interactive_row_as_its_header() {
         let expander = ExpanderRow::new(())
             .header(SwitcherRow::new(false, |_| ()))
-            .content(text("child"));
+            .content(ActionRow::new().title("child"));
 
         assert!(expander.header.is_some());
         assert!(expander.content.is_some());
