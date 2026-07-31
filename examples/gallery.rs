@@ -378,15 +378,8 @@ impl Gallery {
                     ),
             )
             .add(
-                action_row::ActionRow::new(
-                    "Independent action",
-                    action_row::ActionRowState::Ready(Message::Noop),
-                )
-                .description("Between the two expanders"),
-            )
-            .add(
                 expander_row::ExpanderRow::new("Second expander")
-                    .description("Two-column panel shifted left at the edge")
+                    .description("Two-column panel")
                     .columns(2)
                     .add(
                         action_row::ActionRow::new(
@@ -402,6 +395,13 @@ impl Gallery {
                         )
                         .description("Second panel column"),
                     ),
+            )
+            .add(
+                action_row::ActionRow::new(
+                    "Independent action",
+                    action_row::ActionRowState::Ready(Message::Noop),
+                )
+                .description("Beside the two expanders"),
             );
 
         let expander_matrix = row_group::RowGroup::new()
