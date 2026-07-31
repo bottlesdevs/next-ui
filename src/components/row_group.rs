@@ -189,11 +189,16 @@ fn group_line<'a, Message: Clone + 'a>(
                 expansions.push(Expansion {
                     header_index,
                     content_index: bodies.len(),
-                    span: if standalone {
-                        1
-                    } else {
-                        requested_columns.min(columns)
-                    },
+                    content_columns,
+                    footprint: footprint(
+                        header_index,
+                        if standalone {
+                            1
+                        } else {
+                            requested_columns.min(columns)
+                        },
+                        columns,
+                    ),
                     activated,
                     expanded,
                 });
@@ -227,9 +232,26 @@ pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
 struct Expansion {
     header_index: usize,
     content_index: usize,
-    span: usize,
+    content_columns: usize,
+    footprint: Footprint,
     activated: SharedFlag,
     expanded: SharedFlag,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Footprint {
+    start: usize,
+    end: usize,
+}
+
+impl Footprint {
+    fn span(self) -> usize {
+        self.end - self.start
+    }
+
+    fn overlaps(self, other: Self) -> bool {
+        self.start < other.end && other.start < self.end
+    }
 }
 
 struct GroupLine<'a, Message> {
@@ -242,7 +264,7 @@ struct GroupLine<'a, Message> {
 #[derive(Default)]
 struct State {
     open: Vec<usize>,
-    signature: Vec<(usize, usize)>,
+    signature: Vec<(usize, usize, usize, usize, usize)>,
 }
 
 impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> {
@@ -263,7 +285,15 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         let signature: Vec<_> = self
             .expansions
             .iter()
-            .map(|expansion| (expansion.header_index, expansion.span))
+            .map(|expansion| {
+                (
+                    self.columns,
+                    expansion.header_index,
+                    expansion.content_columns,
+                    expansion.footprint.start,
+                    expansion.footprint.end,
+                )
+            })
             .collect();
         let state = tree.state.downcast_mut::<State>();
 
@@ -325,23 +355,27 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         }
 
         let body_top = header_height + GAP;
-        let inner_width = (width - CONTENT_PADDING * 2.0).max(0.0);
-        let content_limits = layout::Limits::new(
-            Size::new(inner_width, 0.0),
-            Size::new(inner_width, limits.max().height),
-        );
-        let mut y = body_top + CONTENT_PADDING;
+        let mut body_height: f32 = 0.0;
 
         for (index, expansion) in self.expansions.iter().enumerate() {
             let content = &mut self.children[expansion.content_index];
             let tree = &mut tree.children[expansion.content_index];
 
             if state.open.contains(&index) {
+                let panel_width = footprint_width(expansion.footprint, cell_width);
+                let inner_width = (panel_width - CONTENT_PADDING * 2.0).max(0.0);
+                let content_limits = layout::Limits::new(
+                    Size::new(inner_width, 0.0),
+                    Size::new(inner_width, limits.max().height),
+                );
                 let node = content
                     .as_widget_mut()
                     .layout(tree, renderer, &content_limits)
-                    .move_to(Point::new(CONTENT_PADDING, y));
-                y += node.size().height + GAP;
+                    .move_to(Point::new(
+                        expansion.footprint.start as f32 * (cell_width + GAP) + CONTENT_PADDING,
+                        body_top + CONTENT_PADDING,
+                    ));
+                body_height = body_height.max(node.size().height + CONTENT_PADDING * 2.0);
                 children.push(node);
             } else {
                 children.push(layout::Node::new(Size::ZERO));
@@ -351,7 +385,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         let height = if state.open.is_empty() {
             header_height
         } else {
-            y + CONTENT_PADDING - GAP
+            body_top + body_height
         };
 
         layout::Node::with_children(Size::new(width, height), children)
@@ -432,15 +466,15 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 
         let state = tree.state.downcast_mut::<State>();
         let was_open = state.open.clone();
+        let footprints: Vec<_> = self
+            .expansions
+            .iter()
+            .map(|expansion| expansion.footprint)
+            .collect();
 
         for (index, expansion) in self.expansions.iter().enumerate() {
             if expansion.activated.take() {
-                if let Some(position) = state.open.iter().position(|open| *open == index) {
-                    state.open.remove(position);
-                } else {
-                    state.open.push(index);
-                    state.open.sort_unstable();
-                }
+                toggle_open(&mut state.open, index, &footprints);
             }
         }
 
@@ -491,22 +525,23 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         let state = tree.state.downcast_ref::<State>();
         self.sync_controls(state);
         let children: Vec<_> = layout.children().collect();
+        let line_bounds = layout.bounds();
+        let cell_width = cell_width(line_bounds.width, self.columns);
 
-        if !state.open.is_empty() {
-            let bounds = layout.bounds();
-            let header_bottom = children[..self.header_count]
-                .iter()
-                .map(|header| header.bounds().y + header.bounds().height)
-                .fold(bounds.y, f32::max);
-            let body_top = header_bottom + GAP;
+        for index in &state.open {
+            let expansion = &self.expansions[*index];
+            let header = children[expansion.header_index].bounds();
+            let content = children[expansion.content_index].bounds();
+            let panel = Rectangle {
+                x: line_bounds.x + expansion.footprint.start as f32 * (cell_width + GAP),
+                y: content.y - CONTENT_PADDING,
+                width: footprint_width(expansion.footprint, cell_width),
+                height: line_bounds.y + line_bounds.height - (content.y - CONTENT_PADDING),
+            };
 
             renderer.fill_quad(
                 renderer::Quad {
-                    bounds: Rectangle {
-                        y: body_top,
-                        height: (bounds.y + bounds.height - body_top).max(0.0),
-                        ..bounds
-                    },
+                    bounds: panel,
                     border: Border::default().rounded(RADIUS),
                     shadow: Shadow::default(),
                     snap: true,
@@ -514,23 +549,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                 Background::Color(theme.extended_palette().background.neutral.color),
             );
 
-            for index in &state.open {
-                let header = children[self.expansions[*index].header_index].bounds();
-                renderer.fill_quad(
-                    renderer::Quad {
-                        bounds: Rectangle {
-                            x: header.x,
-                            y: header.y + header.height - RADIUS,
-                            width: header.width,
-                            height: GAP + RADIUS * 2.0,
-                        },
-                        border: Border::default(),
-                        shadow: Shadow::default(),
-                        snap: true,
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: Rectangle {
+                        x: header.x,
+                        y: header.y + header.height - RADIUS,
+                        width: header.width,
+                        height: panel.y - (header.y + header.height) + RADIUS * 2.0,
                     },
-                    Background::Color(theme.extended_palette().background.neutral.color),
-                );
-            }
+                    border: Border::default(),
+                    shadow: Shadow::default(),
+                    snap: true,
+                },
+                Background::Color(theme.extended_palette().background.neutral.color),
+            );
         }
 
         for index in self.visible_indices(state) {
@@ -554,14 +586,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        overlay::from_children(
-            &mut self.children,
-            tree,
-            layout,
-            renderer,
-            viewport,
-            translation,
-        )
+        let overlays = self
+            .children
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+            .filter(|(_, layout)| layout.bounds().width > 0.0 && layout.bounds().height > 0.0)
+            .filter_map(|((child, state), layout)| {
+                child
+                    .as_widget_mut()
+                    .overlay(state, layout, renderer, viewport, translation)
+            })
+            .collect::<Vec<_>>();
+
+        (!overlays.is_empty()).then(|| overlay::Group::with_children(overlays).overlay())
     }
 }
 
@@ -583,7 +621,35 @@ impl<Message> GroupLine<'_, Message> {
 }
 
 fn cell_width(width: f32, columns: usize) -> f32 {
-    (width - GAP * (columns.saturating_sub(1) as f32)) / columns as f32
+    (width - GAP * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
+}
+
+fn footprint(header: usize, requested_span: usize, columns: usize) -> Footprint {
+    let columns = columns.max(1);
+    let span = requested_span.max(1).min(columns);
+    let start = header.min(columns - span);
+
+    Footprint {
+        start,
+        end: start + span,
+    }
+}
+
+fn footprint_width(footprint: Footprint, cell_width: f32) -> f32 {
+    let span = footprint.span();
+    span as f32 * cell_width + span.saturating_sub(1) as f32 * GAP
+}
+
+fn toggle_open(open: &mut Vec<usize>, target: usize, footprints: &[Footprint]) {
+    if let Some(position) = open.iter().position(|index| *index == target) {
+        open.remove(position);
+        return;
+    }
+
+    let target_footprint = footprints[target];
+    open.retain(|index| !footprints[*index].overlaps(target_footprint));
+    open.push(target);
+    open.sort_unstable();
 }
 
 #[cfg(test)]
@@ -596,7 +662,7 @@ mod tests {
         switcher_row::SwitcherRow,
     };
 
-    use super::{RowGroup, cell_width};
+    use super::{Footprint, RowGroup, cell_width, footprint, toggle_open};
 
     #[test]
     fn cells_follow_the_requested_column_count() {
@@ -614,5 +680,32 @@ mod tests {
             );
 
         let _: Element<'_, ()> = group.into();
+    }
+
+    #[test]
+    fn footprints_shift_and_clamp_to_the_grid() {
+        assert_eq!(footprint(0, 1, 3), Footprint { start: 0, end: 1 });
+        assert_eq!(footprint(2, 2, 3), Footprint { start: 1, end: 3 });
+        assert_eq!(footprint(1, 4, 3), Footprint { start: 0, end: 3 });
+    }
+
+    #[test]
+    fn opening_evicts_only_overlapping_expansions() {
+        let footprints = [
+            Footprint { start: 0, end: 1 },
+            Footprint { start: 1, end: 3 },
+            Footprint { start: 0, end: 2 },
+        ];
+        let mut open = Vec::new();
+
+        toggle_open(&mut open, 0, &footprints);
+        toggle_open(&mut open, 1, &footprints);
+        assert_eq!(open, [0, 1]);
+
+        toggle_open(&mut open, 2, &footprints);
+        assert_eq!(open, [2]);
+
+        toggle_open(&mut open, 2, &footprints);
+        assert!(open.is_empty());
     }
 }
