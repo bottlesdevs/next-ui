@@ -51,6 +51,8 @@ struct Gallery {
     switched_on: bool,
     group_switched_on: bool,
     group_expanded: bool,
+    first_grid_expanded: bool,
+    second_grid_expanded: bool,
     status_expanded: bool,
     value: usize,
 }
@@ -66,6 +68,8 @@ impl Default for Gallery {
             switched_on: false,
             group_switched_on: false,
             group_expanded: true,
+            first_grid_expanded: false,
+            second_grid_expanded: false,
             status_expanded: false,
             value: 1,
         }
@@ -82,6 +86,8 @@ enum Message {
     Switched(bool),
     GroupSwitched(bool),
     GroupToggled,
+    FirstGridToggled,
+    SecondGridToggled,
     HeaderBar(header_bar::Action),
     StatusToggled,
     Previous,
@@ -103,6 +109,12 @@ impl Gallery {
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
             Message::GroupToggled => self.group_expanded = !self.group_expanded,
+            Message::FirstGridToggled => {
+                self.first_grid_expanded = !self.first_grid_expanded;
+            }
+            Message::SecondGridToggled => {
+                self.second_grid_expanded = !self.second_grid_expanded;
+            }
             Message::HeaderBar(action) => return action.task(),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
@@ -375,24 +387,32 @@ impl Gallery {
             );
 
         let multiple_expanders = row_group::RowGroup::new()
-            .title("Multiple open expanders")
-            .description("Three columns with wrapping labels and two connected expansions")
+            .title("Multiple expanders")
+            .description("Three columns with two independently controlled expansions")
             .columns(3)
             .add(
-                expander_row::ExpanderRow::new("First expander", true, Message::Noop)
-                    .description("Open in the first column")
-                    .add(
-                        action_row::ActionRow::new(
-                            "First child with a deliberately long label",
-                            action_row::ActionRowState::Ready(Message::Noop),
-                        )
-                        .description("Content sizes the row instead of clipping it"),
-                    ),
+                expander_row::ExpanderRow::new(
+                    "First expander",
+                    self.first_grid_expanded,
+                    Message::FirstGridToggled,
+                )
+                .description("Open in the first column")
+                .add(
+                    action_row::ActionRow::new(
+                        "First child with a deliberately long label",
+                        action_row::ActionRowState::Ready(Message::Noop),
+                    )
+                    .description("Content sizes the row instead of clipping it"),
+                ),
             )
             .add(
-                expander_row::ExpanderRow::new("Second expander", true, Message::Noop)
-                    .description("Open in the second column")
-                    .add(cycle_row::CycleRow::new("Quality", "Balanced")),
+                expander_row::ExpanderRow::new(
+                    "Second expander",
+                    self.second_grid_expanded,
+                    Message::SecondGridToggled,
+                )
+                .description("Open in the second column")
+                .add(cycle_row::CycleRow::new("Quality", "Balanced")),
             )
             .add(
                 action_row::ActionRow::new(
