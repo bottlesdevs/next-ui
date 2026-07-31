@@ -1,40 +1,46 @@
 use iced::{
-    Border, ContentFit, Element, Theme,
-    widget::{button, svg},
+    Border, Element, Length, Rectangle, Size, Theme,
+    advanced::{Layout, Widget, layout, mouse, renderer, svg::Renderer as _, widget::Tree},
+    widget::button,
 };
 
 use super::{
-    list_row::{HoverTone, ListRow, labels},
-    pressable::{Pressable, Status},
-    row_group::{RowGroup, standalone_expander},
+    list_row::{HoverTone, ListRow},
+    pressable::{Pressable, SharedFlag, Status},
+    row_group::{RowGroupEntry, standalone_expander},
 };
 
 pub struct ExpanderRow<'a, Message> {
-    title: &'a str,
-    description: &'a str,
-    header: Option<ListRow<'a, Message>>,
-    expanded: bool,
-    on_toggle: Message,
+    header: Header<'a, Message>,
     columns: usize,
     content: Vec<ListRow<'a, Message>>,
     content_enabled: bool,
     enabled: bool,
 }
 
-pub(crate) struct ExpanderParts<'a, Message> {
-    pub header: ListRow<'a, Message>,
-    pub expanded: bool,
-    pub content: Option<Element<'a, Message>>,
+pub(crate) enum Header<'a, Message> {
+    Labels {
+        title: &'a str,
+        description: &'a str,
+    },
+    Custom(ListRow<'a, Message>),
 }
 
-impl<'a, Message: 'a> ExpanderRow<'a, Message> {
-    pub fn new(title: &'a str, expanded: bool, on_toggle: Message) -> Self {
+pub(crate) struct ExpanderParts<'a, Message> {
+    pub header: Header<'a, Message>,
+    pub columns: usize,
+    pub content: Vec<ListRow<'a, Message>>,
+    pub content_enabled: bool,
+    pub enabled: bool,
+}
+
+impl<'a, Message> ExpanderRow<'a, Message> {
+    pub fn new(title: &'a str) -> Self {
         Self {
-            title,
-            description: "",
-            header: None,
-            expanded,
-            on_toggle,
+            header: Header::Labels {
+                title,
+                description: "",
+            },
             columns: 1,
             content: Vec::new(),
             content_enabled: true,
@@ -42,19 +48,22 @@ impl<'a, Message: 'a> ExpanderRow<'a, Message> {
         }
     }
 
-    pub fn with_header(
-        header: impl Into<ListRow<'a, Message>>,
-        expanded: bool,
-        on_toggle: Message,
-    ) -> Self {
+    pub fn with_header(header: impl Into<ListRow<'a, Message>>) -> Self {
         Self {
-            header: Some(header.into()),
-            ..Self::new("", expanded, on_toggle)
+            header: Header::Custom(header.into()),
+            ..Self::new("")
         }
     }
 
     pub fn description(mut self, description: &'a str) -> Self {
-        self.description = description;
+        if let Header::Labels {
+            description: current,
+            ..
+        } = &mut self.header
+        {
+            *current = description;
+        }
+
         self
     }
 
@@ -79,61 +88,60 @@ impl<'a, Message: 'a> ExpanderRow<'a, Message> {
         self.enabled = enabled;
         self
     }
-}
 
-impl<'a, Message: Clone + 'a> ExpanderRow<'a, Message> {
     pub(crate) fn into_parts(self) -> ExpanderParts<'a, Message> {
-        let content = if self.content.is_empty() {
-            None
-        } else {
-            Some(
-                self.content
-                    .into_iter()
-                    .fold(
-                        RowGroup::new()
-                            .columns(self.columns)
-                            .enabled(self.content_enabled),
-                        RowGroup::add,
-                    )
-                    .into(),
-            )
-        };
-        let expanded = self.expanded && content.is_some();
-        let caret = || {
-            svg(crate::icons::Icon::DownCaret.handle())
-                .width(20)
-                .height(20)
-                .content_fit(ContentFit::Contain)
-                .rotation(if expanded { std::f32::consts::PI } else { 0.0 })
-        };
-        let header = match (self.header, content.is_some()) {
-            (Some(header), true) => header.prepend_trailing(
-                Pressable::new(caret())
-                    .padding(6)
-                    .on_press(self.on_toggle)
-                    .style(caret_style),
-            ),
-            (Some(header), false) => header,
-            (None, true) => ListRow::new(labels(self.title, self.description))
-                .trailing(caret())
-                .on_press(self.on_toggle),
-            (None, false) => ListRow::new(labels(self.title, self.description)),
-        }
-        .raised(expanded)
-        .enabled(self.enabled);
-
         ExpanderParts {
-            header,
-            expanded,
-            content,
+            header: self.header,
+            columns: self.columns,
+            content: self.content,
+            content_enabled: self.content_enabled,
+            enabled: self.enabled,
         }
     }
 }
 
 impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Message> {
     fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        standalone_expander(expander.into_parts())
+        standalone_expander(RowGroupEntry::from(expander))
     }
+}
+
+pub(crate) fn control<'a, Message: Clone + 'a>(
+    header: Header<'a, Message>,
+    enabled: bool,
+    activated: SharedFlag,
+    expanded: SharedFlag,
+) -> ListRow<'a, Message> {
+    let caret = || DynamicCaret::new(expanded.clone());
+
+    match header {
+        Header::Labels { title, description } => {
+            ListRow::new(super::list_row::labels(title, description))
+                .trailing(caret())
+                .on_activate(activated)
+        }
+        Header::Custom(header) => header.prepend_trailing(
+            Pressable::new(caret())
+                .padding(6)
+                .on_activate(activated)
+                .style(caret_style),
+        ),
+    }
+    .raised_when(expanded)
+    .enabled(enabled)
+}
+
+pub(crate) fn passive<'a, Message: 'a>(
+    header: Header<'a, Message>,
+    enabled: bool,
+) -> ListRow<'a, Message> {
+    match header {
+        Header::Labels { title, description } => {
+            ListRow::new(super::list_row::labels(title, description))
+        }
+        Header::Custom(header) => header,
+    }
+    .enabled(enabled)
 }
 
 fn caret_style(theme: &Theme, _status: Status) -> button::Style {
@@ -144,6 +152,65 @@ fn caret_style(theme: &Theme, _status: Status) -> button::Style {
     }
 }
 
+struct DynamicCaret {
+    expanded: SharedFlag,
+}
+
+impl DynamicCaret {
+    fn new(expanded: SharedFlag) -> Self {
+        Self { expanded }
+    }
+}
+
+impl<Message> Widget<Message, Theme, iced::Renderer> for DynamicCaret {
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Fixed(20.0), Length::Fixed(20.0))
+    }
+
+    fn layout(
+        &mut self,
+        _tree: &mut Tree,
+        _renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        layout::atomic(limits, 20.0, 20.0)
+    }
+
+    fn draw(
+        &self,
+        _tree: &Tree,
+        renderer: &mut iced::Renderer,
+        _theme: &Theme,
+        _style: &renderer::Style,
+        layout: Layout<'_>,
+        _cursor: mouse::Cursor,
+        _viewport: &Rectangle,
+    ) {
+        let bounds = layout.bounds();
+
+        renderer.draw_svg(
+            iced::advanced::svg::Svg {
+                handle: crate::icons::Icon::DownCaret.handle(),
+                color: None,
+                rotation: if self.expanded.get() {
+                    std::f32::consts::PI.into()
+                } else {
+                    0.0.into()
+                },
+                opacity: 1.0,
+            },
+            bounds,
+            bounds,
+        );
+    }
+}
+
+impl<'a, Message: 'a> From<DynamicCaret> for Element<'a, Message> {
+    fn from(caret: DynamicCaret) -> Self {
+        Element::new(caret)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::components::{
@@ -151,22 +218,27 @@ mod tests {
         switcher_row::SwitcherRow,
     };
 
-    use super::ExpanderRow;
+    use super::{ExpanderRow, Header};
 
     #[test]
     fn accepts_an_interactive_row_as_its_header() {
-        let expander =
-            ExpanderRow::with_header(SwitcherRow::new("Switch", false, |_| ()), false, ())
-                .columns(2)
-                .add(ActionRow::new("child", ActionRowState::Ready(())));
+        let expander = ExpanderRow::with_header(SwitcherRow::new("Switch", false, |_| ()))
+            .columns(2)
+            .add(ActionRow::new("child", ActionRowState::Ready(())));
+        let parts = expander.into_parts();
 
-        assert!(expander.header.is_some());
-        assert_eq!(expander.columns, 2);
-        assert_eq!(expander.content.len(), 1);
+        assert!(matches!(parts.header, Header::Custom(_)));
+        assert_eq!(parts.columns, 2);
+        assert_eq!(parts.content.len(), 1);
     }
 
     #[test]
-    fn empty_expanders_do_not_expand() {
-        assert!(!ExpanderRow::new("Empty", true, ()).into_parts().expanded);
+    fn empty_expanders_have_no_content() {
+        assert!(
+            ExpanderRow::<()>::new("Empty")
+                .into_parts()
+                .content
+                .is_empty()
+        );
     }
 }

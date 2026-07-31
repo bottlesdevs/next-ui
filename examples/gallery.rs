@@ -46,12 +46,9 @@ struct Gallery {
     search: String,
     text_rows: [String; 3],
     selected_option: Option<&'static str>,
-    expander_expanded: bool,
     selected_tab: usize,
     switched_on: bool,
     group_switched_on: bool,
-    group_expanded: bool,
-    grid_expanded: Option<usize>,
     status_expanded: bool,
     value: usize,
 }
@@ -62,12 +59,9 @@ impl Default for Gallery {
             search: String::new(),
             text_rows: std::array::from_fn(|_| String::new()),
             selected_option: None,
-            expander_expanded: false,
             selected_tab: 0,
             switched_on: false,
             group_switched_on: false,
-            group_expanded: true,
-            grid_expanded: None,
             status_expanded: false,
             value: 1,
         }
@@ -79,12 +73,9 @@ enum Message {
     SearchChanged(String),
     TextRowChanged(usize, String),
     OptionSelected(&'static str),
-    ExpanderToggled,
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    GroupToggled,
-    GridToggled(usize),
     HeaderBar(header_bar::Action),
     StatusToggled,
     Previous,
@@ -101,14 +92,9 @@ impl Gallery {
             Message::OptionSelected(value) => {
                 self.selected_option = Some(value);
             }
-            Message::ExpanderToggled => self.expander_expanded = !self.expander_expanded,
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::GroupToggled => self.group_expanded = !self.group_expanded,
-            Message::GridToggled(index) => {
-                self.grid_expanded = (self.grid_expanded != Some(index)).then_some(index);
-            }
             Message::HeaderBar(action) => return action.task(),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
@@ -313,8 +299,6 @@ impl Gallery {
             expander_row::ExpanderRow::with_header(
                 switcher_row::SwitcherRow::new("FSR", self.switched_on, Message::Switched)
                     .description("FidelityFX Super Resolution"),
-                self.expander_expanded,
-                Message::ExpanderToggled,
             )
             .columns(2)
             .add(
@@ -361,8 +345,6 @@ impl Gallery {
                         Message::GroupSwitched,
                     )
                     .description("FidelityFX Super Resolution"),
-                    self.group_expanded,
-                    Message::GroupToggled,
                 )
                 .columns(2)
                 .add(
@@ -385,28 +367,20 @@ impl Gallery {
             .description("Only one expander on the grid line remains open")
             .columns(3)
             .add(
-                expander_row::ExpanderRow::new(
-                    "First expander",
-                    self.grid_expanded == Some(0),
-                    Message::GridToggled(0),
-                )
-                .description("Open in the first column")
-                .add(
-                    action_row::ActionRow::new(
-                        "First child with a deliberately long label",
-                        action_row::ActionRowState::Ready(Message::Noop),
-                    )
-                    .description("Content sizes the row instead of clipping it"),
-                ),
+                expander_row::ExpanderRow::new("First expander")
+                    .description("Open in the first column")
+                    .add(
+                        action_row::ActionRow::new(
+                            "First child with a deliberately long label",
+                            action_row::ActionRowState::Ready(Message::Noop),
+                        )
+                        .description("Content sizes the row instead of clipping it"),
+                    ),
             )
             .add(
-                expander_row::ExpanderRow::new(
-                    "Second expander",
-                    self.grid_expanded == Some(1),
-                    Message::GridToggled(1),
-                )
-                .description("Open in the second column")
-                .add(cycle_row::CycleRow::new("Quality", "Balanced")),
+                expander_row::ExpanderRow::new("Second expander")
+                    .description("Open in the second column")
+                    .add(cycle_row::CycleRow::new("Quality", "Balanced")),
             )
             .add(
                 action_row::ActionRow::new(
@@ -415,6 +389,15 @@ impl Gallery {
                 )
                 .description("Partial and full grid lines use content-driven height"),
             );
+
+        let expander_matrix = row_group::RowGroup::new()
+            .title("2 × 2 expander grid")
+            .description("Each expander contains its own 2 × 2 action grid")
+            .columns(2)
+            .add(action_grid_expander("Expander A"))
+            .add(action_grid_expander("Expander B"))
+            .add(action_grid_expander("Expander C"))
+            .add(action_grid_expander("Expander D"));
 
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)
@@ -461,6 +444,7 @@ impl Gallery {
                     section("Rows", fields),
                     section("Row group", row_group),
                     section("Multiple expanders", multiple_expanders),
+                    section("Expander matrix", expander_matrix),
                     section("Status bar", status),
                 ]
                 .spacing(12)
@@ -513,6 +497,25 @@ impl Gallery {
             search::SearchState::Results(results)
         }
     }
+}
+
+fn action_grid_expander(title: &'static str) -> expander_row::ExpanderRow<'static, Message> {
+    ["Action 1", "Action 2", "Action 3", "Action 4"]
+        .into_iter()
+        .fold(
+            expander_row::ExpanderRow::new(title)
+                .description("Contains four actions")
+                .columns(2),
+            |expander, title| {
+                expander.add(
+                    action_row::ActionRow::new(
+                        title,
+                        action_row::ActionRowState::Ready(Message::Noop),
+                    )
+                    .description("Available action"),
+                )
+            },
+        )
 }
 
 fn section<'a>(label: &'a str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {

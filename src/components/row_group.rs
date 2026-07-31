@@ -2,14 +2,15 @@ use iced::{
     Background, Border, Element, Event, Length, Point, Rectangle, Shadow, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree},
+        widget::{Operation, Tree, tree},
     },
     widget::{column, text},
 };
 
 use super::{
-    expander_row::{ExpanderParts, ExpanderRow},
+    expander_row::{ExpanderParts, ExpanderRow, control, passive},
     list_row::ListRow,
+    pressable::SharedFlag,
     text::TextExt as _,
 };
 
@@ -25,15 +26,14 @@ pub struct RowGroup<'a, Message> {
     entries: Vec<RowGroupEntry<'a, Message>>,
 }
 
-struct Expansion<'a, Message> {
-    expanded: bool,
-    content: Option<Element<'a, Message>>,
+enum Entry<'a, Message> {
+    Row(ListRow<'a, Message>),
+    Expander(ExpanderParts<'a, Message>),
 }
 
 #[doc(hidden)]
 pub struct RowGroupEntry<'a, Message> {
-    row: ListRow<'a, Message>,
-    expansion: Option<Expansion<'a, Message>>,
+    entry: Entry<'a, Message>,
 }
 
 impl<'a, Message, T> From<T> for RowGroupEntry<'a, Message>
@@ -42,23 +42,15 @@ where
 {
     fn from(row: T) -> Self {
         Self {
-            row: row.into(),
-            expansion: None,
+            entry: Entry::Row(row.into()),
         }
     }
 }
 
-impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for RowGroupEntry<'a, Message> {
+impl<'a, Message> From<ExpanderRow<'a, Message>> for RowGroupEntry<'a, Message> {
     fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        let ExpanderParts {
-            header,
-            expanded,
-            content,
-        } = expander.into_parts();
-
         Self {
-            row: header,
-            expansion: Some(Expansion { expanded, content }),
+            entry: Entry::Expander(expander.into_parts()),
         }
     }
 }
@@ -118,7 +110,7 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
                 break;
             }
 
-            rows = rows.push(group_line(line, group.columns, group.enabled));
+            rows = rows.push(group_line(line, group.columns, group.enabled, false));
         }
 
         let mut content = column![].spacing(GAP);
@@ -141,69 +133,147 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
     }
 }
 
-pub(crate) fn group_line<'a, Message: Clone + 'a>(
+fn group_line<'a, Message: Clone + 'a>(
     entries: Vec<RowGroupEntry<'a, Message>>,
     columns: usize,
     enabled: bool,
+    standalone: bool,
 ) -> Element<'a, Message> {
+    let columns = columns.max(1);
     let mut headers = Vec::with_capacity(entries.len());
-    let mut expanded = Vec::new();
+    let mut bodies = Vec::new();
+    let mut expansions = Vec::new();
 
-    for (index, entry) in entries.into_iter().enumerate() {
-        if let Some(expansion) = entry.expansion
-            && expansion.expanded
-            && let Some(content) = expansion.content
-        {
-            expanded.push((index, content));
+    for (header_index, entry) in entries.into_iter().enumerate() {
+        match entry.entry {
+            Entry::Row(row) => headers.push(Element::from(row.parent_enabled(enabled))),
+            Entry::Expander(parts) => {
+                let ExpanderParts {
+                    header,
+                    columns: requested_columns,
+                    content,
+                    content_enabled,
+                    enabled: expander_enabled,
+                } = parts;
+                let expander_enabled = enabled && expander_enabled;
+
+                if content.is_empty() {
+                    headers.push(Element::from(passive(header, expander_enabled)));
+                    continue;
+                }
+
+                let activated = SharedFlag::default();
+                let expanded = SharedFlag::default();
+                let header = control(
+                    header,
+                    expander_enabled,
+                    activated.clone(),
+                    expanded.clone(),
+                );
+                let content_columns = if standalone {
+                    requested_columns
+                } else {
+                    requested_columns.min(columns)
+                };
+                let body: Element<'a, Message> = content
+                    .into_iter()
+                    .fold(
+                        RowGroup::new()
+                            .columns(content_columns)
+                            .enabled(expander_enabled && content_enabled),
+                        RowGroup::add,
+                    )
+                    .into();
+
+                headers.push(Element::from(header.parent_enabled(enabled)));
+                expansions.push(Expansion {
+                    header_index,
+                    content_index: bodies.len(),
+                    span: if standalone {
+                        1
+                    } else {
+                        requested_columns.min(columns)
+                    },
+                    activated,
+                    expanded,
+                });
+                bodies.push(body);
+            }
         }
-
-        headers.push(Element::from(entry.row.parent_enabled(enabled)));
     }
 
     let header_count = headers.len();
-    let expanded_headers = expanded.iter().map(|(index, _)| *index).collect();
-    headers.extend(expanded.into_iter().map(|(_, content)| content));
+
+    for expansion in &mut expansions {
+        expansion.content_index += header_count;
+    }
+
+    headers.extend(bodies);
 
     Element::new(GroupLine {
         children: headers,
         header_count,
-        expanded_headers,
-        columns: columns.max(1),
+        expansions,
+        columns,
     })
 }
 
 pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
-    parts: ExpanderParts<'a, Message>,
+    entry: RowGroupEntry<'a, Message>,
 ) -> Element<'a, Message> {
-    let expansion = Expansion {
-        expanded: parts.expanded,
-        content: parts.content,
-    };
+    group_line(vec![entry], 1, true, true)
+}
 
-    group_line(
-        vec![RowGroupEntry {
-            row: parts.header,
-            expansion: Some(expansion),
-        }],
-        1,
-        true,
-    )
+struct Expansion {
+    header_index: usize,
+    content_index: usize,
+    span: usize,
+    activated: SharedFlag,
+    expanded: SharedFlag,
 }
 
 struct GroupLine<'a, Message> {
     children: Vec<Element<'a, Message>>,
     header_count: usize,
-    expanded_headers: Vec<usize>,
+    expansions: Vec<Expansion>,
     columns: usize,
 }
 
+#[derive(Default)]
+struct State {
+    open: Vec<usize>,
+    signature: Vec<(usize, usize)>,
+}
+
 impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> {
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<State>()
+    }
+
+    fn state(&self) -> tree::State {
+        tree::State::new(State::default())
+    }
+
     fn children(&self) -> Vec<Tree> {
         self.children.iter().map(Tree::new).collect()
     }
 
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(&self.children);
+        let signature: Vec<_> = self
+            .expansions
+            .iter()
+            .map(|expansion| (expansion.header_index, expansion.span))
+            .collect();
+        let state = tree.state.downcast_mut::<State>();
+
+        if state.signature != signature {
+            state.open.clear();
+            state.signature = signature;
+        }
+
+        state.open.retain(|index| *index < self.expansions.len());
+        self.sync_controls(state);
     }
 
     fn size(&self) -> Size<Length> {
@@ -216,6 +286,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
+        let state = tree.state.downcast_ref::<State>();
+        self.sync_controls(state);
         let width = limits.max().width;
         let cell_width = cell_width(width, self.columns);
         let loose_header_limits = layout::Limits::new(
@@ -237,7 +309,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             Size::new(cell_width, header_height),
             Size::new(cell_width, header_height),
         );
-        let mut children = Vec::with_capacity(tree.children.len());
+        let mut children = Vec::with_capacity(self.children.len());
 
         for (index, (header, tree)) in self.children[..self.header_count]
             .iter_mut()
@@ -252,10 +324,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             );
         }
 
-        if self.expanded_headers.is_empty() {
-            return layout::Node::with_children(Size::new(width, header_height), children);
-        }
-
         let body_top = header_height + GAP;
         let inner_width = (width - CONTENT_PADDING * 2.0).max(0.0);
         let content_limits = layout::Limits::new(
@@ -264,18 +332,29 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         );
         let mut y = body_top + CONTENT_PADDING;
 
-        for (content_index, content) in self.children[self.header_count..].iter_mut().enumerate() {
-            let tree = &mut tree.children[self.header_count + content_index];
-            let node = content
-                .as_widget_mut()
-                .layout(tree, renderer, &content_limits)
-                .move_to(Point::new(CONTENT_PADDING, y));
-            y += node.size().height + GAP;
-            children.push(node);
+        for (index, expansion) in self.expansions.iter().enumerate() {
+            let content = &mut self.children[expansion.content_index];
+            let tree = &mut tree.children[expansion.content_index];
+
+            if state.open.contains(&index) {
+                let node = content
+                    .as_widget_mut()
+                    .layout(tree, renderer, &content_limits)
+                    .move_to(Point::new(CONTENT_PADDING, y));
+                y += node.size().height + GAP;
+                children.push(node);
+            } else {
+                children.push(layout::Node::new(Size::ZERO));
+            }
         }
 
-        y += CONTENT_PADDING - GAP;
-        layout::Node::with_children(Size::new(width, y), children)
+        let height = if state.open.is_empty() {
+            header_height
+        } else {
+            y + CONTENT_PADDING - GAP
+        };
+
+        layout::Node::with_children(Size::new(width, height), children)
     }
 
     fn operate(
@@ -285,17 +364,28 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
+        let state = tree.state.downcast_ref::<State>();
+        let layouts: Vec<_> = layout.children().collect();
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
-            self.children
-                .iter_mut()
-                .zip(&mut tree.children)
-                .zip(layout.children())
-                .for_each(|((child, tree), layout)| {
-                    child
-                        .as_widget_mut()
-                        .operate(tree, layout, renderer, operation);
-                });
+            for index in 0..self.header_count {
+                self.children[index].as_widget_mut().operate(
+                    &mut tree.children[index],
+                    layouts[index],
+                    renderer,
+                    operation,
+                );
+            }
+
+            for index in &state.open {
+                let content_index = self.expansions[*index].content_index;
+                self.children[content_index].as_widget_mut().operate(
+                    &mut tree.children[content_index],
+                    layouts[content_index],
+                    renderer,
+                    operation,
+                );
+            }
         });
     }
 
@@ -310,15 +400,55 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        self.children
-            .iter_mut()
-            .zip(&mut tree.children)
-            .zip(layout.children())
-            .for_each(|((child, tree), layout)| {
-                child.as_widget_mut().update(
-                    tree, event, layout, cursor, renderer, clipboard, shell, viewport,
-                );
-            });
+        let layouts: Vec<_> = layout.children().collect();
+        let open = tree.state.downcast_ref::<State>().open.clone();
+
+        for index in 0..self.header_count {
+            self.children[index].as_widget_mut().update(
+                &mut tree.children[index],
+                event,
+                layouts[index],
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
+        }
+
+        for index in open {
+            let content_index = self.expansions[index].content_index;
+            self.children[content_index].as_widget_mut().update(
+                &mut tree.children[content_index],
+                event,
+                layouts[content_index],
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
+        }
+
+        let state = tree.state.downcast_mut::<State>();
+        let was_open = state.open.clone();
+
+        for (index, expansion) in self.expansions.iter().enumerate() {
+            if expansion.activated.take() {
+                if let Some(position) = state.open.iter().position(|open| *open == index) {
+                    state.open.remove(position);
+                } else {
+                    state.open.push(index);
+                    state.open.sort_unstable();
+                }
+            }
+        }
+
+        if state.open != was_open {
+            self.sync_controls(state);
+            shell.invalidate_layout();
+            shell.request_redraw();
+        }
     }
 
     fn mouse_interaction(
@@ -329,14 +459,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        self.children
-            .iter()
-            .zip(&tree.children)
-            .zip(layout.children())
-            .map(|((child, tree), layout)| {
-                child
-                    .as_widget()
-                    .mouse_interaction(tree, layout, cursor, viewport, renderer)
+        let state = tree.state.downcast_ref::<State>();
+
+        self.visible_indices(state)
+            .map(|index| {
+                self.children[index].as_widget().mouse_interaction(
+                    &tree.children[index],
+                    layout
+                        .children()
+                        .nth(index)
+                        .expect("group line child layout"),
+                    cursor,
+                    viewport,
+                    renderer,
+                )
             })
             .max()
             .unwrap_or_default()
@@ -352,9 +488,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        let state = tree.state.downcast_ref::<State>();
+        self.sync_controls(state);
         let children: Vec<_> = layout.children().collect();
 
-        if !self.expanded_headers.is_empty() {
+        if !state.open.is_empty() {
             let bounds = layout.bounds();
             let header_bottom = children[..self.header_count]
                 .iter()
@@ -376,8 +514,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                 Background::Color(theme.extended_palette().background.neutral.color),
             );
 
-            for index in &self.expanded_headers {
-                let header = children[*index].bounds();
+            for index in &state.open {
+                let header = children[self.expansions[*index].header_index].bounds();
                 renderer.fill_quad(
                     renderer::Quad {
                         bounds: Rectangle {
@@ -395,15 +533,17 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             }
         }
 
-        self.children
-            .iter()
-            .zip(&tree.children)
-            .zip(children)
-            .for_each(|((child, tree), layout)| {
-                child
-                    .as_widget()
-                    .draw(tree, renderer, theme, style, layout, cursor, viewport);
-            });
+        for index in self.visible_indices(state) {
+            self.children[index].as_widget().draw(
+                &tree.children[index],
+                renderer,
+                theme,
+                style,
+                children[index],
+                cursor,
+                viewport,
+            );
+        }
     }
 
     fn overlay<'a>(
@@ -421,6 +561,23 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             renderer,
             viewport,
             translation,
+        )
+    }
+}
+
+impl<Message> GroupLine<'_, Message> {
+    fn sync_controls(&self, state: &State) {
+        for (index, expansion) in self.expansions.iter().enumerate() {
+            expansion.expanded.set(state.open.contains(&index));
+        }
+    }
+
+    fn visible_indices<'a>(&'a self, state: &'a State) -> impl Iterator<Item = usize> + 'a {
+        (0..self.header_count).chain(
+            state
+                .open
+                .iter()
+                .map(|index| self.expansions[*index].content_index),
         )
     }
 }
@@ -447,17 +604,13 @@ mod tests {
     }
 
     #[test]
-    fn a_line_accepts_multiple_open_expanders_without_panicking() {
+    fn expanders_require_no_application_state() {
         let group = RowGroup::new()
-            .columns(3)
+            .columns(2)
             .add(SwitcherRow::new("Switch", false, |_| ()))
             .add(
-                ExpanderRow::new("First expander", true, ())
-                    .add(ActionRow::new("First", ActionRowState::Ready(()))),
-            )
-            .add(
-                ExpanderRow::new("Second expander", true, ())
-                    .add(ActionRow::new("Second", ActionRowState::Ready(()))),
+                ExpanderRow::new("Expander")
+                    .add(ActionRow::new("Child", ActionRowState::Ready(()))),
             );
 
         let _: Element<'_, ()> = group.into();
