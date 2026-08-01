@@ -6,7 +6,7 @@ use iced::{
 
 use crate::{icons::Icon, theme};
 
-use super::{card::Card, text::TextExt as _};
+use super::{card::Card, spacing, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -36,13 +36,13 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
         Card::new(
             column![
                 row![icon(kind), text(title).title(),]
-                    .spacing(14)
+                    .spacing(spacing::SM)
                     .align_y(Center),
                 text(body).body(),
             ]
-            .spacing(18),
+            .spacing(spacing::MD),
         )
-        .padding(28)
+        .padding(spacing::LG)
         .style(move |theme| {
             let colors = colors(theme, kind);
 

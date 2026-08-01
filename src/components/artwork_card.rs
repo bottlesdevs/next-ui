@@ -8,6 +8,7 @@ use crate::icons::Icon;
 use super::{
     button::Button,
     card::{BANNER_HEIGHT, Card, image_content},
+    spacing,
 };
 
 const ACTION_DIAMETER: f32 = 52.0;
@@ -66,7 +67,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                 ]
                 .width(Fill),
             )
-            .padding(12)
+            .padding(spacing::SM)
             .width(Fill)
             .height(BANNER_HEIGHT),
             column![
@@ -81,7 +82,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                     ]
                     .width(Fill),
                 )
-                .padding([0, 12])
+                .padding([0.0, spacing::SM])
             ],
         ]
         .width(Fill)

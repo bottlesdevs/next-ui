@@ -8,6 +8,7 @@ use crate::icons::Icon;
 use super::{
     button::{Button, ButtonKind},
     card::{BANNER_HEIGHT, Card, image_content},
+    spacing,
 };
 
 const ACTION_DIAMETER: f32 = 52.0;
@@ -71,11 +72,11 @@ impl<'a, Message: Clone + 'a> From<ProgramCard<'a, Message>> for Element<'a, Mes
                         .on_press_maybe(card.play)
                         .loading(card.play_loading),
                 ]
-                .spacing(8)
+                .spacing(spacing::XS)
                 .align_y(Center)
                 .width(Fill),
             )
-            .padding([0, 12]),
+            .padding([0.0, spacing::SM]),
         ]
         .height(Fill);
 
