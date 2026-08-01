@@ -4,7 +4,7 @@ use iced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
-    widget::{column, text},
+    widget::{column, container, text},
 };
 
 use super::{
@@ -175,15 +175,17 @@ fn group_line<'a, Message: Clone + 'a>(
                 } else {
                     requested_columns.min(columns)
                 };
-                let body: Element<'a, Message> = content
-                    .into_iter()
-                    .fold(
+                let body: Element<'a, Message> = container(
+                    content.into_iter().fold(
                         RowGroup::new()
                             .columns(content_columns)
                             .enabled(expander_enabled && content_enabled),
                         RowGroup::add,
-                    )
-                    .into();
+                    ),
+                )
+                .width(Length::Fill)
+                .padding(CONTENT_PADDING)
+                .into();
 
                 headers.push(Element::from(header.parent_enabled(enabled)));
                 expansions.push(Expansion {
@@ -363,19 +365,18 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 
             if state.open.contains(&index) {
                 let panel_width = footprint_width(expansion.footprint, cell_width);
-                let inner_width = (panel_width - CONTENT_PADDING * 2.0).max(0.0);
                 let content_limits = layout::Limits::new(
-                    Size::new(inner_width, 0.0),
-                    Size::new(inner_width, limits.max().height),
+                    Size::new(panel_width, 0.0),
+                    Size::new(panel_width, limits.max().height),
                 );
                 let node = content
                     .as_widget_mut()
                     .layout(tree, renderer, &content_limits)
                     .move_to(Point::new(
-                        expansion.footprint.start as f32 * (cell_width + GAP) + CONTENT_PADDING,
-                        body_top + CONTENT_PADDING,
+                        expansion.footprint.start as f32 * (cell_width + GAP),
+                        body_top,
                     ));
-                body_height = body_height.max(node.size().height + CONTENT_PADDING * 2.0);
+                body_height = body_height.max(node.size().height);
                 children.push(node);
             } else {
                 children.push(layout::Node::new(Size::ZERO));
@@ -526,17 +527,14 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         self.sync_controls(state);
         let children: Vec<_> = layout.children().collect();
         let line_bounds = layout.bounds();
-        let cell_width = cell_width(line_bounds.width, self.columns);
 
         for index in &state.open {
             let expansion = &self.expansions[*index];
             let header = children[expansion.header_index].bounds();
             let content = children[expansion.content_index].bounds();
             let panel = Rectangle {
-                x: line_bounds.x + expansion.footprint.start as f32 * (cell_width + GAP),
-                y: content.y - CONTENT_PADDING,
-                width: footprint_width(expansion.footprint, cell_width),
-                height: line_bounds.y + line_bounds.height - (content.y - CONTENT_PADDING),
+                height: line_bounds.y + line_bounds.height - content.y,
+                ..content
             };
 
             renderer.fill_quad(
