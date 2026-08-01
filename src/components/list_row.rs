@@ -11,6 +11,7 @@ use iced::{
 
 use super::{
     pressable::{Pressable, SharedFlag, Status as PressableStatus},
+    spacing,
     text::TextExt as _,
 };
 
@@ -39,7 +40,7 @@ pub(crate) fn labels<'a, Message: 'a>(
     description: &'a str,
 ) -> Element<'a, Message> {
     column![text(title).label(), text(description).detail().muted(),]
-        .spacing(4)
+        .spacing(spacing::XS)
         .into()
 }
 
@@ -54,7 +55,7 @@ impl<'a, Message> ListRow<'a, Message> {
             on_activate: None,
             raised_when: None,
             hover_tone: HoverTone::Default,
-            spacing: 16.0,
+            spacing: spacing::MD,
             focus_content_on_press: false,
         }
     }
@@ -128,19 +129,19 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
         let header: Element<'a, Message> = match (base.on_press, base.on_activate) {
             (Some(message), _) => Pressable::new(header)
                 .width(Fill)
-                .padding([18, 24])
+                .padding([spacing::MD, spacing::LG])
                 .on_press(message)
                 .style(header_style)
                 .into(),
             (None, Some(activation)) => Pressable::new(header)
                 .width(Fill)
-                .padding([18, 24])
+                .padding([spacing::MD, spacing::LG])
                 .on_activate(activation)
                 .style(header_style)
                 .into(),
             (None, None) => container(header)
                 .width(Fill)
-                .padding([18, 24])
+                .padding([spacing::MD, spacing::LG])
                 .align_y(Alignment::Center)
                 .into(),
         };

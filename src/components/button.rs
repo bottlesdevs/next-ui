@@ -8,6 +8,7 @@ use crate::icons::{self, Icon};
 
 use super::{
     pressable::{Pressable, Status},
+    spacing,
     text::TextExt as _,
 };
 
@@ -135,7 +136,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .center(Fill)
             .into()
         } else {
-            let mut content = Row::new().spacing(8).align_y(Center);
+            let mut content = Row::new().spacing(spacing::XS).align_y(Center);
 
             if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
                 content = content.push(icon_element(
@@ -166,8 +167,14 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
         pressable = match shape {
-            Shape::Rectangular => pressable.padding([button.padding_y.unwrap_or(12.0), 18.0]),
-            Shape::Pill => pressable.padding([button.padding_y.unwrap_or(10.0), 16.0]),
+            Shape::Rectangular | Shape::Pill => pressable.padding([
+                button.padding_y.unwrap_or(if kind == ButtonKind::Surface {
+                    spacing::XS
+                } else {
+                    spacing::SM
+                }),
+                spacing::MD,
+            ]),
             Shape::IconOnly => pressable
                 .width(Length::Fixed(button.diameter))
                 .height(Length::Fixed(button.diameter)),
@@ -177,7 +184,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
         if shape == Shape::IconOnly {
             tooltip(element, text(button.label), tooltip::Position::Bottom)
-                .gap(6)
+                .gap(spacing::XS)
                 .into()
         } else {
             element
