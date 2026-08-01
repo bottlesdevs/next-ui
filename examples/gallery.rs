@@ -137,13 +137,13 @@ impl Gallery {
             text("Heading 4").h4(),
             text("Heading 5").h5(),
         ]
-        .spacing(8);
+        .spacing(6);
 
         let titles = row![
             title::Title::new("Title").subtitle("Subtitle"),
-            Space::new().width(80),
             title::Title::new("Title").status("Status"),
-        ];
+        ]
+        .spacing(24);
 
         let buttons = row![
             button::Button::new("Play")
@@ -166,7 +166,7 @@ impl Gallery {
                         text("Subtitle").subtitle().muted(),
                         text("Cards accept arbitrary content.").body().muted(),
                     ]
-                    .spacing(8),
+                    .spacing(6),
                 )
                 .padding(24),
                 artwork_card::ArtworkCard::new("Artwork card", "Ready")
@@ -179,7 +179,7 @@ impl Gallery {
                     .play_loading(true)
                     .banner(sample_image()),
             ]
-            .spacing(16),
+            .spacing(18),
             row![
                 info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information."),
                 info_card::InfoCard::new(Kind::Info, "Info", "General information for the user."),
@@ -196,7 +196,7 @@ impl Gallery {
             ]
             .spacing(12),
         ]
-        .spacing(16);
+        .spacing(18);
 
         let tabs = tabs::Tabs::new(
             TAB_LABELS
@@ -235,7 +235,7 @@ impl Gallery {
                 "The catalog could not be loaded"
             )),
         ]
-        .spacing(16);
+        .spacing(18);
 
         let selected = self
             .selected_option
@@ -307,7 +307,7 @@ impl Gallery {
             )
             .content_enabled(self.switched_on),
         ]
-        .spacing(32);
+        .spacing(24);
 
         let row_group = row_group::RowGroup::new()
             .title("Graphics")
@@ -421,7 +421,7 @@ impl Gallery {
                 status_bar::StatusState::Failed,
             ),
         ]
-        .spacing(16);
+        .spacing(18);
 
         let header = header_bar::HeaderBar::new(Message::HeaderBar).middle(
             iced::widget::container(
