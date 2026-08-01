@@ -527,6 +527,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         self.sync_controls(state);
         let children: Vec<_> = layout.children().collect();
         let line_bounds = layout.bounds();
+        let palette = theme.extended_palette();
+        let color = palette.background.neutral.color;
+        let background = palette.background.base.color;
 
         for index in &state.open {
             let expansion = &self.expansions[*index];
@@ -544,7 +547,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                     shadow: Shadow::default(),
                     snap: true,
                 },
-                Background::Color(theme.extended_palette().background.neutral.color),
+                Background::Color(color),
             );
 
             renderer.fill_quad(
@@ -559,8 +562,19 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                     shadow: Shadow::default(),
                     snap: true,
                 },
-                Background::Color(theme.extended_palette().background.neutral.color),
+                Background::Color(color),
             );
+
+            if header.x > panel.x {
+                fill_concave_corner(renderer, header.x, panel.y, true, color, background);
+            }
+
+            let header_right = header.x + header.width;
+            let panel_right = panel.x + panel.width;
+
+            if header_right < panel_right {
+                fill_concave_corner(renderer, header_right, panel.y, false, color, background);
+            }
         }
 
         for index in self.visible_indices(state) {
@@ -620,6 +634,47 @@ impl<Message> GroupLine<'_, Message> {
 
 fn cell_width(width: f32, columns: usize) -> f32 {
     (width - GAP * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
+}
+
+fn fill_concave_corner(
+    renderer: &mut iced::Renderer,
+    x: f32,
+    panel_y: f32,
+    extends_left: bool,
+    color: iced::Color,
+    background: iced::Color,
+) {
+    let clip_x = if extends_left { x - RADIUS } else { x };
+    let clip = Rectangle::new(
+        Point::new(clip_x, panel_y - RADIUS),
+        Size::new(RADIUS, RADIUS),
+    );
+    let cutout_x = if extends_left { x - RADIUS * 2.0 } else { x };
+    let cutout = Rectangle::new(
+        Point::new(cutout_x, panel_y - RADIUS * 2.0),
+        Size::new(RADIUS * 2.0, RADIUS * 2.0),
+    );
+
+    renderer.with_layer(clip, |renderer| {
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: clip,
+                border: Border::default(),
+                shadow: Shadow::default(),
+                snap: true,
+            },
+            Background::Color(color),
+        );
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: cutout,
+                border: Border::default().rounded(RADIUS),
+                shadow: Shadow::default(),
+                snap: true,
+            },
+            Background::Color(background),
+        );
+    });
 }
 
 fn footprint(header: usize, requested_span: usize, columns: usize) -> Footprint {
