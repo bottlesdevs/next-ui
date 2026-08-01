@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, pressable::Pressable, style, text::TextExt as _};
+use super::{list_row::ListRow, pressable::Pressable, spacing, style, text::TextExt as _};
 
 pub struct CycleRow<'a, Message> {
     title: &'a str,
@@ -55,12 +55,12 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
     fn from(cycle: CycleRow<'a, Message>) -> Self {
         let enabled = cycle.previous.is_some() || cycle.next.is_some();
         let previous = Pressable::new(Icon::Arrow.view())
-            .padding(8)
+            .padding(spacing::XS)
             .style(style::action)
             .on_press_maybe(cycle.previous);
 
         let next = Pressable::new(Icon::Arrow.rotated(std::f32::consts::PI))
-            .padding(8)
+            .padding(spacing::XS)
             .style(style::action)
             .on_press_maybe(cycle.next);
 
@@ -70,7 +70,7 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
         ]
         .width(Fill)
         .align_x(Alignment::Center)
-        .spacing(4);
+        .spacing(spacing::XS);
 
         ListRow::new(labels)
             .leading(previous)

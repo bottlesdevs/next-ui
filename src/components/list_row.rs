@@ -24,7 +24,6 @@ pub struct ListRow<'a, Message> {
     on_activate: Option<SharedFlag>,
     raised_when: Option<SharedFlag>,
     hover_tone: HoverTone,
-    spacing: f32,
     focus_content_on_press: bool,
 }
 
@@ -55,7 +54,6 @@ impl<'a, Message> ListRow<'a, Message> {
             on_activate: None,
             raised_when: None,
             hover_tone: HoverTone::Default,
-            spacing: spacing::MD,
             focus_content_on_press: false,
         }
     }
@@ -110,17 +108,12 @@ impl<'a, Message> ListRow<'a, Message> {
         self.focus_content_on_press = true;
         self
     }
-
-    pub(crate) fn spacing(mut self, spacing: f32) -> Self {
-        self.spacing = spacing;
-        self
-    }
 }
 
 impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
     fn from(base: ListRow<'a, Message>) -> Self {
         let header = IcedRow::new()
-            .spacing(base.spacing)
+            .spacing(spacing::MD)
             .align_y(Alignment::Center)
             .extend(base.leading)
             .push(container(base.body).width(Fill))

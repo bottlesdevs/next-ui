@@ -8,6 +8,7 @@ use super::{
     list_row::{HoverTone, ListRow},
     pressable::{Pressable, SharedFlag, Status},
     row_group::{RowGroupEntry, standalone_expander},
+    spacing,
 };
 
 pub struct ExpanderRow<'a, Message> {
@@ -122,7 +123,7 @@ pub(crate) fn control<'a, Message: Clone + 'a>(
         }
         Header::Custom(header) => header.prepend_trailing(
             Pressable::new(caret())
-                .padding(6)
+                .padding(spacing::XS)
                 .on_activate(activated)
                 .style(caret_style),
         ),

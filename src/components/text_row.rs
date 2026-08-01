@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, text::TextExt as _};
+use super::{list_row::ListRow, spacing, text::TextExt as _};
 
 pub struct TextRow<'a, Message> {
     title: &'a str,
@@ -87,7 +87,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
     fn from(text_row: TextRow<'a, Message>) -> Self {
         let error = text_row.error.is_some();
         let editable = text_row.on_input.is_some();
-        let mut value = row![].spacing(12).align_y(Center);
+        let mut value = row![].spacing(spacing::SM).align_y(Center);
 
         if let Some(icon) = text_row.icon {
             value = value.push(icon_view(icon, 12.0, error));
@@ -110,7 +110,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
 
         let mut labels = column![text(text_row.title).label(), value]
             .width(Fill)
-            .spacing(4);
+            .spacing(spacing::XS);
 
         if let Some(error) = text_row.error {
             labels = labels.push(text(error).detail().style(|theme: &Theme| text::Style {

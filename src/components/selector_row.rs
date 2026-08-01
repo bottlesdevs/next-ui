@@ -13,13 +13,13 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{pressable::event_cursor, text::TextExt as _};
+use super::{pressable::event_cursor, spacing, text::TextExt as _};
 
 const OPTION_PANEL_PADDING: Padding = Padding {
-    top: 17.0,
-    right: 10.0,
-    bottom: 16.0,
-    left: 10.0,
+    top: spacing::MD,
+    right: spacing::SM,
+    bottom: spacing::MD,
+    left: spacing::SM,
 };
 
 pub struct SelectorRow<'a, T, Message> {
@@ -93,7 +93,7 @@ where
             .chain(labels.into_iter().map(|label| {
                 container(text(label).label())
                     .width(Fill)
-                    .padding(Padding::from([10, 9]))
+                    .padding([spacing::SM, spacing::SM])
                     .into()
             }))
             .collect();
@@ -111,7 +111,7 @@ fn header<'a, Message: 'a>(
     value: &str,
     icon: Option<Icon>,
 ) -> Element<'a, Message> {
-    let mut value_row = row![].spacing(12).align_y(Alignment::Center);
+    let mut value_row = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
     if let Some(icon) = icon {
         value_row = value_row.push(
@@ -128,14 +128,14 @@ fn header<'a, Message: 'a>(
         row![
             column![text(title).label(), value_row]
                 .width(Fill)
-                .spacing(8),
+                .spacing(spacing::XS),
             Space::new().width(20).height(20),
         ]
         .align_y(Alignment::Center)
-        .spacing(16),
+        .spacing(spacing::MD),
     )
     .width(Fill)
-    .padding(Padding::from([14, 24]))
+    .padding([spacing::SM, spacing::LG])
     .into()
 }
 

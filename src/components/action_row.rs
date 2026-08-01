@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, text::TextExt as _};
+use super::{list_row::ListRow, spacing, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Progress {
@@ -56,7 +56,7 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Messa
 
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
-        let mut description = row![].spacing(16).align_y(Alignment::Center);
+        let mut description = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
         if let Some(icon) = action.icon {
             description = description.push(
@@ -69,7 +69,7 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         description = description.push(text(action.description).detail().muted());
 
-        let labels = column![text(action.title).label(), description].spacing(4);
+        let labels = column![text(action.title).label(), description].spacing(spacing::XS);
 
         match action.state {
             ActionRowState::Ready(message) => ListRow::new(labels)

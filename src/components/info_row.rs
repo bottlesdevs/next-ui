@@ -38,7 +38,7 @@ impl<'a, Message: Clone + 'a> From<InfoRow<'a>> for Element<'a, Message> {
 
 impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
     fn from(info: InfoRow<'a>) -> Self {
-        let row = ListRow::new(labels(info.title, info.description)).spacing(24.0);
+        let row = ListRow::new(labels(info.title, info.description));
 
         match info.icon {
             Some(icon) => row.leading(

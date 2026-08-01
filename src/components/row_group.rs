@@ -11,12 +11,11 @@ use super::{
     expander_row::{ExpanderParts, ExpanderRow, control, passive},
     list_row::ListRow,
     pressable::SharedFlag,
+    spacing,
     text::TextExt as _,
 };
 
-const GAP: f32 = 16.0;
 const RADIUS: f32 = 8.0;
-const CONTENT_PADDING: f32 = 18.0;
 
 pub struct RowGroup<'a, Message> {
     title: Option<&'a str>,
@@ -100,7 +99,7 @@ impl<'a, Message: 'a> Default for RowGroup<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Message> {
     fn from(group: RowGroup<'a, Message>) -> Self {
-        let mut rows = column![].spacing(GAP);
+        let mut rows = column![].spacing(spacing::MD);
         let mut entries = group.entries.into_iter();
 
         loop {
@@ -113,10 +112,10 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
             rows = rows.push(group_line(line, group.columns, group.enabled, false));
         }
 
-        let mut content = column![].spacing(GAP);
+        let mut content = column![].spacing(spacing::MD);
 
         if group.title.is_some() || group.description.is_some() {
-            let mut heading = column![].spacing(4);
+            let mut heading = column![].spacing(spacing::XS);
 
             if let Some(title) = group.title {
                 heading = heading.push(text(title).subtitle());
@@ -184,7 +183,7 @@ fn group_line<'a, Message: Clone + 'a>(
                     ),
                 )
                 .width(Length::Fill)
-                .padding(CONTENT_PADDING)
+                .padding(spacing::MD)
                 .into();
 
                 headers.push(Element::from(header.parent_enabled(enabled)));
@@ -352,11 +351,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                 header
                     .as_widget_mut()
                     .layout(tree, renderer, &header_limits)
-                    .move_to(Point::new(index as f32 * (cell_width + GAP), 0.0)),
+                    .move_to(Point::new(index as f32 * (cell_width + spacing::MD), 0.0)),
             );
         }
 
-        let body_top = header_height + GAP;
+        let body_top = header_height + spacing::MD;
         let mut body_height: f32 = 0.0;
 
         for (index, expansion) in self.expansions.iter().enumerate() {
@@ -373,7 +372,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                     .as_widget_mut()
                     .layout(tree, renderer, &content_limits)
                     .move_to(Point::new(
-                        expansion.footprint.start as f32 * (cell_width + GAP),
+                        expansion.footprint.start as f32 * (cell_width + spacing::MD),
                         body_top,
                     ));
                 body_height = body_height.max(node.size().height);
@@ -633,7 +632,7 @@ impl<Message> GroupLine<'_, Message> {
 }
 
 fn cell_width(width: f32, columns: usize) -> f32 {
-    (width - GAP * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
+    (width - spacing::MD * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
 }
 
 fn fill_concave_corner(
@@ -690,7 +689,7 @@ fn footprint(header: usize, requested_span: usize, columns: usize) -> Footprint 
 
 fn footprint_width(footprint: Footprint, cell_width: f32) -> f32 {
     let span = footprint.span();
-    span as f32 * cell_width + span.saturating_sub(1) as f32 * GAP
+    span as f32 * cell_width + span.saturating_sub(1) as f32 * spacing::MD
 }
 
 fn toggle_open(open: &mut Vec<usize>, target: usize, footprints: &[Footprint]) {
