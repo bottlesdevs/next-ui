@@ -5,6 +5,7 @@ use iced::{
 
 use super::{
     pressable::{Pressable, Status},
+    spacing,
     text::TextExt as _,
 };
 
@@ -77,10 +78,10 @@ where
                     }),
                 ]
                 .align_x(Alignment::Center)
-                .spacing(10),
+                .spacing(spacing::XS),
             )
             .width(Fill)
-            .padding([8, 16])
+            .padding([spacing::XS, spacing::MD])
             .on_press_maybe(message)
             .style(move |theme, status| tab_style(theme, status, selected))
             .into()

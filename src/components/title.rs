@@ -3,6 +3,8 @@ use iced::{
     widget::{column, text},
 };
 
+use super::spacing;
+
 enum Detail<'a> {
     Subtitle(&'a str),
     Status(&'a str),
@@ -34,7 +36,7 @@ impl<'a> Title<'a> {
 
 impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
     fn from(title: Title<'a>) -> Self {
-        let (title_size, detail_size, spacing) = typography(title.detail.as_ref());
+        let (title_size, detail_size) = typography(title.detail.as_ref());
         let mut content = column![text(title.title).size(title_size).style(text::base)];
 
         if let Some(detail) = title.detail {
@@ -54,13 +56,13 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
             }));
         }
 
-        content.spacing(spacing).into()
+        content.spacing(spacing::SM).into()
     }
 }
 
-fn typography(detail: Option<&Detail<'_>>) -> (f32, f32, f32) {
+fn typography(detail: Option<&Detail<'_>>) -> (f32, f32) {
     match detail {
-        Some(Detail::Status(_)) => (48.0, 40.0, 12.0),
-        _ => (32.0, 24.0, 10.0),
+        Some(Detail::Status(_)) => (48.0, 40.0),
+        _ => (32.0, 24.0),
     }
 }

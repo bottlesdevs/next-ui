@@ -6,7 +6,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{button::Button, style, text::TextExt as _};
+use super::{button::Button, spacing, style, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusState {
@@ -81,10 +81,10 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
                 Icon::Chip.view(),
                 text(status.architecture).supporting().muted(),
             ]
-            .spacing(12)
+            .spacing(spacing::SM)
             .align_y(Vertical::Center),
             row![Icon::Run.view(), text(status.runner).supporting().muted(),]
-                .spacing(12)
+                .spacing(spacing::SM)
                 .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
@@ -99,10 +99,10 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
                         }),
                     }),
             ]
-            .spacing(12)
+            .spacing(spacing::SM)
             .align_y(Vertical::Center),
         ]
-        .spacing(42)
+        .spacing(spacing::LG)
         .align_y(Vertical::Center);
 
         if status.log.is_some() && status.on_toggle.is_some() {
@@ -113,14 +113,15 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
             );
         }
 
-        let mut content = column![container(header).padding([8, 32])].width(Fill);
+        let mut content =
+            column![container(header).padding([spacing::XS, spacing::LG])].width(Fill);
 
         if status.expanded
             && let Some(log) = status.log
         {
             content = content.push(
                 container(scrollable(text(log).supporting()).height(Fill))
-                    .padding([16, 22])
+                    .padding([spacing::MD, spacing::LG])
                     .width(Fill)
                     .max_height(180)
                     .style(|_| container::background(crate::theme::HINT)),

@@ -6,10 +6,12 @@ use iced::{
 
 use crate::{icons::Icon, theme};
 
-use super::pressable::{Pressable, Status};
+use super::{
+    pressable::{Pressable, Status},
+    spacing,
+};
 
 const HEIGHT: f32 = 64.0;
-const SPACING: f32 = 12.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -87,7 +89,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             container(content)
                 .width(Fill)
                 .height(HEIGHT)
-                .padding([6, 24])
+                .padding([spacing::XS, spacing::LG])
                 .style(style),
         )
         .on_press(on_action(Action::Drag))
@@ -97,7 +99,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
 
 fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Message> {
     Row::with_children(children)
-        .spacing(SPACING)
+        .spacing(spacing::SM)
         .align_y(Center)
 }
 
