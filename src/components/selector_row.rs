@@ -15,6 +15,13 @@ use crate::icons::Icon;
 
 use super::{pressable::event_cursor, text::TextExt as _};
 
+const OPTION_PANEL_PADDING: Padding = Padding {
+    top: 17.0,
+    right: 10.0,
+    bottom: 16.0,
+    left: 10.0,
+};
+
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
     options: &'a [T],
@@ -226,36 +233,34 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         limits: &layout::Limits,
     ) -> layout::Node {
         let limits = limits.width(Length::Fill).height(Length::Shrink);
-        let mut children = Vec::with_capacity(self.children.len());
-        let header =
-            self.children[0]
-                .as_widget_mut()
-                .layout(&mut tree.children[0], renderer, &limits);
+        let (header, options) = self.children.split_first_mut().expect("selector header");
+        let (header_tree, option_trees) = tree.children.split_first_mut().expect("selector header");
+        let header = header
+            .as_widget_mut()
+            .layout(header_tree, renderer, &limits);
         let header_height = header.size().height;
         let width = header.size().width;
-        children.push(header);
-
         let open = tree.state.downcast_ref::<State>().open;
-        let mut y = header_height + if open { 17.0 } else { 0.0 };
-
-        for (index, child) in self.children[1..].iter_mut().enumerate() {
-            let node = child.as_widget_mut().layout(
-                &mut tree.children[index + 1],
+        let option_panel = if open {
+            layout::flex::resolve(
+                layout::flex::Axis::Vertical,
                 renderer,
-                &limits.shrink(Size::new(20.0, 0.0)),
-            );
-            let height = node.size().height;
-            children.push(node.move_to(Point::new(10.0, y)));
+                &limits.shrink(Size::new(0.0, header_height)),
+                Length::Fill,
+                Length::Shrink,
+                OPTION_PANEL_PADDING,
+                0.0,
+                Alignment::Start,
+                options,
+                option_trees,
+            )
+            .move_to(Point::new(0.0, header_height))
+        } else {
+            layout::Node::new(Size::ZERO)
+        };
+        let height = header_height + option_panel.size().height;
 
-            if open {
-                y += height;
-            }
-        }
-
-        layout::Node::with_children(
-            Size::new(width, if open { y + 16.0 } else { header_height }),
-            children,
-        )
+        layout::Node::with_children(Size::new(width, height), vec![header, option_panel])
     }
 
     fn operate(
@@ -285,9 +290,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             return;
         }
 
-        let mut children = layout.children();
-        let header = children.next().expect("selector header");
-        let options: Vec<_> = children.collect();
+        let (header, options) = layout_parts(layout);
         let state = tree.state.downcast_mut::<State>();
         let was_open = state.open;
         let was_highlighted = state.highlighted;
@@ -434,9 +437,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         let state = tree.state.downcast_ref::<State>();
-        let mut children = layout.children();
-        let header = children.next().expect("selector header");
-        let options: Vec<_> = children.collect();
+        let (header, options) = layout_parts(layout);
 
         if self.is_enabled() && hit_target(state.open, header, &options, cursor).is_some() {
             mouse::Interaction::Pointer
@@ -473,9 +474,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             }),
         );
 
-        let mut children = layout.children();
-        let header = children.next().expect("selector header");
-        let options: Vec<_> = children.collect();
+        let (header, options) = layout_parts(layout);
         self.children[0].as_widget().draw(
             &tree.children[0],
             renderer,
@@ -565,6 +564,18 @@ impl<'a, Message: 'a> From<Selector<'a, Message>> for Element<'a, Message> {
     fn from(selector: Selector<'a, Message>) -> Self {
         Element::new(selector)
     }
+}
+
+fn layout_parts<'a>(layout: Layout<'a>) -> (Layout<'a>, Vec<Layout<'a>>) {
+    let mut children = layout.children();
+    let header = children.next().expect("selector header");
+    let options = children
+        .next()
+        .expect("selector option panel")
+        .children()
+        .collect();
+
+    (header, options)
 }
 
 fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, open: bool) {
