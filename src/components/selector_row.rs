@@ -485,7 +485,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             cursor,
             viewport,
         );
-        draw_caret(renderer, header, state.open);
+        let header_content = header.children().next().expect("selector header content");
+        let caret_slot = header_content
+            .children()
+            .nth(1)
+            .expect("selector caret slot");
+        draw_caret(renderer, caret_slot.bounds(), state.open);
 
         if state.open {
             let highlighted = options
@@ -562,16 +567,14 @@ impl<'a, Message: 'a> From<Selector<'a, Message>> for Element<'a, Message> {
     }
 }
 
-fn draw_caret(renderer: &mut iced::Renderer, header: Layout<'_>, open: bool) {
-    let header = header.bounds();
+fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, open: bool) {
     let handle = Icon::DownCaret.handle();
     let Size { width, height } = renderer.measure_svg(&handle);
-    let slot = Size::new(20.0, 20.0);
-    let size = ContentFit::Contain.fit(Size::new(width as f32, height as f32), slot);
+    let size = ContentFit::Contain.fit(Size::new(width as f32, height as f32), slot.size());
     let bounds = Rectangle::new(
         Point::new(
-            header.x + header.width - 44.0 + (slot.width - size.width) / 2.0,
-            header.center_y() - size.height / 2.0,
+            slot.center_x() - size.width / 2.0,
+            slot.center_y() - size.height / 2.0,
         ),
         size,
     );
@@ -584,7 +587,7 @@ fn draw_caret(renderer: &mut iced::Renderer, header: Layout<'_>, open: bool) {
             opacity: 1.0,
         },
         bounds,
-        header,
+        slot,
     );
 }
 
