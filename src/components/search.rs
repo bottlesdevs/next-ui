@@ -20,6 +20,7 @@ use super::{
 };
 
 const RESULT_INSET: f32 = 20.0;
+const OVERLAY_GAP: f32 = 6.0;
 
 pub struct SearchResult<'a, Message> {
     key: String,
@@ -203,10 +204,7 @@ fn panel<'a, Message: Clone + 'a>(
                 rows = rows.push(result_row(result, Rc::clone(&highlight), index));
             }
 
-            container(rows)
-                .width(Fill)
-                .padding([0.0, RESULT_INSET])
-                .into()
+            container(rows).width(Fill).padding(RESULT_INSET).into()
         }
         SearchState::Loading => status_row("Searching…", None),
         SearchState::Empty => status_row("No results", None),
@@ -590,8 +588,8 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     for Anchored<'_, '_, Message>
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let below = bounds.height - (self.position.y + self.target_height + 6.0);
-        let above = self.position.y - 6.0;
+        let below = bounds.height - (self.position.y + self.target_height + OVERLAY_GAP);
+        let above = self.position.y - OVERLAY_GAP;
         let max_height = below.max(above).max(0.0);
         let limits = layout::Limits::new(
             Size::new(self.width, 0.0),
@@ -620,9 +618,9 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
 
         layout::Node::with_children(Size::new(self.width, height), children).move_to(
             if below >= height || below >= above {
-                self.position + Vector::new(0.0, self.target_height + 6.0)
+                self.position + Vector::new(0.0, self.target_height + OVERLAY_GAP)
             } else {
-                self.position - Vector::new(0.0, height + 6.0)
+                self.position - Vector::new(0.0, height + OVERLAY_GAP)
             },
         )
     }
