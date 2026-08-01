@@ -223,7 +223,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Pressable<'_, Me
             match event {
                 Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
                 | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                    state.focused = hovered;
+                    state.focused = false;
 
                     if hovered {
                         state.pressed = true;
