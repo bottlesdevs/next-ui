@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, ContentFit, Element, Fill, Length, Pixels, Theme,
+    Background, Border, Center, ContentFit, Element, Fill, Length, Theme,
     theme::palette::Pair,
     widget::{Row, container, svg, text, tooltip},
 };
@@ -35,7 +35,6 @@ pub struct Button<'a, Message> {
     icon_rotation: f32,
     shape: Shape,
     diameter: f32,
-    padding_y: Option<f32>,
     kind: ButtonKind,
     on_press: Option<Message>,
     loading: bool,
@@ -50,7 +49,6 @@ impl<'a, Message> Button<'a, Message> {
             icon_rotation: 0.0,
             shape: Shape::Rectangular,
             diameter: 52.0,
-            padding_y: None,
             kind: ButtonKind::Secondary,
             on_press: None,
             loading: false,
@@ -92,11 +90,6 @@ impl<'a, Message> Button<'a, Message> {
             self.diameter = diameter.max(1.0);
         }
 
-        self
-    }
-
-    pub fn padding_y(mut self, padding: impl Into<Pixels>) -> Self {
-        self.padding_y = Some(padding.into().0);
         self
     }
 
@@ -168,11 +161,11 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
         pressable = match shape {
             Shape::Rectangular | Shape::Pill => pressable.padding([
-                button.padding_y.unwrap_or(if kind == ButtonKind::Surface {
+                if kind == ButtonKind::Surface {
                     spacing::XS
                 } else {
                     spacing::SM
-                }),
+                },
                 spacing::MD,
             ]),
             Shape::IconOnly => pressable

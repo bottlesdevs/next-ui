@@ -1,8 +1,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use iced::{
-    Alignment, Background, Border, Color, Element, Event, Fill, Length, Padding, Pixels, Point,
-    Rectangle, Shadow, Size, Theme, Vector,
+    Alignment, Background, Border, Color, Element, Event, Fill, Length, Point, Rectangle, Shadow,
+    Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
@@ -16,11 +16,9 @@ use crate::icons::Icon;
 use super::{
     button::{Button, ButtonKind},
     pressable::{Pressable, Status},
+    spacing,
     text::TextExt as _,
 };
-
-const RESULT_INSET: f32 = 20.0;
-const OVERLAY_GAP: f32 = 6.0;
 
 pub struct SearchResult<'a, Message> {
     key: String,
@@ -75,8 +73,6 @@ pub struct Search<'a, Message> {
     on_submit: Option<Message>,
     footer: Option<(&'a str, Message)>,
     id: Option<Id>,
-    padding_x: f32,
-    padding_y: f32,
 }
 
 impl<'a, Message> Search<'a, Message> {
@@ -93,8 +89,6 @@ impl<'a, Message> Search<'a, Message> {
             on_submit: None,
             footer: None,
             id: None,
-            padding_x: 20.0,
-            padding_y: 16.0,
         }
     }
 
@@ -117,23 +111,6 @@ impl<'a, Message> Search<'a, Message> {
         self.id = Some(id.into());
         self
     }
-
-    pub fn padding(mut self, padding: impl Into<Pixels>) -> Self {
-        let padding = padding.into().0;
-        self.padding_x = padding;
-        self.padding_y = padding;
-        self
-    }
-
-    pub fn padding_x(mut self, padding: impl Into<Pixels>) -> Self {
-        self.padding_x = padding.into().0;
-        self
-    }
-
-    pub fn padding_y(mut self, padding: impl Into<Pixels>) -> Self {
-        self.padding_y = padding.into().0;
-        self
-    }
 }
 
 impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message> {
@@ -151,16 +128,11 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
 
         let input = container(
             row![Icon::Search.view(), input]
-                .spacing(12)
+                .spacing(spacing::SM)
                 .align_y(Alignment::Center),
         )
         .width(Fill)
-        .padding(Padding {
-            top: search.padding_y,
-            right: search.padding_x,
-            bottom: search.padding_y,
-            left: search.padding_x,
-        })
+        .padding([spacing::SM, spacing::MD])
         .style(search_style);
         let (panel_body, panel_footer, visible, keys, selections, highlight) =
             panel(search.state, search.footer);
@@ -204,7 +176,7 @@ fn panel<'a, Message: Clone + 'a>(
                 rows = rows.push(result_row(result, Rc::clone(&highlight), index));
             }
 
-            container(rows).width(Fill).padding(RESULT_INSET).into()
+            container(rows).width(Fill).padding(spacing::MD).into()
         }
         SearchState::Loading => status_row("Searching…", None),
         SearchState::Empty => status_row("No results", None),
@@ -216,11 +188,11 @@ fn panel<'a, Message: Clone + 'a>(
         footer.map(|(label, message)| {
             Pressable::new(
                 row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
-                    .spacing(14)
+                    .spacing(spacing::SM)
                     .align_y(Alignment::Center),
             )
             .width(Fill)
-            .padding([18, 20])
+            .padding(spacing::MD)
             .on_press(message)
             .style(footer_style)
             .into()
@@ -244,13 +216,13 @@ fn result_row<'a, Message: Clone + 'a>(
     highlight: Rc<Cell<Option<usize>>>,
     index: usize,
 ) -> Element<'a, Message> {
-    let mut labels = column![text(result.title).label()].spacing(4);
+    let mut labels = column![text(result.title).label()].spacing(spacing::XS);
 
     if let Some(subtitle) = result.subtitle {
         labels = labels.push(text(subtitle).detail().muted());
     }
 
-    let mut content = row![].spacing(14).align_y(Alignment::Center);
+    let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
     if let Some(icon) = result.icon {
         content = content.push(
@@ -274,7 +246,6 @@ fn result_row<'a, Message: Clone + 'a>(
                 } else {
                     0.0
                 })
-                .padding_y(8)
                 .kind(ButtonKind::Surface)
                 .on_press(message),
         );
@@ -282,7 +253,7 @@ fn result_row<'a, Message: Clone + 'a>(
 
     Pressable::new(content)
         .width(Fill)
-        .padding([8, 20])
+        .padding([spacing::XS, spacing::MD])
         .on_press(result.on_select)
         .style(move |theme, status| result_style(theme, status, highlight.get() == Some(index)))
         .into()
@@ -293,7 +264,7 @@ fn status_row<'a, Message: 'a>(label: &'a str, color: Option<Color>) -> Element<
         color: Some(color.unwrap_or(theme.extended_palette().secondary.weak.text)),
     }))
     .width(Fill)
-    .padding(20)
+    .padding(spacing::MD)
     .into()
 }
 
@@ -588,8 +559,8 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     for Anchored<'_, '_, Message>
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let below = bounds.height - (self.position.y + self.target_height + OVERLAY_GAP);
-        let above = self.position.y - OVERLAY_GAP;
+        let below = bounds.height - (self.position.y + self.target_height + spacing::XS);
+        let above = self.position.y - spacing::XS;
         let max_height = below.max(above).max(0.0);
         let limits = layout::Limits::new(
             Size::new(self.width, 0.0),
@@ -618,9 +589,9 @@ impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
 
         layout::Node::with_children(Size::new(self.width, height), children).move_to(
             if below >= height || below >= above {
-                self.position + Vector::new(0.0, self.target_height + OVERLAY_GAP)
+                self.position + Vector::new(0.0, self.target_height + spacing::XS)
             } else {
-                self.position - Vector::new(0.0, height + OVERLAY_GAP)
+                self.position - Vector::new(0.0, height + spacing::XS)
             },
         )
     }

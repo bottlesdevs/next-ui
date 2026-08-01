@@ -430,8 +430,7 @@ impl Gallery {
                     &self.search,
                     Message::SearchChanged,
                 )
-                .state(self.search_state())
-                .padding_y(8),
+                .state(self.search_state()),
             )
             .width(370),
         );
