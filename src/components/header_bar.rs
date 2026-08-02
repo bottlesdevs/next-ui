@@ -1,13 +1,13 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Task, Theme,
-    widget::{Row, button, container, mouse_area, row, svg},
+    widget::{Row, container, mouse_area, row},
     window,
 };
 
 use crate::{icons::Icon, theme};
 
 use super::{
-    pressable::{Pressable, Status},
+    button::{Button, ButtonKind},
     spacing,
 };
 
@@ -115,24 +115,11 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 }
 
 fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Message> {
-    Pressable::new(container(svg(Icon::Cross.handle()).width(16).height(16)).center(40))
-        .width(40)
-        .height(40)
+    Button::icon_only("Close window", Icon::Cross)
+        .diameter(32.0)
+        .icon_size(16.0)
+        .kind(ButtonKind::Transparent)
         .on_press(message)
-        .style(|theme: &Theme, status| {
-            let colors = theme.extended_palette();
-
-            button::Style {
-                background: match status {
-                    Status::Pressed => Some(Background::Color(colors.background.stronger.color)),
-                    Status::Focused => Some(Background::Color(colors.background.strong.color)),
-                    _ => None,
-                },
-                text_color: colors.secondary.weak.text,
-                border: Border::default().rounded(8),
-                ..button::Style::default()
-            }
-        })
         .into()
 }
 
