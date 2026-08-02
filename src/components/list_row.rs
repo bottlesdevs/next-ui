@@ -130,7 +130,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
                 .width(Fill)
                 .padding([spacing::MD, spacing::LG])
                 .on_activate(activation)
-                .style(header_style)
+                .style(activation_header_style)
                 .into(),
             (None, None) => container(header)
                 .width(Fill)
@@ -153,6 +153,14 @@ fn header_style(theme: &Theme, status: PressableStatus) -> button::Style {
         background: matches!(status, PressableStatus::Pressed).then_some(Background::Color(
             theme.extended_palette().background.stronger.color,
         )),
+        text_color: theme.palette().text,
+        border: Border::default().rounded(8),
+        ..button::Style::default()
+    }
+}
+
+fn activation_header_style(theme: &Theme, _status: PressableStatus) -> button::Style {
+    button::Style {
         text_color: theme.palette().text,
         border: Border::default().rounded(8),
         ..button::Style::default()

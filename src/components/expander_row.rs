@@ -1,14 +1,12 @@
 use iced::{
-    Border, ContentFit, Element, Length, Point, Rectangle, Size, Theme,
+    ContentFit, Element, Length, Point, Rectangle, Size, Theme,
     advanced::{Layout, Widget, layout, mouse, renderer, svg::Renderer as _, widget::Tree},
-    widget::button,
 };
 
 use super::{
     list_row::{HoverTone, ListRow},
-    pressable::{Pressable, SharedFlag, Status},
+    pressable::SharedFlag,
     row_group::{RowGroupEntry, standalone_expander},
-    spacing,
 };
 
 pub struct ExpanderRow<'a, Message> {
@@ -121,12 +119,7 @@ pub(crate) fn control<'a, Message: Clone + 'a>(
                 .trailing(caret())
                 .on_activate(activated)
         }
-        Header::Custom(header) => header.prepend_trailing(
-            Pressable::new(caret())
-                .padding(spacing::XS)
-                .on_activate(activated)
-                .style(caret_style),
-        ),
+        Header::Custom(header) => header.prepend_trailing(caret()).on_activate(activated),
     }
     .raised_when(expanded)
     .enabled(enabled)
@@ -143,14 +136,6 @@ pub(crate) fn passive<'a, Message: 'a>(
         Header::Custom(header) => header,
     }
     .enabled(enabled)
-}
-
-fn caret_style(theme: &Theme, _status: Status) -> button::Style {
-    button::Style {
-        text_color: theme.palette().text,
-        border: Border::default().rounded(4),
-        ..button::Style::default()
-    }
 }
 
 struct DynamicCaret {
