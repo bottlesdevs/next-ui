@@ -32,6 +32,7 @@ pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
+    show_window_controls: bool,
     on_action: Box<dyn Fn(Action) -> Message + 'a>,
 }
 
@@ -41,6 +42,7 @@ impl<'a, Message> HeaderBar<'a, Message> {
             start: Vec::new(),
             middle: Vec::new(),
             end: Vec::new(),
+            show_window_controls: true,
             on_action: Box::new(on_action),
         }
     }
@@ -59,6 +61,11 @@ impl<'a, Message> HeaderBar<'a, Message> {
         self.end.push(content.into());
         self
     }
+
+    pub fn show_window_controls(mut self, show_window_controls: bool) -> Self {
+        self.show_window_controls = show_window_controls;
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
@@ -67,14 +74,18 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             mut start,
             middle,
             mut end,
+            show_window_controls,
             on_action,
         } = header;
-        let close = window_control(on_action(Action::Close));
 
-        if cfg!(target_os = "macos") {
-            start.insert(0, close);
-        } else {
-            end.push(close);
+        if show_window_controls {
+            let close = window_control(on_action(Action::Close));
+
+            if cfg!(target_os = "macos") {
+                start.insert(0, close);
+            } else {
+                end.push(close);
+            }
         }
 
         let content = row![
