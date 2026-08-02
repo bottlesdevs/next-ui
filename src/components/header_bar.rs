@@ -89,9 +89,17 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
         }
 
         let content = row![
-            container(section(start)).align_left(Fill),
-            container(section(middle)).center_x(Length::Shrink),
-            container(section(end)).align_right(Fill),
+            container(section(start))
+                .align_left(Fill)
+                .align_bottom(Fill)
+                .padding(iced::padding::bottom(spacing::SM)),
+            container(section(middle))
+                .center_x(Length::Shrink)
+                .align_bottom(Fill),
+            container(section(end))
+                .align_right(Fill)
+                .align_bottom(Fill)
+                .padding(iced::padding::bottom(spacing::SM)),
         ]
         .height(Fill)
         .align_y(Center);
@@ -100,7 +108,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             container(content)
                 .width(Fill)
                 .height(HEIGHT)
-                .padding([spacing::XS, spacing::LG])
+                .padding([0.0, spacing::SM])
                 .style(style),
         )
         .on_press(on_action(Action::Drag))
