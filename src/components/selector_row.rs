@@ -6,9 +6,12 @@ use iced::{
         svg::Renderer as _,
         widget::{Operation, Tree, operation, tree},
     },
+    animation::{Animation, Easing},
     keyboard::{self, key},
+    time::Instant,
     touch,
     widget::{Space, column, container, row, svg, text},
+    window,
 };
 
 use crate::icons::Icon;
@@ -155,13 +158,41 @@ impl<Message> Selector<'_, Message> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct State {
-    open: bool,
+    expansion: Animation<bool>,
     highlighted: Option<usize>,
     hovered: Option<usize>,
     pressed: Option<Pressed>,
     focused: bool,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            expansion: Animation::new(false).very_quick().easing(Easing::EaseOut),
+            highlighted: None,
+            hovered: None,
+            pressed: None,
+            focused: false,
+        }
+    }
+}
+
+impl State {
+    fn is_open(&self) -> bool {
+        self.expansion.value()
+    }
+
+    fn set_open(&mut self, open: bool, now: Instant) {
+        if self.is_open() != open {
+            self.expansion.go_mut(open, now);
+        }
+    }
+
+    fn expansion(&self, now: Instant) -> f32 {
+        self.expansion.interpolate(0.0, 1.0, now)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,7 +236,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         let option_count = self.option_count();
 
         if !self.is_enabled() {
-            state.open = false;
+            state.set_open(false, Instant::now());
             state.highlighted = None;
             state.hovered = None;
             state.pressed = None;
@@ -240,8 +271,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             .layout(header_tree, renderer, &limits);
         let header_height = header.size().height;
         let width = header.size().width;
-        let open = tree.state.downcast_ref::<State>().open;
-        let option_panel = if open {
+        let expansion = tree.state.downcast_ref::<State>().expansion(Instant::now());
+        let option_panel = if expansion > 0.0 {
             layout::flex::resolve(
                 layout::flex::Axis::Vertical,
                 renderer,
@@ -258,7 +289,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         } else {
             layout::Node::new(Size::ZERO)
         };
-        let height = header_height + option_panel.size().height;
+        let height = header_height + option_panel.size().height * expansion;
 
         layout::Node::with_children(Size::new(width, height), vec![header, option_panel])
     }
@@ -286,16 +317,31 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) {
+        if let Event::Window(window::Event::RedrawRequested(now)) = event
+            && tree
+                .state
+                .downcast_ref::<State>()
+                .expansion
+                .is_animating(*now)
+        {
+            shell.invalidate_layout();
+            shell.request_redraw();
+        }
+
         if !self.is_enabled() {
             return;
         }
 
         let (header, options) = layout_parts(layout);
         let state = tree.state.downcast_mut::<State>();
-        let was_open = state.open;
+        let was_open = state.is_open();
         let was_highlighted = state.highlighted;
         let was_hovered = state.hovered;
-        let target = hit_target(state.open, header, &options, event_cursor(event, cursor));
+        let pointer = event_cursor(event, cursor);
+        let target = pointer
+            .is_over(layout.bounds())
+            .then(|| hit_target(state.is_open(), header, &options, pointer))
+            .flatten();
         state.hovered = match target {
             Some(Pressed::Option(index)) => Some(index),
             _ => None,
@@ -309,8 +355,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
 
                 if target.is_some() {
                     shell.capture_event();
-                } else if state.open {
-                    state.open = false;
+                } else if state.is_open() {
+                    state.set_open(false, Instant::now());
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
@@ -320,7 +366,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                 if pressed == target {
                     match target {
                         Some(Pressed::Header) => {
-                            state.open = !state.open;
+                            state.set_open(!state.is_open(), Instant::now());
                             state.highlighted = self.selected.or(Some(0));
                             shell.capture_event();
                         }
@@ -328,7 +374,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             if let Some(on_selected) = &self.on_selected {
                                 shell.publish(on_selected(index));
                             }
-                            state.open = false;
+                            state.set_open(false, Instant::now());
                             state.highlighted = Some(index);
                             shell.capture_event();
                         }
@@ -348,7 +394,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                 match key.as_ref() {
                     keyboard::Key::Named(key::Named::ArrowDown) => {
                         if let Some(last) = last {
-                            state.highlighted = Some(if state.open {
+                            state.highlighted = Some(if state.is_open() {
                                 state
                                     .highlighted
                                     .map_or(self.selected.unwrap_or(0), |index| {
@@ -357,13 +403,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             } else {
                                 self.selected.unwrap_or(0)
                             });
-                            state.open = true;
+                            state.set_open(true, Instant::now());
                             shell.capture_event();
                         }
                     }
                     keyboard::Key::Named(key::Named::ArrowUp) => {
                         if let Some(last) = last {
-                            state.highlighted = Some(if state.open {
+                            state.highlighted = Some(if state.is_open() {
                                 state
                                     .highlighted
                                     .unwrap_or_else(|| self.selected.unwrap_or(0))
@@ -371,39 +417,39 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             } else {
                                 self.selected.unwrap_or(last)
                             });
-                            state.open = true;
+                            state.set_open(true, Instant::now());
                             shell.capture_event();
                         }
                     }
                     keyboard::Key::Named(key::Named::Home) if last.is_some() => {
-                        state.open = true;
+                        state.set_open(true, Instant::now());
                         state.highlighted = Some(0);
                         shell.capture_event();
                     }
                     keyboard::Key::Named(key::Named::End) => {
                         if let Some(last) = last {
-                            state.open = true;
+                            state.set_open(true, Instant::now());
                             state.highlighted = Some(last);
                             shell.capture_event();
                         }
                     }
                     keyboard::Key::Named(key::Named::Enter | key::Named::Space) => {
-                        if state.open {
+                        if state.is_open() {
                             if let Some(index) = state.highlighted {
                                 if let Some(on_selected) = &self.on_selected {
                                     shell.publish(on_selected(index));
                                 }
-                                state.open = false;
+                                state.set_open(false, Instant::now());
                             }
                         } else {
-                            state.open = true;
+                            state.set_open(true, Instant::now());
                             state.highlighted = self.selected.or(Some(0));
                         }
 
                         shell.capture_event();
                     }
-                    keyboard::Key::Named(key::Named::Escape) if state.open => {
-                        state.open = false;
+                    keyboard::Key::Named(key::Named::Escape) if state.is_open() => {
+                        state.set_open(false, Instant::now());
                         shell.capture_event();
                     }
                     _ => {}
@@ -412,15 +458,15 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             _ => {}
         }
 
-        if !state.open {
+        if !state.is_open() {
             state.hovered = None;
         }
 
-        if state.open != was_open {
+        if state.is_open() != was_open {
             shell.invalidate_layout();
         }
 
-        if state.open != was_open
+        if state.is_open() != was_open
             || state.highlighted != was_highlighted
             || state.hovered != was_hovered
         {
@@ -439,7 +485,10 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         let state = tree.state.downcast_ref::<State>();
         let (header, options) = layout_parts(layout);
 
-        if self.is_enabled() && hit_target(state.open, header, &options, cursor).is_some() {
+        if self.is_enabled()
+            && cursor.is_over(layout.bounds())
+            && hit_target(state.is_open(), header, &options, cursor).is_some()
+        {
             mouse::Interaction::Pointer
         } else {
             mouse::Interaction::default()
@@ -459,6 +508,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
         let hovered = self.is_enabled() && cursor.is_over(bounds);
+        let expansion = state.expansion(Instant::now());
 
         renderer.fill_quad(
             renderer::Quad {
@@ -467,7 +517,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                 shadow: Shadow::default(),
                 snap: true,
             },
-            Background::Color(if state.open || hovered {
+            Background::Color(if expansion > 0.0 || hovered {
                 theme.extended_palette().background.neutral.color
             } else {
                 theme.extended_palette().background.weak.color
@@ -489,60 +539,78 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             .children()
             .nth(1)
             .expect("selector caret slot");
-        draw_caret(renderer, caret_slot.bounds(), state.open);
+        draw_caret(renderer, caret_slot.bounds(), expansion);
 
-        if state.open {
-            let highlighted = options
-                .iter()
-                .position(|layout| cursor.is_over(layout.bounds()))
-                .or(state.hovered)
-                .or(state.highlighted);
-
-            let line = Rectangle {
+        if expansion > 0.0 {
+            let panel = Rectangle {
+                x: bounds.x,
                 y: header.bounds().y + header.bounds().height,
-                height: 1.0,
-                ..bounds
+                width: bounds.width,
+                height: (bounds.height - header.bounds().height).max(0.0),
             };
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: line,
-                    border: Border::default(),
-                    shadow: Shadow::default(),
-                    snap: true,
-                },
-                theme.extended_palette().background.stronger.color,
-            );
 
-            for (index, option_layout) in options.into_iter().enumerate() {
-                let is_highlighted = highlighted == Some(index);
+            if let Some(clip) = panel.intersection(viewport) {
+                renderer.with_layer(clip, |renderer| {
+                    let highlighted = cursor
+                        .is_over(bounds)
+                        .then(|| {
+                            options
+                                .iter()
+                                .position(|layout| cursor.is_over(layout.bounds()))
+                        })
+                        .flatten()
+                        .or(state.hovered)
+                        .or(state.highlighted);
+                    let line = Rectangle {
+                        y: panel.y,
+                        height: 1.0,
+                        ..bounds
+                    };
 
-                if is_highlighted {
                     renderer.fill_quad(
                         renderer::Quad {
-                            bounds: option_layout.bounds(),
-                            border: Border::default().rounded(8),
+                            bounds: line,
+                            border: Border::default(),
                             shadow: Shadow::default(),
                             snap: true,
                         },
-                        Background::Color(theme.extended_palette().background.stronger.color),
+                        theme.extended_palette().background.stronger.color,
                     );
-                }
 
-                self.children[index + 1].as_widget().draw(
-                    &tree.children[index + 1],
-                    renderer,
-                    theme,
-                    &renderer::Style {
-                        text_color: if is_highlighted {
-                            theme.palette().text
-                        } else {
-                            theme.extended_palette().secondary.base.text
-                        },
-                    },
-                    option_layout,
-                    cursor,
-                    viewport,
-                );
+                    for (index, option_layout) in options.into_iter().enumerate() {
+                        let is_highlighted = highlighted == Some(index);
+
+                        if is_highlighted {
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: option_layout.bounds(),
+                                    border: Border::default().rounded(8),
+                                    shadow: Shadow::default(),
+                                    snap: true,
+                                },
+                                Background::Color(
+                                    theme.extended_palette().background.stronger.color,
+                                ),
+                            );
+                        }
+
+                        self.children[index + 1].as_widget().draw(
+                            &tree.children[index + 1],
+                            renderer,
+                            theme,
+                            &renderer::Style {
+                                text_color: if is_highlighted {
+                                    theme.palette().text
+                                } else {
+                                    theme.extended_palette().secondary.base.text
+                                },
+                            },
+                            option_layout,
+                            cursor,
+                            &clip,
+                        );
+                    }
+                });
             }
         }
 
@@ -578,7 +646,7 @@ fn layout_parts<'a>(layout: Layout<'a>) -> (Layout<'a>, Vec<Layout<'a>>) {
     (header, options)
 }
 
-fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, open: bool) {
+fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, expansion: f32) {
     let handle = Icon::DownCaret.handle();
     let Size { width, height } = renderer.measure_svg(&handle);
     let size = ContentFit::Contain.fit(Size::new(width as f32, height as f32), slot.size());
@@ -594,7 +662,7 @@ fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, open: bool) {
         iced::advanced::svg::Svg {
             handle,
             color: None,
-            rotation: (if open { std::f32::consts::PI } else { 0.0 }).into(),
+            rotation: (std::f32::consts::PI * expansion).into(),
             opacity: 1.0,
         },
         bounds,
