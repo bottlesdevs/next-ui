@@ -1,5 +1,6 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Point, Rectangle, Renderer, Size, Theme,
+    Alignment, Background, Border, Element, Event, Fill, Padding, Point, Rectangle, Renderer, Size,
+    Theme,
     animation::{Animation, Easing},
     mouse,
     time::Instant,
@@ -82,7 +83,7 @@ where
                 .spacing(spacing::XS),
             )
             .width(Fill)
-            .padding([spacing::XS, spacing::MD])
+            .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::MD))
             .on_press_maybe(message)
             .style(move |theme, status| tab_style(theme, status, selected))
             .into()
@@ -181,7 +182,7 @@ impl<Message> canvas::Program<Message> for TabIndicator {
         frame.fill_rectangle(
             Point::new(
                 tab_width * position + spacing::MD,
-                bounds.height - spacing::XS - INDICATOR_HEIGHT,
+                bounds.height - INDICATOR_HEIGHT,
             ),
             Size::new(tab_width - 2.0 * spacing::MD, INDICATOR_HEIGHT),
             theme.palette().primary,
