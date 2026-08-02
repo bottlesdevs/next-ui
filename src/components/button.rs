@@ -26,6 +26,7 @@ pub enum ButtonKind {
     Secondary,
     Primary,
     Surface,
+    Transparent,
 }
 
 pub struct Button<'a, Message> {
@@ -33,6 +34,7 @@ pub struct Button<'a, Message> {
     icon: Option<Icon>,
     icon_trailing: bool,
     icon_rotation: f32,
+    icon_size: f32,
     shape: Shape,
     diameter: f32,
     kind: ButtonKind,
@@ -47,6 +49,7 @@ impl<'a, Message> Button<'a, Message> {
             icon: None,
             icon_trailing: false,
             icon_rotation: 0.0,
+            icon_size: icons::SIZE,
             shape: Shape::Rectangular,
             diameter: 52.0,
             kind: ButtonKind::Secondary,
@@ -77,6 +80,11 @@ impl<'a, Message> Button<'a, Message> {
 
     pub fn icon_rotation(mut self, rotation: f32) -> Self {
         self.icon_rotation = rotation;
+        self
+    }
+
+    pub fn icon_size(mut self, size: f32) -> Self {
+        self.icon_size = size.max(1.0);
         self
     }
 
@@ -123,6 +131,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             container(icon_element(
                 button.icon.expect("icon-only buttons always have an icon"),
                 button.icon_rotation,
+                button.icon_size,
                 button.kind,
                 disabled,
             ))
@@ -135,6 +144,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 content = content.push(icon_element(
                     icon,
                     button.icon_rotation,
+                    button.icon_size,
                     button.kind,
                     disabled,
                 ));
@@ -146,6 +156,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 content = content.push(icon_element(
                     icon,
                     button.icon_rotation,
+                    button.icon_size,
                     button.kind,
                     disabled,
                 ));
@@ -188,12 +199,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 fn icon_element<'a, Message: 'a>(
     icon: Icon,
     rotation: f32,
+    size: f32,
     kind: ButtonKind,
     disabled: bool,
 ) -> Element<'a, Message> {
     svg(icon.handle())
-        .width(icons::SIZE)
-        .height(icons::SIZE)
+        .width(size)
+        .height(size)
         .content_fit(ContentFit::Contain)
         .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
@@ -215,11 +227,23 @@ fn appearance(
     let colors = colors(theme, status, kind);
 
     iced::widget::button::Style {
-        background: Some(Background::Color(colors.color)),
+        background: if kind == ButtonKind::Transparent {
+            match status {
+                Status::Pressed => Some(Background::Color(
+                    theme.extended_palette().background.stronger.color,
+                )),
+                Status::Focused => Some(Background::Color(
+                    theme.extended_palette().background.strong.color,
+                )),
+                _ => None,
+            }
+        } else {
+            Some(Background::Color(colors.color))
+        },
         text_color: colors.text,
-        border: Border::default().rounded(match shape {
-            Shape::Rectangular => 8,
-            Shape::Pill | Shape::IconOnly => 999,
+        border: Border::default().rounded(match (shape, kind) {
+            (Shape::IconOnly, ButtonKind::Transparent) | (Shape::Rectangular, _) => 8,
+            (Shape::Pill | Shape::IconOnly, _) => 999,
         }),
         ..iced::widget::button::Style::default()
     }
@@ -258,5 +282,9 @@ fn colors(theme: &Theme, status: Status, kind: ButtonKind) -> Pair {
                 text: palette.secondary.base.text,
             }
         }
+        ButtonKind::Transparent => Pair {
+            color: palette.background.base.color,
+            text: palette.secondary.weak.text,
+        },
     }
 }
