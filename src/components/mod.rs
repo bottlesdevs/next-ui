@@ -23,6 +23,7 @@ pub mod program_card;
 pub mod row_group;
 pub mod search;
 pub mod selector_row;
+pub mod split_view;
 pub mod status_bar;
 pub mod switcher;
 pub mod switcher_row;
