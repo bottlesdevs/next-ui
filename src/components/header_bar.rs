@@ -92,14 +92,14 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             container(section(start))
                 .align_left(Fill)
                 .align_bottom(Fill)
-                .padding(iced::padding::bottom(spacing::SM)),
+                .padding(iced::padding::bottom(spacing::MD)),
             container(section(middle))
                 .center_x(Length::Shrink)
                 .align_bottom(Fill),
             container(section(end))
                 .align_right(Fill)
                 .align_bottom(Fill)
-                .padding(iced::padding::bottom(spacing::SM)),
+                .padding(iced::padding::bottom(spacing::MD)),
         ]
         .height(Fill)
         .align_y(Center);

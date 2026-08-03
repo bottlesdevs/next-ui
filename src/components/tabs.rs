@@ -1,10 +1,12 @@
 use iced::{
     Alignment, Background, Border, Element, Event, Fill, Padding, Point, Rectangle, Renderer, Size,
     Theme,
+    advanced::text::{self as advanced_text, Paragraph as _, Renderer as _},
+    alignment,
     animation::{Animation, Easing},
     mouse,
     time::Instant,
-    widget::{Action, Space, button, canvas, column, row, stack, text},
+    widget::{Action, Space, button, canvas, column, container, row, stack, text},
     window,
 };
 
@@ -66,7 +68,7 @@ where
             selected,
             on_select,
         } = tabs;
-        let tab_count = tabs.len();
+        let labels = tabs.iter().map(|tab| tab.label).collect();
         let selected_index = selected
             .as_ref()
             .and_then(|selected| tabs.iter().position(|tab| &tab.value == selected));
@@ -75,39 +77,34 @@ where
             let message = tab.enabled.then(|| on_select(tab.value));
 
             Pressable::new(
-                column![
-                    text(tab.label).label(),
-                    Space::new().width(Fill).height(INDICATOR_HEIGHT),
-                ]
-                .align_x(Alignment::Center)
-                .spacing(spacing::XS),
+                column![text(tab.label).label(), Space::new().height(spacing::LG),]
+                    .align_x(Alignment::Center),
             )
-            .width(Fill)
-            .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::MD))
+            .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
             .on_press_maybe(message)
             .style(move |theme, status| tab_style(theme, status, selected))
             .into()
         });
 
-        stack![
-            row(children).width(Fill),
+        container(stack![
+            row(children).spacing(spacing::LG),
             canvas::Canvas::new(TabIndicator {
                 selected_index,
-                tab_count,
+                labels,
             })
             .width(Fill)
             .height(Fill),
-        ]
-        .width(Fill)
+        ])
+        .center_x(Fill)
         .into()
     }
 }
 
 const INDICATOR_HEIGHT: f32 = 3.0;
 
-struct TabIndicator {
+struct TabIndicator<'a> {
     selected_index: Option<usize>,
-    tab_count: usize,
+    labels: Vec<&'a str>,
 }
 
 #[derive(Debug, Default)]
@@ -136,7 +133,7 @@ impl IndicatorState {
     }
 }
 
-impl<Message> canvas::Program<Message> for TabIndicator {
+impl<Message> canvas::Program<Message> for TabIndicator<'_> {
     type State = IndicatorState;
 
     fn update(
@@ -166,30 +163,69 @@ impl<Message> canvas::Program<Message> for TabIndicator {
         let Some(selected_index) = self.selected_index else {
             return Vec::new();
         };
-        if self.tab_count == 0 {
+        if self.labels.is_empty() {
             return Vec::new();
         }
 
-        let position = state
-            .animation
-            .as_ref()
-            .map_or(selected_index as f32, |animation| {
-                animation.interpolate_with(|index| index, Instant::now())
-            });
-        let tab_width = bounds.width / self.tab_count as f32;
+        let now = Instant::now();
+        let center = state.animation.as_ref().map_or_else(
+            || tab_center(renderer, &self.labels, selected_index),
+            |animation| {
+                animation.interpolate_with(
+                    |index| tab_center(renderer, &self.labels, index as usize),
+                    now,
+                )
+            },
+        );
+        let width = state.animation.as_ref().map_or_else(
+            || tab_width(renderer, self.labels[selected_index]),
+            |animation| {
+                animation.interpolate_with(
+                    |index| tab_width(renderer, self.labels[index as usize]),
+                    now,
+                )
+            },
+        );
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
         frame.fill_rectangle(
-            Point::new(
-                tab_width * position + spacing::MD,
-                bounds.height - INDICATOR_HEIGHT,
-            ),
-            Size::new(tab_width - 2.0 * spacing::MD, INDICATOR_HEIGHT),
+            Point::new(center - width / 2.0, bounds.height - INDICATOR_HEIGHT),
+            Size::new(width, INDICATOR_HEIGHT),
             theme.palette().primary,
         );
 
         vec![frame.into_geometry()]
     }
+}
+
+fn tab_center(renderer: &Renderer, labels: &[&str], index: usize) -> f32 {
+    labels[..index]
+        .iter()
+        .map(|label| tab_width(renderer, label))
+        .sum::<f32>()
+        + spacing::LG * index as f32
+        + tab_width(renderer, labels[index]) / 2.0
+}
+
+fn tab_width(renderer: &Renderer, label: &str) -> f32 {
+    label_width(renderer, label) + 2.0 * spacing::SM
+}
+
+fn label_width(renderer: &Renderer, label: &str) -> f32 {
+    let paragraph =
+        <Renderer as advanced_text::Renderer>::Paragraph::with_text(advanced_text::Text {
+            content: label,
+            bounds: Size::INFINITE,
+            size: 18.0.into(),
+            line_height: advanced_text::LineHeight::default(),
+            font: renderer.default_font(),
+            align_x: advanced_text::Alignment::Default,
+            align_y: alignment::Vertical::Top,
+            shaping: advanced_text::Shaping::default(),
+            wrapping: advanced_text::Wrapping::default(),
+        });
+
+    paragraph.min_width()
 }
 
 fn tab_style(theme: &Theme, status: Status, selected: bool) -> button::Style {
