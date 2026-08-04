@@ -1,19 +1,22 @@
 use iced::{
-    Element, Event, Fill, Length, Padding, Point, Rectangle, Size, Theme, Vector,
+    Background, Degrees, Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
     animation::{Animation, Easing},
+    gradient,
     time::Instant,
     touch,
-    widget::{container, responsive},
+    widget::responsive,
     window,
 };
 
 use super::spacing;
+use crate::theme::WINDOW;
 
-const BREAKPOINT: f32 = 1360.0;
+const BREAKPOINT: f32 = 900.0;
+const SIDEBAR_MAX_WIDTH: f32 = 420.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneMode {
@@ -21,10 +24,19 @@ pub enum PaneMode {
     Split,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PaneSide {
+    Start,
+    #[default]
+    End,
+}
+
 pub struct SplitView<'a, Message> {
     master: Box<dyn Fn(f32, PaneMode) -> Element<'a, Message> + 'a>,
     detail: Box<dyn Fn(f32, PaneMode) -> Element<'a, Message> + 'a>,
     show_detail: bool,
+    side: PaneSide,
+    master_blocked: bool,
 }
 
 impl<'a, Message> SplitView<'a, Message> {
@@ -36,11 +48,23 @@ impl<'a, Message> SplitView<'a, Message> {
             master: Box::new(master),
             detail: Box::new(detail),
             show_detail: false,
+            side: PaneSide::End,
+            master_blocked: false,
         }
     }
 
     pub fn show_detail(mut self, show_detail: bool) -> Self {
         self.show_detail = show_detail;
+        self
+    }
+
+    pub fn side(mut self, side: PaneSide) -> Self {
+        self.side = side;
+        self
+    }
+
+    pub fn block_master(mut self) -> Self {
+        self.master_blocked = true;
         self
     }
 }
@@ -51,40 +75,54 @@ impl<'a, Message: 'a> From<SplitView<'a, Message>> for Element<'a, Message> {
             master,
             detail,
             show_detail,
+            side,
+            master_blocked,
         } = split_view;
 
         responsive(move |size| {
             let wide = size.width >= BREAKPOINT;
-            let width = content_width(size.width);
+            let width = size.width;
             let split_width = (width - spacing::SM).max(0.0);
+            let sidebar_width = split_width.min(SIDEBAR_MAX_WIDTH);
+            let content_width = split_width - sidebar_width;
             let master_mode = if wide && show_detail {
                 PaneMode::Split
             } else {
                 PaneMode::Single
             };
             let master_width = if wide && show_detail {
-                split_width / 3.0
+                match side {
+                    PaneSide::Start => width,
+                    PaneSide::End => sidebar_width,
+                }
             } else {
                 width
             };
-            let detail_width = if wide { split_width * 2.0 / 3.0 } else { width };
+            let detail_width = if wide {
+                match side {
+                    PaneSide::Start => sidebar_width,
+                    PaneSide::End => content_width,
+                }
+            } else {
+                width
+            };
 
-            padded(
-                AnimatedSplit::new(
-                    master(master_width, master_mode),
-                    detail(
-                        detail_width,
-                        if wide {
-                            PaneMode::Split
-                        } else {
-                            PaneMode::Single
-                        },
-                    ),
-                    show_detail,
-                    wide,
-                )
-                .into(),
+            AnimatedSplit::new(
+                master(master_width, master_mode),
+                detail(
+                    detail_width,
+                    if wide {
+                        PaneMode::Split
+                    } else {
+                        PaneMode::Single
+                    },
+                ),
+                show_detail,
+                wide,
+                side,
+                master_blocked,
             )
+            .into()
         })
         .into()
     }
@@ -94,6 +132,8 @@ struct AnimatedSplit<'a, Message> {
     children: [Element<'a, Message>; 2],
     show_detail: bool,
     wide: bool,
+    side: PaneSide,
+    master_blocked: bool,
 }
 
 impl<'a, Message> AnimatedSplit<'a, Message> {
@@ -102,12 +142,20 @@ impl<'a, Message> AnimatedSplit<'a, Message> {
         detail: Element<'a, Message>,
         show_detail: bool,
         wide: bool,
+        side: PaneSide,
+        master_blocked: bool,
     ) -> Self {
         Self {
             children: [master, detail],
             show_detail,
             wide,
+            side,
+            master_blocked,
         }
+    }
+
+    fn master_is_blocked(&self, progress: f32) -> bool {
+        self.master_blocked && (self.show_detail || progress > 0.0)
     }
 }
 
@@ -165,6 +213,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
             size,
             self.wide,
             tree.state.downcast_ref::<State>().progress(Instant::now()),
+            self.side,
         );
         let nodes = self
             .children
@@ -195,6 +244,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
     ) {
         let bounds = layout.bounds();
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
+        let master_blocked = self.master_is_blocked(progress);
         operation.container(None, bounds);
         operation.traverse(&mut |operation| {
             for (_index, ((child, tree), child_layout)) in self
@@ -204,7 +254,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                 .zip(layout.children())
                 .enumerate()
                 .filter(|(index, (_, child_layout))| {
-                    pane_is_active(*index, self.wide, progress)
+                    pane_is_interactive(*index, self.wide, progress, master_blocked)
                         && child_layout.bounds().intersects(&bounds)
                 })
             {
@@ -226,19 +276,18 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if let Event::Window(window::Event::RedrawRequested(now)) = event
-            && tree
-                .state
-                .downcast_ref::<State>()
-                .transition
-                .is_animating(*now)
-        {
-            shell.invalidate_layout();
-            shell.request_redraw();
+        if let Event::Window(window::Event::RedrawRequested(now)) = event {
+            let state = tree.state.downcast_ref::<State>();
+
+            if state.transition.is_animating(*now) {
+                shell.invalidate_layout();
+                shell.request_redraw();
+            }
         }
 
         let bounds = layout.bounds();
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
+        let master_blocked = self.master_is_blocked(progress);
 
         for (index, ((child, tree), child_layout)) in self
             .children
@@ -249,7 +298,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
             .zip(layout.children().rev())
             .map(|(((index, child), tree), child_layout)| (index, ((child, tree), child_layout)))
             .filter(|(index, (_, child_layout))| {
-                pane_is_active(*index, self.wide, progress)
+                pane_is_interactive(*index, self.wide, progress, master_blocked)
                     && child_layout.bounds().intersects(&bounds)
             })
         {
@@ -285,7 +334,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         let mut layouts = layout.children();
         let master = layouts.next().expect("master layout");
         let detail = layouts.next().expect("detail layout");
-        let index = if pane_is_active(1, self.wide, progress)
+        let master_blocked = self.master_is_blocked(progress);
+        let index = if pane_is_interactive(1, self.wide, progress, master_blocked)
             && detail.bounds().intersects(&bounds)
             && cursor.is_over(detail.bounds())
         {
@@ -293,6 +343,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         } else {
             0
         };
+
+        if index == 0 && master_blocked {
+            return mouse::Interaction::default();
+        }
+
         let child_layout = [master, detail][index];
 
         self.children[index].as_widget().mouse_interaction(
@@ -317,6 +372,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         let Some(clip) = layout.bounds().intersection(viewport) else {
             return;
         };
+        let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
 
         renderer.with_layer(clip, |renderer| {
             for (index, ((child, tree), child_layout)) in self
@@ -341,6 +397,26 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
 
                 if index == 0 {
                     draw(renderer);
+
+                    if self.master_blocked
+                        && progress > 0.0
+                        && let Some(bounds) = child_layout.bounds().intersection(&clip)
+                    {
+                        renderer.with_layer(bounds, |renderer| {
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds,
+                                    ..renderer::Quad::default()
+                                },
+                                Background::from(
+                                    gradient::Linear::new(Degrees(90.0))
+                                        .add_stop(0.0, WINDOW.scale_alpha(0.2 * progress))
+                                        .add_stop(0.7, WINDOW.scale_alpha(0.45 * progress))
+                                        .add_stop(1.0, WINDOW.scale_alpha(progress)),
+                                ),
+                            );
+                        });
+                    }
                 } else {
                     renderer.with_layer(clip, draw);
                 }
@@ -357,6 +433,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
+
+        if self.master_is_blocked(progress) {
+            if progress <= 0.0 {
+                return None;
+            }
+
+            return self.children[1].as_widget_mut().overlay(
+                &mut tree.children[1],
+                layout.children().nth(1).expect("detail layout"),
+                renderer,
+                viewport,
+                translation,
+            );
+        }
 
         if progress <= 0.0 {
             return self.children[0].as_widget_mut().overlay(
@@ -403,6 +493,10 @@ fn pane_is_active(index: usize, wide: bool, progress: f32) -> bool {
     }
 }
 
+fn pane_is_interactive(index: usize, wide: bool, progress: f32, master_blocked: bool) -> bool {
+    pane_is_active(index, wide, progress) && (index != 0 || !master_blocked)
+}
+
 fn pointer_is_over(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
     match event {
         Event::Mouse(_) => cursor.is_over(bounds),
@@ -416,43 +510,48 @@ fn pointer_is_over(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> b
     }
 }
 
-fn pane_bounds(size: Size, wide: bool, progress: f32) -> [Rectangle; 2] {
+fn pane_bounds(size: Size, wide: bool, progress: f32, side: PaneSide) -> [Rectangle; 2] {
     if wide {
         let available = (size.width - spacing::SM).max(0.0);
-        let split_master = available / 3.0;
-        let detail_width = available * 2.0 / 3.0;
-        let master_width = size.width + (split_master - size.width) * progress;
+        let sidebar_width = available.min(SIDEBAR_MAX_WIDTH);
+        let content_width = available - sidebar_width;
 
-        [
-            Rectangle::new(Point::ORIGIN, Size::new(master_width, size.height)),
-            Rectangle::new(
-                Point::new(master_width + spacing::SM, 0.0),
-                Size::new(detail_width, size.height),
-            ),
-        ]
+        match side {
+            PaneSide::End => {
+                let master_width = size.width + (sidebar_width - size.width) * progress;
+
+                [
+                    Rectangle::new(Point::ORIGIN, Size::new(master_width, size.height)),
+                    Rectangle::new(
+                        Point::new(master_width + spacing::SM, 0.0),
+                        Size::new(content_width, size.height),
+                    ),
+                ]
+            }
+            PaneSide::Start => [
+                Rectangle::new(
+                    Point::new((sidebar_width + spacing::SM) * progress, 0.0),
+                    size,
+                ),
+                Rectangle::new(
+                    Point::new(-(sidebar_width + spacing::SM) * (1.0 - progress), 0.0),
+                    Size::new(sidebar_width, size.height),
+                ),
+            ],
+        }
     } else {
         [
             Rectangle::new(Point::ORIGIN, size),
             Rectangle::new(
-                Point::new(size.width * (1.0 - progress), 0.0),
+                Point::new(
+                    match side {
+                        PaneSide::Start => -size.width,
+                        PaneSide::End => size.width,
+                    } * (1.0 - progress),
+                    0.0,
+                ),
                 Size::new(size.width, size.height),
             ),
         ]
     }
-}
-
-fn content_width(width: f32) -> f32 {
-    (width - 2.0 * spacing::SM).max(0.0)
-}
-
-fn padded<'a, Message: 'a>(content: Element<'a, Message>) -> Element<'a, Message> {
-    container(content)
-        .width(Fill)
-        .height(Fill)
-        .padding(page_padding())
-        .into()
-}
-
-fn page_padding() -> Padding {
-    Padding::ZERO.horizontal(spacing::SM).bottom(spacing::SM)
 }
