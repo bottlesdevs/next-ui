@@ -147,14 +147,14 @@ fn resize_edge<'a, Message: Clone + 'a>(
         Direction::SouthEast => (
             RESIZE_CORNER.into(),
             RESIZE_CORNER.into(),
-            mouse::Interaction::ResizingDiagonallyUp,
+            mouse::Interaction::ResizingDiagonallyDown,
             Horizontal::Right,
             Vertical::Bottom,
         ),
         Direction::SouthWest => (
             RESIZE_CORNER.into(),
             RESIZE_CORNER.into(),
-            mouse::Interaction::ResizingDiagonallyDown,
+            mouse::Interaction::ResizingDiagonallyUp,
             Horizontal::Left,
             Vertical::Bottom,
         ),
