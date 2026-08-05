@@ -1,8 +1,5 @@
 use bottles_core::{Operation, error};
-use iced::{
-    Task,
-    futures::{FutureExt as _, SinkExt as _, StreamExt as _, pin_mut, select},
-};
+use iced::Task;
 
 #[derive(Debug, Clone)]
 pub enum Event<K, T, P> {
@@ -40,39 +37,17 @@ where
     where
         K: Clone + Send + 'static,
     {
-        let progress = self.progress();
         let progress_key = key.clone();
-        let events = iced::stream::channel(1, async move |mut output| {
-            let progress = progress.fuse();
-            let terminal = self.map(outcome).fuse();
-            pin_mut!(progress, terminal);
-
-            loop {
-                select! {
-                    outcome = terminal => {
-                        let _ = output.send(Event::Finished { key, outcome }).await;
-                        break;
-                    }
-                    update = progress.next() => match update {
-                        Some(progress) => {
-                            if output.send(Event::Progress {
-                                key: progress_key.clone(),
-                                progress,
-                            }).await.is_err() {
-                                break;
-                            }
-                        }
-                        None => {
-                            let outcome = terminal.await;
-                            let _ = output.send(Event::Finished { key, outcome }).await;
-                            break;
-                        }
-                    }
-                }
-            }
+        let progress = Task::run(self.progress(), move |progress| Event::Progress {
+            key: progress_key.clone(),
+            progress,
+        });
+        let finished = Task::perform(self, move |result| Event::Finished {
+            key,
+            outcome: outcome(result),
         });
 
-        Task::run(events, std::convert::identity)
+        Task::batch([progress, finished])
     }
 }
 
