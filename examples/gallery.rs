@@ -7,8 +7,8 @@ use next_ui::components::text::TextExt as _;
 use next_ui::components::{
     action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
-    info_row, picker_row, program_card, row_group, search, selector_row, status_bar, switcher_row,
-    tabs, text_row, title, window_frame,
+    info_row, picker_row, row_group, search, selector_row, status_bar, switcher_row, tabs,
+    text_row, title, window_frame,
 };
 use next_ui::{icons::Icon, theme};
 
@@ -170,13 +170,24 @@ impl Gallery {
                 )
                 .padding(24),
                 artwork_card::ArtworkCard::new("Artwork card", "Ready")
-                    .menu(Message::Noop)
-                    .play(Message::Noop)
+                    .menu(
+                        artwork_card::CardAction::new("More actions", Icon::EllipsisVertical)
+                            .on_press(Message::Noop),
+                    )
+                    .primary(
+                        artwork_card::CardAction::new("Play", Icon::Play).on_press(Message::Noop),
+                    )
                     .banner(sample_image()),
-                program_card::ProgramCard::new("Program card", "Last played today")
-                    .settings(Message::Noop)
-                    .play(Message::Noop)
-                    .play_loading(true)
+                artwork_card::ArtworkCard::new("Program card", "Last played today")
+                    .secondary(
+                        artwork_card::CardAction::new("Settings", Icon::Gear)
+                            .on_press(Message::Noop),
+                    )
+                    .primary(
+                        artwork_card::CardAction::new("Play", Icon::Play)
+                            .on_press(Message::Noop)
+                            .loading(true),
+                    )
                     .banner(sample_image()),
             ]
             .spacing(18),

@@ -1,5 +1,5 @@
 use iced::{
-    Element, Fill,
+    Center, Element, Fill,
     widget::{Space, column, container, image, row, stack},
 };
 
@@ -12,14 +12,54 @@ use super::{
 };
 
 const ACTION_DIAMETER: f32 = 52.0;
+const PRIMARY_ACTION_DIAMETER: f32 = 68.0;
+
+pub struct CardAction<'a, Message> {
+    label: &'a str,
+    icon: Icon,
+    message: Option<Message>,
+    loading: bool,
+}
+
+impl<'a, Message> CardAction<'a, Message> {
+    pub fn new(label: &'a str, icon: Icon) -> Self {
+        Self {
+            label,
+            icon,
+            message: None,
+            loading: false,
+        }
+    }
+
+    pub fn on_press(mut self, message: Message) -> Self {
+        self.message = Some(message);
+        self
+    }
+
+    pub fn on_press_maybe(mut self, message: Option<Message>) -> Self {
+        self.message = message;
+        self
+    }
+
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+
+    fn button(self) -> Button<'a, Message> {
+        Button::icon_only(self.label, self.icon)
+            .on_press_maybe(self.message)
+            .loading(self.loading)
+    }
+}
 
 pub struct ArtworkCard<'a, Message> {
     title: &'a str,
     subtitle: &'a str,
     banner: Option<image::Handle>,
-    menu: Option<Message>,
-    play: Option<Message>,
-    play_loading: bool,
+    menu: Option<CardAction<'a, Message>>,
+    secondary: Option<CardAction<'a, Message>>,
+    primary: Option<CardAction<'a, Message>>,
 }
 
 impl<'a, Message> ArtworkCard<'a, Message> {
@@ -29,23 +69,23 @@ impl<'a, Message> ArtworkCard<'a, Message> {
             subtitle,
             banner: None,
             menu: None,
-            play: None,
-            play_loading: false,
+            secondary: None,
+            primary: None,
         }
     }
 
-    pub fn menu(mut self, menu: Message) -> Self {
+    pub fn menu(mut self, menu: CardAction<'a, Message>) -> Self {
         self.menu = Some(menu);
         self
     }
 
-    pub fn play(mut self, play: Message) -> Self {
-        self.play = Some(play);
+    pub fn secondary(mut self, secondary: CardAction<'a, Message>) -> Self {
+        self.secondary = Some(secondary);
         self
     }
 
-    pub fn play_loading(mut self, loading: bool) -> Self {
-        self.play_loading = loading;
+    pub fn primary(mut self, primary: CardAction<'a, Message>) -> Self {
+        self.primary = Some(primary);
         self
     }
 
@@ -57,33 +97,38 @@ impl<'a, Message> ArtworkCard<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Message> {
     fn from(card: ArtworkCard<'a, Message>) -> Self {
+        let mut menu = row![Space::new().width(Fill)].width(Fill);
+
+        if let Some(action) = card.menu {
+            menu = menu.push(action.button().kind(ButtonKind::Transparent).diameter(32.0));
+        }
+
+        let mut main_actions = row![Space::new().width(Fill)]
+            .spacing(spacing::XS)
+            .align_y(Center)
+            .width(Fill);
+
+        if let Some(action) = card.secondary {
+            main_actions = main_actions.push(action.button().diameter(ACTION_DIAMETER));
+        }
+
+        if let Some(action) = card.primary {
+            main_actions = main_actions.push(
+                action
+                    .button()
+                    .diameter(PRIMARY_ACTION_DIAMETER)
+                    .kind(ButtonKind::Primary),
+            );
+        }
+
         let actions = stack![
-            container(
-                row![
-                    Space::new().width(Fill),
-                    Button::icon_only("More actions", Icon::EllipsisVertical)
-                        .kind(ButtonKind::Transparent)
-                        .diameter(32.0)
-                        .on_press_maybe(card.menu)
-                ]
-                .width(Fill),
-            )
-            .padding(spacing::SM)
-            .width(Fill)
-            .height(BANNER_HEIGHT),
+            container(menu)
+                .padding(spacing::SM)
+                .width(Fill)
+                .height(BANNER_HEIGHT),
             column![
-                Space::new().height(BANNER_HEIGHT - ACTION_DIAMETER / 2.0),
-                container(
-                    row![
-                        Space::new().width(Fill),
-                        Button::icon_only("Play", Icon::Play)
-                            .diameter(ACTION_DIAMETER)
-                            .on_press_maybe(card.play)
-                            .loading(card.play_loading)
-                    ]
-                    .width(Fill),
-                )
-                .padding([0.0, spacing::SM])
+                Space::new().height(BANNER_HEIGHT - PRIMARY_ACTION_DIAMETER / 2.0),
+                container(main_actions).padding([0.0, spacing::SM])
             ],
         ]
         .width(Fill)
