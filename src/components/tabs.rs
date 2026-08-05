@@ -110,13 +110,28 @@ struct TabIndicator<'a> {
 #[derive(Debug, Default)]
 struct IndicatorState {
     animation: Option<Animation<f32>>,
+    labels: Vec<String>,
 }
 
 impl IndicatorState {
-    fn sync(&mut self, selected_index: Option<usize>, now: Instant) -> bool {
+    fn sync(&mut self, selected_index: Option<usize>, labels: &[&str], now: Instant) -> bool {
+        if !self
+            .labels
+            .iter()
+            .map(String::as_str)
+            .eq(labels.iter().copied())
+        {
+            self.labels = labels.iter().map(|label| (*label).to_owned()).collect();
+            self.animation = selected_index.map(|index| {
+                Animation::new(index as f32)
+                    .very_quick()
+                    .easing(Easing::EaseOut)
+            });
+            return true;
+        }
+
         let Some(selected_index) = selected_index else {
-            self.animation = None;
-            return false;
+            return self.animation.take().is_some();
         };
         let selected_index = selected_index as f32;
         let animation = self.animation.get_or_insert_with(|| {
@@ -143,9 +158,12 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
         _bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Option<Action<Message>> {
-        if let Event::Window(window::Event::RedrawRequested(now)) = event
-            && state.sync(self.selected_index, *now)
-        {
+        let now = match event {
+            Event::Window(window::Event::RedrawRequested(now)) => *now,
+            _ => Instant::now(),
+        };
+
+        if state.sync(self.selected_index, &self.labels, now) {
             Some(Action::request_redraw())
         } else {
             None
@@ -172,7 +190,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
             || tab_center(renderer, &self.labels, selected_index),
             |animation| {
                 animation.interpolate_with(
-                    |index| tab_center(renderer, &self.labels, index as usize),
+                    |index| tab_center(renderer, &self.labels, clamped(index, &self.labels)),
                     now,
                 )
             },
@@ -181,7 +199,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
             || tab_width(renderer, self.labels[selected_index]),
             |animation| {
                 animation.interpolate_with(
-                    |index| tab_width(renderer, self.labels[index as usize]),
+                    |index| tab_width(renderer, self.labels[clamped(index, &self.labels)]),
                     now,
                 )
             },
@@ -199,12 +217,18 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
 }
 
 fn tab_center(renderer: &Renderer, labels: &[&str], index: usize) -> f32 {
+    let index = index.min(labels.len() - 1);
+
     labels[..index]
         .iter()
         .map(|label| tab_width(renderer, label))
         .sum::<f32>()
         + spacing::LG * index as f32
         + tab_width(renderer, labels[index]) / 2.0
+}
+
+fn clamped(index: f32, labels: &[&str]) -> usize {
+    (index as usize).min(labels.len() - 1)
 }
 
 fn tab_width(renderer: &Renderer, label: &str) -> f32 {
