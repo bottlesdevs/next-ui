@@ -32,6 +32,7 @@ pub struct SelectorRow<'a, T, Message> {
     on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
     label: Box<dyn Fn(&T) -> String + 'a>,
+    key: Option<Box<dyn Fn(&T) -> String + 'a>>,
     icon: Option<Icon>,
 }
 
@@ -44,6 +45,7 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
             on_selected: None,
             placeholder: "",
             label: Box::new(ToString::to_string),
+            key: None,
             icon: None,
         }
     }
@@ -55,6 +57,11 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
 
     pub fn label(mut self, label: impl Fn(&T) -> String + 'a) -> Self {
         self.label = Box::new(label);
+        self
+    }
+
+    pub fn key(mut self, key: impl Fn(&T) -> String + 'a) -> Self {
+        self.key = Some(Box::new(key));
         self
     }
 
@@ -80,19 +87,28 @@ where
     Message: 'a,
 {
     fn from(selector: SelectorRow<'a, T, Message>) -> Self {
-        let options = selector.options;
-        let selected = selector
-            .selected
-            .and_then(|selected| options.iter().position(|option| option == selected));
-        let labels: Vec<_> = options.iter().map(selector.label).collect();
+        let SelectorRow {
+            title,
+            options,
+            selected,
+            on_selected,
+            placeholder,
+            label,
+            key,
+            icon,
+        } = selector;
+        let selected =
+            selected.and_then(|selected| options.iter().position(|option| option == selected));
+        let labels: Vec<_> = options.iter().map(label).collect();
+        let keys = key.map_or_else(|| labels.clone(), |key| options.iter().map(key).collect());
         let value = selected
             .map(|index| labels[index].clone())
-            .unwrap_or_else(|| selector.placeholder.to_owned());
-        let on_selected = selector.on_selected.map(|on_selected| {
+            .unwrap_or_else(|| placeholder.to_owned());
+        let on_selected = on_selected.map(|on_selected| {
             Box::new(move |index: usize| on_selected(options[index].clone()))
                 as Box<dyn Fn(usize) -> Message>
         });
-        let children = std::iter::once(header(selector.title, &value, selector.icon))
+        let children = std::iter::once(header(title, &value, icon))
             .chain(labels.into_iter().map(|label| {
                 container(text(label).label())
                     .width(Fill)
@@ -105,6 +121,7 @@ where
             children,
             on_selected,
             selected,
+            keys,
         })
     }
 }
@@ -146,6 +163,7 @@ struct Selector<'a, Message> {
     children: Vec<Element<'a, Message>>,
     on_selected: Option<Box<dyn Fn(usize) -> Message + 'a>>,
     selected: Option<usize>,
+    keys: Vec<String>,
 }
 
 impl<Message> Selector<'_, Message> {
@@ -165,6 +183,7 @@ struct State {
     hovered: Option<usize>,
     pressed: Option<Pressed>,
     focused: bool,
+    keys: Vec<String>,
 }
 
 impl Default for State {
@@ -175,6 +194,7 @@ impl Default for State {
             hovered: None,
             pressed: None,
             focused: false,
+            keys: Vec::new(),
         }
     }
 }
@@ -232,16 +252,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(&self.children);
         let state = tree.state.downcast_mut::<State>();
-
         let option_count = self.option_count();
+        let highlighted = state
+            .highlighted
+            .and_then(|index| state.keys.get(index))
+            .and_then(|key| self.keys.iter().position(|candidate| candidate == key));
+        state.keys.clone_from(&self.keys);
 
         if !self.is_enabled() {
             state.set_open(false, Instant::now());
             state.highlighted = None;
             state.hovered = None;
             state.pressed = None;
-        } else if state.highlighted.is_none_or(|index| index >= option_count) {
-            state.highlighted = self.selected.or(Some(0));
+        } else {
+            state.highlighted = highlighted.or(self.selected).or(Some(0));
         }
 
         if state.hovered.is_some_and(|index| index >= option_count) {
