@@ -1,5 +1,5 @@
 use iced::{
-    Element, Fill, Subscription, Task, Theme, event,
+    Element, Fill, Subscription, Task, Theme,
     keyboard::{self, key},
     widget::{Space, column, container, image, row, scrollable, text},
 };
@@ -115,16 +115,13 @@ impl Gallery {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        event::listen_with(|event, status, _| match (event, status) {
-            (
-                iced::Event::Keyboard(keyboard::Event::KeyPressed {
-                    key: keyboard::Key::Named(key::Named::Tab),
-                    modifiers,
-                    repeat: false,
-                    ..
-                }),
-                event::Status::Ignored,
-            ) => Some(Message::MoveFocus(modifiers.shift())),
+        keyboard::listen().filter_map(|event| match event {
+            keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(key::Named::Tab),
+                modifiers,
+                repeat: false,
+                ..
+            } => Some(Message::MoveFocus(modifiers.shift())),
             _ => None,
         })
     }
@@ -464,16 +461,7 @@ impl Gallery {
         .width(Fill)
         .height(Fill);
 
-        window_frame::WindowFrame::new(
-            container(column![header, gallery])
-                .width(Fill)
-                .height(Fill)
-                .padding(1)
-                .style(theme::window)
-                .clip(true),
-            Message::Window,
-        )
-        .into()
+        window_frame::WindowFrame::new(column![header, gallery], Message::Window).into()
     }
 
     fn search_state(&self) -> search::SearchState<'_, Message> {

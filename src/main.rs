@@ -1,5 +1,5 @@
 use iced::{
-    Element, Fill, Subscription, Task, Theme, event,
+    Element, Fill, Subscription, Task, Theme,
     keyboard::{self, key},
     widget::{column, container},
 };
@@ -42,16 +42,13 @@ fn update(_: &mut (), message: Message) -> Task<Message> {
 }
 
 fn subscription(_: &()) -> Subscription<Message> {
-    event::listen_with(|event, status, _| match (event, status) {
-        (
-            iced::Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(key::Named::Tab),
-                modifiers,
-                repeat: false,
-                ..
-            }),
-            event::Status::Ignored,
-        ) => Some(Message::MoveFocus(modifiers.shift())),
+    keyboard::listen().filter_map(|event| match event {
+        keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(key::Named::Tab),
+            modifiers,
+            repeat: false,
+            ..
+        } => Some(Message::MoveFocus(modifiers.shift())),
         _ => None,
     })
 }
@@ -60,12 +57,7 @@ fn view(_: &()) -> Element<'_, Message> {
     let header = header_bar::HeaderBar::new(Message::Window);
 
     window_frame::WindowFrame::new(
-        container(column![header, container("").width(Fill).height(Fill)])
-            .width(Fill)
-            .height(Fill)
-            .padding(1)
-            .style(next_ui::theme::window)
-            .clip(true),
+        column![header, container("").width(Fill).height(Fill)],
         Message::Window,
     )
     .into()
