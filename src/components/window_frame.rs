@@ -1,11 +1,10 @@
-use iced::{Element, Task, window as iced_window};
+use iced::{Element, Fill, Task, widget::container, window};
 
 #[cfg(target_os = "linux")]
 use iced::{
-    Fill,
     alignment::{Horizontal, Vertical},
     mouse,
-    widget::{Space, container, mouse_area, stack},
+    widget::{Space, mouse_area, stack},
     window::Direction,
 };
 
@@ -19,18 +18,18 @@ const RESIZE_CORNER: f32 = 12.0;
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
     Drag,
-    Resize(iced_window::Direction),
+    Resize(window::Direction),
     Close,
 }
 
 impl Action {
     pub fn task<Message: Send + 'static>(self) -> Task<Message> {
         match self {
-            Self::Drag => iced_window::latest().and_then(iced_window::drag),
+            Self::Drag => window::latest().and_then(window::drag),
             Self::Resize(direction) => {
-                iced_window::latest().and_then(move |id| iced_window::drag_resize(id, direction))
+                window::latest().and_then(move |id| window::drag_resize(id, direction))
             }
-            Self::Close => iced_window::latest().and_then(iced_window::close),
+            Self::Close => window::latest().and_then(window::close),
         }
     }
 }
