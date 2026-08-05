@@ -186,7 +186,7 @@ fn group_line<'a, Message: Clone + 'a>(
                 .padding(spacing::MD)
                 .into();
 
-                headers.push(Element::from(header.parent_enabled(enabled)));
+                headers.push(Element::from(header));
                 expansions.push(Expansion {
                     header_index,
                     content_index: bodies.len(),

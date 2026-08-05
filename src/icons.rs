@@ -1,7 +1,7 @@
 use iced::{ContentFit, Element, widget::svg};
 use rust_embed::RustEmbed;
 
-pub const SIZE: f32 = 24.0;
+pub(crate) const SIZE: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Icon {
@@ -90,12 +90,6 @@ impl Icon {
             Self::Wand => "wand",
             Self::Warning => "warning",
         }
-    }
-}
-
-impl From<Icon> for svg::Handle {
-    fn from(icon: Icon) -> Self {
-        icon.handle()
     }
 }
 

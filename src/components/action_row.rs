@@ -64,13 +64,11 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         let labels = column![text(action.title).label(), description].spacing(spacing::XS);
 
+        let row = ListRow::new(labels).trailing(Icon::Arrow.rotated(std::f32::consts::PI));
+
         match action.state {
-            State::Ready(message) => ListRow::new(labels)
-                .trailing(Icon::Arrow.rotated(std::f32::consts::PI))
-                .on_press(message),
-            State::Disabled => ListRow::new(labels)
-                .trailing(Icon::Arrow.rotated(std::f32::consts::PI))
-                .enabled(false),
+            State::Ready(message) => row.on_press(message),
+            State::Disabled => row.enabled(false),
         }
     }
 }

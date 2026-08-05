@@ -86,7 +86,7 @@ pub fn theme() -> Theme {
     })
 }
 
-pub fn window(_: &Theme) -> container::Style {
+pub(crate) fn window(_: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(WINDOW)),
         border: Border::default().rounded(12).color(WINDOW_BORDER).width(1),
@@ -125,11 +125,11 @@ pub fn scrollbar(theme: &Theme, status: scrollable::Status) -> scrollable::Style
     style
 }
 
-pub const fn info() -> Pair {
+pub(crate) const fn info() -> Pair {
     pair(INFO, WHITE)
 }
 
-pub const fn hint() -> Pair {
+pub(crate) const fn hint() -> Pair {
     pair(HINT, WHITE)
 }
 

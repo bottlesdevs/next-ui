@@ -108,7 +108,7 @@ where
             Box::new(move |index: usize| on_selected(options[index].clone()))
                 as Box<dyn Fn(usize) -> Message>
         });
-        let children = std::iter::once(header(title, &value, icon))
+        let children = std::iter::once(header(title, value, icon))
             .chain(labels.into_iter().map(|label| {
                 container(text(label).label())
                     .width(Fill)
@@ -128,7 +128,7 @@ where
 
 fn header<'a, Message: 'a>(
     title: &'a str,
-    value: &str,
+    value: String,
     icon: Option<Icon>,
 ) -> Element<'a, Message> {
     let mut value_row = row![].spacing(spacing::SM).align_y(Alignment::Center);
@@ -142,7 +142,7 @@ fn header<'a, Message: 'a>(
         );
     }
 
-    value_row = value_row.push(text(value.to_owned()).detail().muted());
+    value_row = value_row.push(text(value).detail().muted());
 
     container(
         row![

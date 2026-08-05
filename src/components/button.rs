@@ -167,7 +167,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         let shape = button.shape;
         let kind = button.kind;
         let mut pressable = Pressable::new(content)
-            .on_press_maybe((!button.loading).then_some(button.on_press).flatten())
+            .on_press_maybe(button.on_press.filter(|_| !button.loading))
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
         pressable = match shape {

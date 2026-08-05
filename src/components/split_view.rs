@@ -289,21 +289,15 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
         let master_blocked = self.master_is_blocked(progress);
 
-        for (index, ((child, tree), child_layout)) in self
-            .children
-            .iter_mut()
-            .enumerate()
-            .rev()
-            .zip(tree.children.iter_mut().rev())
-            .zip(layout.children().rev())
-            .map(|(((index, child), tree), child_layout)| (index, ((child, tree), child_layout)))
-            .filter(|(index, (_, child_layout))| {
-                pane_is_interactive(*index, self.wide, progress, master_blocked)
-                    && child_layout.bounds().intersects(&bounds)
-            })
-        {
-            child.as_widget_mut().update(
-                tree,
+        for (index, child_layout) in layout.children().enumerate().rev() {
+            if !pane_is_interactive(index, self.wide, progress, master_blocked)
+                || !child_layout.bounds().intersects(&bounds)
+            {
+                continue;
+            }
+
+            self.children[index].as_widget_mut().update(
+                &mut tree.children[index],
                 event,
                 child_layout,
                 cursor,
@@ -395,30 +389,27 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                     );
                 };
 
-                if index == 0 {
-                    draw(renderer);
+                draw(renderer);
 
-                    if self.master_blocked
-                        && progress > 0.0
-                        && let Some(bounds) = child_layout.bounds().intersection(&clip)
-                    {
-                        renderer.with_layer(bounds, |renderer| {
-                            renderer.fill_quad(
-                                renderer::Quad {
-                                    bounds,
-                                    ..renderer::Quad::default()
-                                },
-                                Background::from(
-                                    gradient::Linear::new(Degrees(90.0))
-                                        .add_stop(0.0, WINDOW.scale_alpha(0.2 * progress))
-                                        .add_stop(0.7, WINDOW.scale_alpha(0.45 * progress))
-                                        .add_stop(1.0, WINDOW.scale_alpha(progress)),
-                                ),
-                            );
-                        });
-                    }
-                } else {
-                    renderer.with_layer(clip, draw);
+                if index == 0
+                    && self.master_blocked
+                    && progress > 0.0
+                    && let Some(bounds) = child_layout.bounds().intersection(&clip)
+                {
+                    renderer.with_layer(bounds, |renderer| {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds,
+                                ..renderer::Quad::default()
+                            },
+                            Background::from(
+                                gradient::Linear::new(Degrees(90.0))
+                                    .add_stop(0.0, WINDOW.scale_alpha(0.2 * progress))
+                                    .add_stop(0.7, WINDOW.scale_alpha(0.45 * progress))
+                                    .add_stop(1.0, WINDOW.scale_alpha(progress)),
+                            ),
+                        );
+                    });
                 }
             }
         });

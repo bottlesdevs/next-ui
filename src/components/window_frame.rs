@@ -1,6 +1,6 @@
 use iced::{Element, Fill, Task, widget::container, window};
 
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "macos"))]
 use iced::{
     alignment::{Horizontal, Vertical},
     mouse,
@@ -71,8 +71,6 @@ impl<'a, Message: Clone + 'a> From<WindowFrame<'a, Message>> for Element<'a, Mes
 
         #[cfg(not(target_os = "macos"))]
         {
-            use iced::window::Direction;
-
             let mut layers = stack![content].width(Fill).height(Fill).clip(true);
 
             for direction in [

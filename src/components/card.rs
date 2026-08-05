@@ -74,7 +74,7 @@ pub(crate) fn image_content<'a, Message: 'a>(
 
     stack![
         column![
-            container(banner).width(Fill).height(BANNER_HEIGHT),
+            banner,
             container(labels(title, subtitle)).padding([spacing::MD, spacing::LG]),
         ]
         .width(Fill),

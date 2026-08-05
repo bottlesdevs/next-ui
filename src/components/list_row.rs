@@ -160,11 +160,7 @@ fn header_style(theme: &Theme, status: PressableStatus) -> button::Style {
 }
 
 fn activation_header_style(theme: &Theme, _status: PressableStatus) -> button::Style {
-    button::Style {
-        text_color: theme.palette().text,
-        border: Border::default().rounded(8),
-        ..button::Style::default()
-    }
+    header_style(theme, PressableStatus::Active)
 }
 
 struct Surface<'a, Message> {
