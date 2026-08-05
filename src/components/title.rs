@@ -1,5 +1,5 @@
 use iced::{
-    Element, Theme,
+    Alignment, Element, Theme,
     widget::{column, text},
 };
 
@@ -56,13 +56,17 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
             }));
         }
 
-        content.spacing(spacing::SM).into()
+        content
+            .align_x(Alignment::Center)
+            .spacing(spacing::XS)
+            .into()
     }
 }
 
 fn typography(detail: Option<&Detail<'_>>) -> (f32, f32) {
     match detail {
-        Some(Detail::Status(_)) => (48.0, 40.0),
-        _ => (32.0, 24.0),
+        Some(Detail::Subtitle(_)) => (17.0, 12.0),
+        Some(Detail::Status(_)) => (24.0, 20.0),
+        None => (32.0, 24.0),
     }
 }
