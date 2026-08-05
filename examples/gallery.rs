@@ -266,15 +266,10 @@ impl Gallery {
                 .icon(Icon::Person),
             selector_row::SelectorRow::new("Empty selector", EMPTY_OPTIONS, None)
                 .placeholder("No options available"),
-            action_row::ActionRow::new("Title", action_row::ActionRowState::Ready(Message::Noop),)
+            action_row::ActionRow::new("Title", action_row::State::Ready(Message::Noop))
                 .description("Description"),
-            action_row::ActionRow::new("Unavailable action", action_row::ActionRowState::Disabled,)
+            action_row::ActionRow::new("Unavailable action", action_row::State::Disabled)
                 .description("This action cannot currently run"),
-            action_row::ActionRow::new(
-                "Installing",
-                action_row::ActionRowState::Progress(action_row::Progress::Determinate(50)),
-            )
-            .description("Halfway complete"),
             info_row::InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
@@ -294,11 +289,8 @@ impl Gallery {
             )
             .columns(2)
             .add(
-                action_row::ActionRow::new(
-                    "Quality",
-                    action_row::ActionRowState::Ready(Message::Noop),
-                )
-                .description("Balanced"),
+                action_row::ActionRow::new("Quality", action_row::State::Ready(Message::Noop),)
+                    .description("Balanced"),
             )
             .add(
                 cycle_row::CycleRow::new("Sharpening", "5")
@@ -324,11 +316,8 @@ impl Gallery {
                     .on_press(Message::Noop),
             )
             .add(
-                action_row::ActionRow::new(
-                    "Discrete GPU",
-                    action_row::ActionRowState::Ready(Message::Noop),
-                )
-                .description("Configure graphics adapter"),
+                action_row::ActionRow::new("Discrete GPU", action_row::State::Ready(Message::Noop))
+                    .description("Configure graphics adapter"),
             )
             .add(
                 expander_row::ExpanderRow::with_header(
@@ -338,11 +327,8 @@ impl Gallery {
                 )
                 .columns(2)
                 .add(
-                    action_row::ActionRow::new(
-                        "Quality",
-                        action_row::ActionRowState::Ready(Message::Noop),
-                    )
-                    .description("Balanced"),
+                    action_row::ActionRow::new("Quality", action_row::State::Ready(Message::Noop))
+                        .description("Balanced"),
                 )
                 .add(
                     cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
@@ -362,7 +348,7 @@ impl Gallery {
                     .add(
                         action_row::ActionRow::new(
                             "First action",
-                            action_row::ActionRowState::Ready(Message::Noop),
+                            action_row::State::Ready(Message::Noop),
                         )
                         .description("Inside the first column"),
                     ),
@@ -374,14 +360,14 @@ impl Gallery {
                     .add(
                         action_row::ActionRow::new(
                             "Second action",
-                            action_row::ActionRowState::Ready(Message::Noop),
+                            action_row::State::Ready(Message::Noop),
                         )
                         .description("First panel column"),
                     )
                     .add(
                         action_row::ActionRow::new(
                             "Third action",
-                            action_row::ActionRowState::Ready(Message::Noop),
+                            action_row::State::Ready(Message::Noop),
                         )
                         .description("Second panel column"),
                     ),
@@ -389,7 +375,7 @@ impl Gallery {
             .add(
                 action_row::ActionRow::new(
                     "Independent action",
-                    action_row::ActionRowState::Ready(Message::Noop),
+                    action_row::State::Ready(Message::Noop),
                 )
                 .description("Beside the two expanders"),
             );
@@ -513,11 +499,8 @@ fn action_grid_expander(title: &'static str) -> expander_row::ExpanderRow<'stati
                 .columns(2),
             |expander, title| {
                 expander.add(
-                    action_row::ActionRow::new(
-                        title,
-                        action_row::ActionRowState::Ready(Message::Noop),
-                    )
-                    .description("Available action"),
+                    action_row::ActionRow::new(title, action_row::State::Ready(Message::Noop))
+                        .description("Available action"),
                 )
             },
         )
