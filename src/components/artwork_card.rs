@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, container, image, row, stack},
 };
 
-use crate::icons::Icon;
+use crate::{components::button::ButtonKind, icons::Icon};
 
 use super::{
     button::Button,
@@ -62,6 +62,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                 row![
                     Space::new().width(Fill),
                     Button::icon_only("More actions", Icon::EllipsisVertical)
+                        .kind(ButtonKind::Transparent)
                         .diameter(32.0)
                         .on_press_maybe(card.menu)
                 ]
