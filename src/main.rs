@@ -2,7 +2,7 @@ use iced::{
     Element, Fill, Task, Theme,
     widget::{column, container},
 };
-use next_ui::components::header_bar;
+use next_ui::components::{header_bar, window_frame};
 
 fn main() -> iced::Result {
     iced::application(|| (), update, view)
@@ -22,23 +22,26 @@ fn theme(_: &()) -> Theme {
 
 #[derive(Debug, Clone)]
 enum Message {
-    HeaderBar(header_bar::Action),
+    Window(window_frame::Action),
 }
 
 fn update(_: &mut (), message: Message) -> Task<Message> {
     match message {
-        Message::HeaderBar(action) => action.task(),
+        Message::Window(action) => action.task(),
     }
 }
 
 fn view(_: &()) -> Element<'_, Message> {
-    let header = header_bar::HeaderBar::new(Message::HeaderBar);
+    let header = header_bar::HeaderBar::new(Message::Window);
 
-    container(column![header, container("").width(Fill).height(Fill)])
-        .width(Fill)
-        .height(Fill)
-        .padding(1)
-        .style(next_ui::theme::window)
-        .clip(true)
-        .into()
+    window_frame::WindowFrame::new(
+        container(column![header, container("").width(Fill).height(Fill)])
+            .width(Fill)
+            .height(Fill)
+            .padding(1)
+            .style(next_ui::theme::window)
+            .clip(true),
+        Message::Window,
+    )
+    .into()
 }

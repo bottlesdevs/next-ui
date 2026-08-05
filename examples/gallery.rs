@@ -8,7 +8,7 @@ use next_ui::components::{
     action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
     info_row, picker_row, program_card, row_group, search, selector_row, status_bar, switcher_row,
-    tabs, text_row, title,
+    tabs, text_row, title, window_frame,
 };
 use next_ui::{icons::Icon, theme};
 
@@ -76,7 +76,7 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    HeaderBar(header_bar::Action),
+    Window(window_frame::Action),
     StatusToggled,
     Previous,
     Next,
@@ -95,7 +95,7 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::HeaderBar(action) => return action.task(),
+            Message::Window(action) => return action.task(),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
                 self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
@@ -423,7 +423,7 @@ impl Gallery {
         ]
         .spacing(18);
 
-        let header = header_bar::HeaderBar::new(Message::HeaderBar).middle(
+        let header = header_bar::HeaderBar::new(Message::Window).middle(
             iced::widget::container(
                 search::Search::new(
                     "Search for software and games…",
@@ -467,13 +467,16 @@ impl Gallery {
         .width(Fill)
         .height(Fill);
 
-        container(column![header, gallery])
-            .width(Fill)
-            .height(Fill)
-            .padding(1)
-            .style(theme::window)
-            .clip(true)
-            .into()
+        window_frame::WindowFrame::new(
+            container(column![header, gallery])
+                .width(Fill)
+                .height(Fill)
+                .padding(1)
+                .style(theme::window)
+                .clip(true),
+            Message::Window,
+        )
+        .into()
     }
 
     fn search_state(&self) -> search::SearchState<'_, Message> {

@@ -1,7 +1,6 @@
 use iced::{
-    Background, Border, Center, Element, Fill, Length, Task, Theme,
+    Background, Border, Center, Element, Fill, Length, Theme,
     widget::{Row, container, mouse_area, row},
-    window,
 };
 
 use crate::{icons::Icon, theme};
@@ -9,24 +8,10 @@ use crate::{icons::Icon, theme};
 use super::{
     button::{Button, ButtonKind},
     spacing,
+    window_frame::Action,
 };
 
 const HEIGHT: f32 = 64.0;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
-    Drag,
-    Close,
-}
-
-impl Action {
-    pub fn task<Message: Send + 'static>(self) -> Task<Message> {
-        match self {
-            Self::Drag => window::latest().and_then(window::drag),
-            Self::Close => window::latest().and_then(window::close),
-        }
-    }
-}
 
 pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
