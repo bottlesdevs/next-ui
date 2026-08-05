@@ -92,7 +92,7 @@ impl<'a, Message: 'a> From<SplitView<'a, Message>> for Element<'a, Message> {
             };
             let master_width = if wide && show_detail {
                 match side {
-                    PaneSide::Start => width,
+                    PaneSide::Start => content_width,
                     PaneSide::End => sidebar_width,
                 }
             } else {
@@ -528,16 +528,20 @@ fn pane_bounds(size: Size, wide: bool, progress: f32, side: PaneSide) -> [Rectan
                     ),
                 ]
             }
-            PaneSide::Start => [
-                Rectangle::new(
-                    Point::new((sidebar_width + spacing::SM) * progress, 0.0),
-                    size,
-                ),
-                Rectangle::new(
-                    Point::new(-(sidebar_width + spacing::SM) * (1.0 - progress), 0.0),
-                    Size::new(sidebar_width, size.height),
-                ),
-            ],
+            PaneSide::Start => {
+                let offset = (sidebar_width + spacing::SM) * progress;
+
+                [
+                    Rectangle::new(
+                        Point::new(offset, 0.0),
+                        Size::new(size.width - offset, size.height),
+                    ),
+                    Rectangle::new(
+                        Point::new(-(sidebar_width + spacing::SM) * (1.0 - progress), 0.0),
+                        Size::new(sidebar_width, size.height),
+                    ),
+                ]
+            }
         }
     } else {
         [
