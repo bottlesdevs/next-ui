@@ -17,7 +17,6 @@ pub struct TextRow<'a, Message> {
     id: Option<Id>,
     secure: bool,
     error: Option<&'a str>,
-    enabled: bool,
 }
 
 impl<'a, Message> TextRow<'a, Message> {
@@ -32,7 +31,6 @@ impl<'a, Message> TextRow<'a, Message> {
             id: None,
             secure: false,
             error: None,
-            enabled: true,
         }
     }
 
@@ -68,11 +66,6 @@ impl<'a, Message> TextRow<'a, Message> {
 
     pub fn error(mut self, error: impl Into<Option<&'a str>>) -> Self {
         self.error = error.into();
-        self
-    }
-
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
         self
     }
 }
@@ -118,7 +111,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
             }));
         }
 
-        let mut row = ListRow::new(labels).enabled(text_row.enabled);
+        let mut row = ListRow::new(labels);
 
         if editable {
             row = row

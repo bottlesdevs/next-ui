@@ -263,11 +263,6 @@ impl Gallery {
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
-            text_row::TextRow::<Message>::new("Read-only", "Application-owned value")
-                .icon(Icon::Info),
-            text_row::TextRow::<Message>::new("Disabled", "Unavailable")
-                .icon(Icon::Error)
-                .enabled(false),
             selector_row::SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected,)
                 .on_selected(Message::OptionSelected)
                 .placeholder("Placeholder")
