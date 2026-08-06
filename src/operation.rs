@@ -1,9 +1,9 @@
-use bottles_core::{Operation, error};
+use bottles_core::{Operation, Progress, error};
 use iced::Task;
 
 #[derive(Debug, Clone)]
-pub enum Event<K, T, P> {
-    Progress { key: K, progress: P },
+pub enum Event<K, T> {
+    Progress { key: K, progress: Progress },
     Finished { key: K, outcome: Outcome<T> },
 }
 
@@ -16,24 +16,20 @@ pub enum Outcome<T> {
 
 pub trait OperationExt: Sized {
     type Output: Send + 'static;
-    type Progress: Clone + Send + Sync + 'static;
-
     /// Runs the operation and emits messages tagged with this specific run's key.
     /// Include a generation in the key when the same business entity can be run again.
-    fn run<K>(self, key: K) -> Task<Event<K, Self::Output, Self::Progress>>
+    fn run<K>(self, key: K) -> Task<Event<K, Self::Output>>
     where
         K: Clone + Send + 'static;
 }
 
-impl<T, P> OperationExt for Operation<T, P>
+impl<T> OperationExt for Operation<T>
 where
     T: Send + 'static,
-    P: Clone + Send + Sync + 'static,
 {
     type Output = T;
-    type Progress = P;
 
-    fn run<K>(self, key: K) -> Task<Event<K, T, P>>
+    fn run<K>(self, key: K) -> Task<Event<K, T>>
     where
         K: Clone + Send + 'static,
     {
