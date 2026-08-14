@@ -1,7 +1,15 @@
 [package]
 name = "next-ui"
+description = "The desktop GUI for Bottles Next, built with iced on top of next-core."
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
+license.workspace = true
+repository = "https://github.com/bottlesdevs/next-ui/"
+homepage = ""
+categories = [""]
+keywords = [""]
+exclude = [""]
 
 [dependencies]
 iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "tokio"] }
