@@ -598,7 +598,7 @@ fn program_card(program: &bottles_core::Program) -> Element<'_, Message> {
 }
 
 fn sample_image(id: Uuid) -> image::Handle {
-    let seed = id.as_bytes()[0];
+    let seed = id.as_bytes()[0] % 16;
     let first = [45 + seed * 5, 50 + seed * 3, 65 + seed * 4];
     let second = [first[2], first[0] + 20, first[1] + 10];
 
