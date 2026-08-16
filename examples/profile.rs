@@ -31,6 +31,7 @@ use next_ui::{
     components::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
+        info_card::{self, InfoCard},
         list_row::ListRow,
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
@@ -120,6 +121,7 @@ enum Message {
     LoginCodeChanged(String),
     OpenLoginUrl,
     CopyLoginUrl,
+    DismissError,
     SubmitLoginCode,
     CancelLogin,
     UnlinkSteam,
@@ -443,7 +445,9 @@ impl App {
                 self.name_draft = profile.name.clone();
                 self.active = Some(profile);
                 self.login = None;
+                self.error = None;
             }
+            Message::DismissError => self.error = None,
             Message::ProfileUpdated(Err(err)) => {
                 self.error = Some(err);
 
@@ -587,7 +591,13 @@ impl App {
             column![].into()
         };
 
-        let body = scroll_panel(content);
+        let mut page = column![].spacing(18);
+
+        if let Some(error) = &self.error {
+            page = page.push(error_banner(error));
+        }
+
+        let body = scroll_panel(page.push(content));
         let window = window_frame::WindowFrame::new(
             column![header, body].width(Fill).height(Fill),
             Message::Window,
@@ -703,6 +713,17 @@ fn account_row<'a>(
     on_unlink: Message,
 ) -> ListRow<'a, Message> {
     action_button_row(icon, title, description, "Unlink", on_unlink)
+}
+
+fn error_banner(message: &str) -> Element<'_, Message> {
+    column![
+        InfoCard::new(info_card::Kind::Error, "Something went wrong", message),
+        Button::new("Dismiss")
+            .kind(ButtonKind::Transparent)
+            .on_press(Message::DismissError),
+    ]
+    .spacing(6)
+    .into()
 }
 
 /// A plain, non-interactive info row — no trailing button, so a long
