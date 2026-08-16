@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig};
+use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, SnapshotSummary};
 use iced::{
     Element, Fill, Padding, Subscription, Task, Theme,
     futures::StreamExt as _,
@@ -32,33 +32,6 @@ const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 const RUNNERS: [&str; 3] = ["soda-7.0-9", "soda-9.0-1", "sys-wine"];
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
-
-const PROGRAMS: [[(&str, &str); 4]; 4] = [
-    [
-        ("Battle.net", "12 days ago"),
-        ("Assassin’s Creed Valhalla", "Running…"),
-        ("Cyberpunk 2077", "Last week"),
-        ("Steam", "Win64"),
-    ],
-    [
-        ("Visual Studio Build Tools", "Updated today"),
-        (".NET SDK 8", "Installed"),
-        ("SQL Server Express", "Stopped"),
-        ("WinDbg Preview", "Last used yesterday"),
-    ],
-    [
-        ("Unreal Engine 5.4", "Project Aurora"),
-        ("Unity Hub", "3 editors installed"),
-        ("Godot 4.3", "Last used yesterday"),
-        ("Blender 4.2", "Rendering…"),
-    ],
-    [
-        ("DXVK Testbed", "Experimental"),
-        ("Vulkan Cube", "Running…"),
-        ("Winecfg Sandbox", "Custom registry"),
-        ("Registry Lab", "Snapshot protected"),
-    ],
-];
 
 const LIBRARY: [(&str, &str, Icon); 4] = [
     ("Battle.net", "Installed program", Icon::Computer),
@@ -106,29 +79,6 @@ const SETTINGS: [[(&str, &str, Icon); 4]; 4] = [
     ],
 ];
 
-const SNAPSHOTS: [[(&str, &str, Icon); 3]; 4] = [
-    [
-        ("Current games", "Today at 22:45", Icon::Timer),
-        ("Before runner update", "Yesterday at 18:12", Icon::Timer),
-        ("Clean gaming setup", "30 July at 09:30", Icon::Timer),
-    ],
-    [
-        ("SDK configured", "Today at 16:20", Icon::Timer),
-        ("Before SQL install", "2 August at 11:05", Icon::Timer),
-        ("Base development image", "28 July at 08:15", Icon::Timer),
-    ],
-    [
-        ("Engine toolchain", "Yesterday at 21:10", Icon::Timer),
-        ("Before Unreal update", "1 August at 14:30", Icon::Timer),
-        ("Empty project setup", "25 July at 12:00", Icon::Timer),
-    ],
-    [
-        ("Working experiment", "Today at 23:55", Icon::Timer),
-        ("Before registry edits", "Today at 19:42", Icon::Timer),
-        ("Disposable baseline", "3 August at 07:10", Icon::Timer),
-    ],
-];
-
 fn main() -> iced::Result {
     iced::application(Example::new, Example::update, Example::view)
         .title("Bottles Next split view")
@@ -162,6 +112,8 @@ struct Example {
     bottle_list: Vec<Bottle>,
     bottle_states: Vec<Arc<BottleState>>,
     selected_bottle: Option<Uuid>,
+    snapshots: Vec<SnapshotSummary>,
+    snapshot_rows: Vec<(String, String)>,
     creating_bottle: bool,
     bottle_name: String,
     runner: &'static str,
@@ -203,6 +155,9 @@ enum Message {
     MoveFocus(bool),
     BottlesLoaded(Result<Arc<Bottles>, String>),
     BottleListChanged(Vec<Bottle>),
+    SnapshotsLoaded(Result<Vec<SnapshotSummary>, String>),
+    LaunchProgram(Uuid),
+    ProgramLaunched(Result<u32, String>),
     Noop,
 }
 
@@ -215,6 +170,8 @@ impl Example {
             bottle_list: Vec::new(),
             bottle_states: Vec::new(),
             selected_bottle: None,
+            snapshots: Vec::new(),
+            snapshot_rows: Vec::new(),
             creating_bottle: false,
             bottle_name: "Gaming paradise".into(),
             runner: RUNNERS[0],
@@ -253,6 +210,20 @@ impl Example {
                 self.primary_tab = PrimaryTab::Bottles;
                 self.selected_bottle = Some(id);
                 self.creating_bottle = false;
+                self.snapshots.clear();
+                self.snapshot_rows.clear();
+
+                if let Some(bottle) = self
+                    .bottle_list
+                    .iter()
+                    .find(|bottle| bottle.state().is_ok_and(|state| state.id() == id))
+                    .cloned()
+                {
+                    return Task::perform(
+                        async move { bottle.snapshots().await.map_err(|err| err.to_string()) },
+                        Message::SnapshotsLoaded,
+                    );
+                }
             }
             Message::Back => self.selected_bottle = None,
             Message::AddBottle => self.creating_bottle = true,
@@ -281,7 +252,42 @@ impl Example {
                 self.bottle_list = list;
                 self.refresh_bottle_states();
             }
-            Message::OpenMenu | Message::TogglePower | Message::Noop => {}
+            Message::SnapshotsLoaded(Ok(snapshots)) => {
+                self.snapshot_rows = snapshots
+                    .iter()
+                    .map(|snapshot| {
+                        let title = if snapshot.message.is_empty() {
+                            snapshot.state_id.chars().take(12).collect()
+                        } else {
+                            snapshot.message.clone()
+                        };
+                        let description = snapshot
+                            .created_at
+                            .as_ref()
+                            .map(|timestamp| relative_time(timestamp.seconds))
+                            .unwrap_or_default();
+
+                        (title, description)
+                    })
+                    .collect();
+                self.snapshots = snapshots;
+            }
+            Message::SnapshotsLoaded(Err(err)) => eprintln!("failed to load snapshots: {err}"),
+            Message::LaunchProgram(id) => {
+                if let Some(bottle) = self.selected_bottle.and_then(|selected| {
+                    self.bottle_list
+                        .iter()
+                        .find(|bottle| bottle.state().is_ok_and(|state| state.id() == selected))
+                        .cloned()
+                }) {
+                    return Task::perform(
+                        async move { bottle.run(id).await.map_err(|err| err.to_string()) },
+                        Message::ProgramLaunched,
+                    );
+                }
+            }
+            Message::ProgramLaunched(Err(err)) => eprintln!("failed to launch program: {err}"),
+            Message::OpenMenu | Message::TogglePower | Message::ProgramLaunched(Ok(_)) | Message::Noop => {}
         }
 
         Task::none()
@@ -470,9 +476,9 @@ impl Example {
             ))
             .middle(tabs);
         let content = match self.detail_tab {
-            DetailTab::Programs => self.program_grid(width, bottle),
+            DetailTab::Programs => self.program_grid(width),
             DetailTab::Settings => action_grid(&SETTINGS[bottle], width),
-            DetailTab::Snapshots => action_grid(&SNAPSHOTS[bottle], width),
+            DetailTab::Snapshots => self.snapshot_grid(width),
         };
 
         column![header, scroll_panel(content)]
@@ -481,21 +487,56 @@ impl Example {
             .into()
     }
 
-    fn program_grid(&self, width: f32, bottle: usize) -> Element<'_, Message> {
+    fn program_grid(&self, width: f32) -> Element<'_, Message> {
+        let programs = self
+            .selected_bottle
+            .and_then(|id| self.bottle_states.iter().find(|state| state.id() == id))
+            .map(|state| state.programs())
+            .unwrap_or_default();
+
         if width >= CONTENT_GRID_BREAKPOINT {
-            column![
-                row![program_card(bottle, 0), program_card(bottle, 1)].spacing(12),
-                row![program_card(bottle, 2), program_card(bottle, 3)].spacing(12),
-            ]
-            .spacing(12)
-            .into()
-        } else {
             Column::with_children(
-                (0..PROGRAMS[bottle].len()).map(|index| program_card(bottle, index)),
+                programs
+                    .chunks(2)
+                    .map(|chunk| row(chunk.iter().map(program_card)).spacing(12).into()),
             )
             .spacing(12)
             .into()
+        } else {
+            Column::with_children(programs.iter().map(program_card))
+                .spacing(12)
+                .into()
         }
+    }
+
+    fn snapshot_grid(&self, width: f32) -> Element<'_, Message> {
+        let columns = usize::from(width >= CONTENT_GRID_BREAKPOINT) + 1;
+        let rows = self.snapshot_rows.iter().fold(
+            RowGroup::new().columns(columns),
+            |rows, (title, description)| {
+                rows.add(
+                    ActionRow::new(title, State::Ready(Message::Noop))
+                        .description(description)
+                        .icon(Icon::Timer),
+                )
+            },
+        );
+
+        container(rows).max_width(1150).into()
+    }
+}
+
+fn relative_time(seconds: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(seconds, |duration| duration.as_secs() as i64);
+    let diff = (now - seconds).max(0);
+
+    match diff {
+        0..=59 => "Just now".to_string(),
+        60..=3599 => format!("{} minutes ago", diff / 60),
+        3600..=86399 => format!("{} hours ago", diff / 3600),
+        _ => format!("{} days ago", diff / 86400),
     }
 }
 
@@ -548,18 +589,16 @@ fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Messag
         .on_press(message)
 }
 
-fn program_card(bottle: usize, index: usize) -> Element<'static, Message> {
-    let (title, subtitle) = PROGRAMS[bottle][index];
-
-    ArtworkCard::new(title, subtitle)
+fn program_card(program: &bottles_core::Program) -> Element<'_, Message> {
+    ArtworkCard::new(&program.name, &program.executable)
         .secondary(CardAction::new("Settings", Icon::Gear).on_press(Message::Noop))
-        .primary(CardAction::new("Play", Icon::Play).on_press(Message::Noop))
-        .banner(sample_image(bottle, index))
+        .primary(CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram(program.id)))
+        .banner(sample_image(program.id))
         .into()
 }
 
-fn sample_image(bottle: usize, index: usize) -> image::Handle {
-    let seed = (bottle * PROGRAMS[0].len() + index) as u8;
+fn sample_image(id: Uuid) -> image::Handle {
+    let seed = id.as_bytes()[0];
     let first = [45 + seed * 5, 50 + seed * 3, 65 + seed * 4];
     let second = [first[2], first[0] + 20, first[1] + 10];
 
