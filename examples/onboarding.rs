@@ -33,6 +33,10 @@ use next_ui::{
 };
 use uuid::Uuid;
 
+/// Every step's content is capped at this width so the window doesn't
+/// visibly grow or shrink in extent as the user moves between them.
+const STEP_WIDTH: f32 = 900.0;
+
 /// The component slots a first run needs, in the order the mockup lists
 /// them (runner, then the DXVK/VKD3D/LatencyFlex trio it depends on).
 const ONBOARDING_SLOTS: &[(Slot, &str)] = &[
@@ -326,11 +330,12 @@ impl App {
 
         let selector = row![experiences, self.selected_mode_view()]
             .spacing(20)
-            .width(900);
+            .width(Fill);
 
         center(
             column![header, selector, self.apply_button()]
                 .spacing(48)
+                .width(STEP_WIDTH)
                 .align_x(Horizontal::Center),
         )
         .into()
@@ -356,8 +361,11 @@ impl App {
             };
 
             group = group.add(
-                ActionRow::new(&item.label, state)
-                    .description(if item.failed { "Failed" } else { &item.size_label }),
+                ActionRow::new(&item.label, state).description(if item.failed {
+                    "Failed"
+                } else {
+                    &item.size_label
+                }),
             );
         }
 
@@ -374,8 +382,9 @@ impl App {
             .on_press(Message::CancelDownloads);
 
         center(
-            column![header, container(group).width(600), cancel]
+            column![header, container(group).width(Fill), cancel]
                 .spacing(40)
+                .width(STEP_WIDTH)
                 .align_x(Horizontal::Center),
         )
         .into()
@@ -416,8 +425,12 @@ impl App {
         let content = column![title_row, text(mode.caption()).body().muted()].spacing(6);
 
         button(
-            row![content, iced::widget::Space::new().width(Fill), Icon::Arrow.rotated(std::f32::consts::PI)]
-                .align_y(Vertical::Center),
+            row![
+                content,
+                iced::widget::Space::new().width(Fill),
+                Icon::Arrow.rotated(std::f32::consts::PI)
+            ]
+            .align_y(Vertical::Center),
         )
         .style(move |theme: &Theme, _status| {
             let background = if selected {
@@ -467,11 +480,16 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
         .width(160)
         .height(160)
         .content_fit(iced::ContentFit::Contain);
-    let text_block = column![text(step.title).h4(), text(body).body().muted()].spacing(20);
+    let text_block = column![text(step.title).h4(), text(body).body().muted()]
+        .spacing(20)
+        .width(Fill);
     let next = button(
-        row![text("Next").label(), Icon::Arrow.rotated(std::f32::consts::PI)]
-            .spacing(10)
-            .align_y(Vertical::Center),
+        row![
+            text("Next").label(),
+            Icon::Arrow.rotated(std::f32::consts::PI)
+        ]
+        .spacing(10)
+        .align_y(Vertical::Center),
     )
     .style(|theme: &Theme, _status| button::Style {
         background: Some(Background::Color(
@@ -486,11 +504,13 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
 
     center(
         column![
-            row![icon, text_block].spacing(48).align_y(Vertical::Center),
+            row![icon, text_block]
+                .spacing(48)
+                .align_y(Vertical::Center),
             container(next).center_x(Fill),
         ]
         .spacing(64)
-        .width(1200),
+        .width(STEP_WIDTH),
     )
     .into()
 }
