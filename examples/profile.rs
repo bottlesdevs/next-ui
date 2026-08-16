@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 use bottles_core::profile::ProfileManager;
 use iced::{
-    ContentFit, Element, Fill, Subscription, Task, Theme,
+    Background, ContentFit, Element, Fill, Subscription, Task, Theme,
     futures::StreamExt as _,
-    widget::{column, container, scrollable, svg, text},
+    widget::{center, column, container, mouse_area, opaque, scrollable, stack, svg, text},
 };
 use next_proto::bottles::{
     common::v1::{AuthState, Storefront},
@@ -490,7 +490,11 @@ impl App {
                 let storefront = Storefront::try_from(account.storefront).unwrap_or_default();
                 accounts = accounts.add(account_row(
                     storefront_icon(storefront),
-                    &account.account_display_name,
+                    format!(
+                        "{} on {}",
+                        account.account_display_name,
+                        storefront_label(storefront)
+                    ),
                     auth_state_label(account.auth_state),
                     Message::UnlinkAccount(account.storefront),
                 ));
@@ -551,79 +555,103 @@ impl App {
                 steam_popover.into()
             };
 
-            let mut content = column![].spacing(18);
-
-            if let Some(login) = &self.login {
-                let submit_label = if login.submitting { "Submitting…" } else { "Submit" };
-
-                content = content.push(
-                    column![
-                        RowGroup::new()
-                            .title("Sign in")
-                            .description(storefront_label(login.storefront))
-                            .add(action_button_row(
-                                storefront_icon(login.storefront),
-                                &login.url,
-                                "Open this link, sign in, then paste the code you're given below.",
-                                "Open",
-                                Message::OpenLoginUrl,
-                            ))
-                            .add(
-                                TextRow::new("Authorization code", &login.code_draft)
-                                    .icon(Icon::Checkmark)
-                                    .on_input(Message::LoginCodeChanged)
-                                    .on_submit(Message::SubmitLoginCode),
-                            ),
-                        iced::widget::row![
-                            Button::new(submit_label)
-                                .kind(ButtonKind::Primary)
-                                .on_press_maybe(
-                                    (!login.submitting).then_some(Message::SubmitLoginCode)
-                                ),
-                            Button::new("Cancel")
-                                .kind(ButtonKind::Transparent)
-                                .on_press(Message::CancelLogin),
-                        ]
-                        .spacing(12),
-                    ]
-                    .spacing(12),
-                );
-            }
-
-            content
-                .push(
-                    RowGroup::new()
-                        .title("Profile")
-                        .add(
-                            TextRow::new("Profile name", &self.name_draft)
-                                .icon(Icon::Person)
-                                .on_input(Message::NameChanged)
-                                .on_submit(Message::RenameSubmit),
-                        )
-                        .add(action_button_row(
-                            Icon::Cross,
-                            "Delete profile",
-                            "Removes this profile and its linked accounts from this device",
-                            "Delete",
-                            Message::DeleteProfile(active.id.clone()),
-                        )),
-                )
-                .push(accounts)
-                .push(container(link_popover).width(Fill))
-                .push(container(steam_row).width(Fill))
-                .into()
+            column![
+                RowGroup::new()
+                    .title("Profile")
+                    .add(
+                        TextRow::new("Profile name", &self.name_draft)
+                            .icon(Icon::Person)
+                            .on_input(Message::NameChanged)
+                            .on_submit(Message::RenameSubmit),
+                    )
+                    .add(action_button_row(
+                        Icon::Cross,
+                        "Delete profile",
+                        "Removes this profile and its linked accounts from this device",
+                        "Delete",
+                        Message::DeleteProfile(active.id.clone()),
+                    )),
+                accounts,
+                container(link_popover).width(Fill),
+                container(steam_row).width(Fill),
+            ]
+            .spacing(18)
+            .into()
         } else {
             column![].into()
         };
 
         let body = scroll_panel(content);
-
-        window_frame::WindowFrame::new(
+        let window = window_frame::WindowFrame::new(
             column![header, body].width(Fill).height(Fill),
             Message::Window,
-        )
-        .into()
+        );
+
+        if let Some(login) = &self.login {
+            modal(window, login_dialog(login), Message::CancelLogin)
+        } else {
+            window.into()
+        }
     }
+}
+
+fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
+    let submit_label = if login.submitting { "Submitting…" } else { "Submit" };
+
+    container(
+        column![
+            Title::new("Sign in").subtitle(storefront_label(login.storefront)),
+            RowGroup::new()
+                .add(action_button_row(
+                    storefront_icon(login.storefront),
+                    &login.url,
+                    "Open this link, sign in, then paste the code you're given below.",
+                    "Open",
+                    Message::OpenLoginUrl,
+                ))
+                .add(
+                    TextRow::new("Authorization code", &login.code_draft)
+                        .icon(Icon::Checkmark)
+                        .on_input(Message::LoginCodeChanged)
+                        .on_submit(Message::SubmitLoginCode),
+                ),
+            iced::widget::row![
+                Button::new(submit_label)
+                    .kind(ButtonKind::Primary)
+                    .on_press_maybe((!login.submitting).then_some(Message::SubmitLoginCode)),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Transparent)
+                    .on_press(Message::CancelLogin),
+            ]
+            .spacing(12),
+        ]
+        .spacing(18),
+    )
+    .width(420)
+    .padding(24)
+    .style(theme::panel)
+    .into()
+}
+
+/// A centered dialog over a dimmed, click-to-dismiss backdrop — `content`
+/// is wrapped in its own `opaque` so a click on the dialog itself doesn't
+/// also fall through to the backdrop's dismiss handler.
+fn modal<'a>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_dismiss: Message,
+) -> Element<'a, Message> {
+    stack![
+        base.into(),
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| container::Style {
+                background: Some(Background::Color(theme::SCRIM)),
+                ..container::Style::default()
+            }))
+            .on_press(on_dismiss)
+        ),
+    ]
+    .into()
 }
 
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
@@ -660,7 +688,7 @@ fn profile_events(
 /// target, which would make a destructive action a one-tap accident.
 fn account_row<'a>(
     icon: Icon,
-    title: &'a str,
+    title: impl text::IntoFragment<'a>,
     description: &'a str,
     on_unlink: Message,
 ) -> ListRow<'a, Message> {
@@ -669,7 +697,7 @@ fn account_row<'a>(
 
 fn action_button_row<'a>(
     icon: Icon,
-    title: &'a str,
+    title: impl text::IntoFragment<'a>,
     description: &'a str,
     button_label: &'a str,
     on_press: Message,
