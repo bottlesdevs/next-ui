@@ -31,7 +31,6 @@ use next_ui::{
     components::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
-        info_card::{self, InfoCard},
         list_row::ListRow,
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
@@ -90,7 +89,6 @@ struct App {
     steam_open: bool,
     steam_candidates: Vec<bottles_core::steam::SteamUser>,
     login: Option<LoginChallenge>,
-    error: Option<String>,
 }
 
 struct LoginChallenge {
@@ -121,7 +119,6 @@ enum Message {
     LoginCodeChanged(String),
     OpenLoginUrl,
     CopyLoginUrl,
-    DismissError,
     SubmitLoginCode,
     CancelLogin,
     UnlinkSteam,
@@ -145,7 +142,6 @@ impl App {
             steam_open: false,
             steam_candidates: Vec::new(),
             login: None,
-            error: None,
         };
         let boot = Task::perform(
             async {
@@ -201,7 +197,7 @@ impl App {
                     },
                 );
             }
-            Message::ManagerLoaded(Err(err)) => self.error = Some(err),
+            Message::ManagerLoaded(Err(err)) => eprintln!("failed to load profile manager: {err}"),
             Message::ProfilesLoaded(profiles) => {
                 self.active = profiles
                     .iter()
@@ -324,7 +320,7 @@ impl App {
                     );
                 }
             }
-            Message::ProfileDeleted(Err(err)) => self.error = Some(err),
+            Message::ProfileDeleted(Err(err)) => eprintln!("failed to delete profile: {err}"),
             // Success is a no-op here: `delete()` already broadcasts a
             // `DeletedProfileId` event, which the `ProfileEvent` arm below
             // uses to update `self.profiles`/`self.active`.
@@ -367,7 +363,7 @@ impl App {
                     submitting: false,
                 });
             }
-            Message::LoginChallengeReceived(Err(err)) => self.error = Some(err),
+            Message::LoginChallengeReceived(Err(err)) => eprintln!("failed to start login: {err}"),
             Message::LoginCodeChanged(code) => {
                 if let Some(login) = &mut self.login {
                     login.code_draft = code;
@@ -445,11 +441,9 @@ impl App {
                 self.name_draft = profile.name.clone();
                 self.active = Some(profile);
                 self.login = None;
-                self.error = None;
             }
-            Message::DismissError => self.error = None,
             Message::ProfileUpdated(Err(err)) => {
-                self.error = Some(err);
+                eprintln!("profile update failed: {err}");
 
                 if let Some(login) = &mut self.login {
                     login.submitting = false;
@@ -554,12 +548,35 @@ impl App {
                     Popover::new(steam_trigger, self.steam_open).on_dismiss(Message::Dismiss);
 
                 for user in &self.steam_candidates {
-                    steam_popover = steam_popover.add(
-                        PopoverItem::new(&user.account_name).icon(Icon::Computer).action(
+                    let taken_by = self.profiles.iter().find(|profile| {
+                        profile.id != active.id
+                            && profile
+                                .steam_link
+                                .as_ref()
+                                .is_some_and(|link| link.steam_id64 == user.steam_id64)
+                    });
+
+                    let mut item = PopoverItem::new(&user.account_name).icon(Icon::Computer);
+
+                    item = if let Some(owner) = taken_by {
+                        item.disabled_action("Taken").tooltip(
+                            column![
+                                text("Already linked").detail(),
+                                text(&owner.name).detail().muted(),
+                            ]
+                            .spacing(2),
+                        )
+                    } else {
+                        item.action(
                             "Link",
-                            Message::LinkSteam(user.steam_id64.clone(), user.account_name.clone()),
-                        ),
-                    );
+                            Message::LinkSteam(
+                                user.steam_id64.clone(),
+                                user.account_name.clone(),
+                            ),
+                        )
+                    };
+
+                    steam_popover = steam_popover.add(item);
                 }
 
                 steam_popover.into()
@@ -591,13 +608,7 @@ impl App {
             column![].into()
         };
 
-        let mut page = column![].spacing(18);
-
-        if let Some(error) = &self.error {
-            page = page.push(error_banner(error));
-        }
-
-        let body = scroll_panel(page.push(content));
+        let body = scroll_panel(content);
         let window = window_frame::WindowFrame::new(
             column![header, body].width(Fill).height(Fill),
             Message::Window,
@@ -713,17 +724,6 @@ fn account_row<'a>(
     on_unlink: Message,
 ) -> ListRow<'a, Message> {
     action_button_row(icon, title, description, "Unlink", on_unlink)
-}
-
-fn error_banner(message: &str) -> Element<'_, Message> {
-    column![
-        InfoCard::new(info_card::Kind::Error, "Something went wrong", message),
-        Button::new("Dismiss")
-            .kind(ButtonKind::Transparent)
-            .on_press(Message::DismissError),
-    ]
-    .spacing(6)
-    .into()
 }
 
 /// A plain, non-interactive info row — no trailing button, so a long

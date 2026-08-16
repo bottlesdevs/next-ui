@@ -6,7 +6,7 @@ use iced::{
         widget::{Operation, Tree, tree},
     },
     keyboard::{self, key},
-    widget::{button, column, container, row, scrollable, svg, text},
+    widget::{button, column, container, row, scrollable, svg, text, tooltip},
 };
 
 use crate::icons::Icon;
@@ -27,6 +27,12 @@ pub struct PopoverItem<'a, Message> {
     icon: Option<Icon>,
     on_select: Option<Message>,
     action: Option<(&'a str, Message)>,
+    /// Shows a disabled action button (still visible, greyed out and
+    /// non-interactive) instead of omitting it entirely — used to explain
+    /// *why* an action isn't available (e.g. "Taken") rather than just
+    /// hiding it.
+    disabled_action: Option<&'a str>,
+    tooltip: Option<Element<'a, Message>>,
 }
 
 impl<'a, Message> PopoverItem<'a, Message> {
@@ -37,6 +43,8 @@ impl<'a, Message> PopoverItem<'a, Message> {
             icon: None,
             on_select: None,
             action: None,
+            disabled_action: None,
+            tooltip: None,
         }
     }
 
@@ -57,6 +65,18 @@ impl<'a, Message> PopoverItem<'a, Message> {
 
     pub fn action(mut self, label: &'a str, message: Message) -> Self {
         self.action = Some((label, message));
+        self
+    }
+
+    pub fn disabled_action(mut self, label: &'a str) -> Self {
+        self.disabled_action = Some(label);
+        self
+    }
+
+    /// Wraps the row in a tooltip shown on hover — e.g. explaining a
+    /// [`disabled_action`](Self::disabled_action).
+    pub fn tooltip(mut self, tooltip: impl Into<Element<'a, Message>>) -> Self {
+        self.tooltip = Some(tooltip.into());
         self
     }
 }
@@ -163,14 +183,24 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
                 .kind(ButtonKind::Surface)
                 .on_press(message),
         );
+    } else if let Some(label) = item.disabled_action {
+        content = content.push(Button::new(label).kind(ButtonKind::Surface));
     }
 
-    Pressable::new(content)
+    let row: Element<'a, Message> = Pressable::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press_maybe(item.on_select)
         .style(row_style)
-        .into()
+        .into();
+
+    match item.tooltip {
+        Some(tip) => tooltip(row, tip, tooltip::Position::Top)
+            .style(tooltip_style)
+            .padding(spacing::SM)
+            .into(),
+        None => row,
+    }
 }
 
 struct PopoverWidget<'a, Message> {
@@ -560,5 +590,14 @@ fn footer_style(theme: &Theme, status: Status) -> button::Style {
         text_color: theme.extended_palette().secondary.weak.text,
         border: Border::default().rounded(iced::border::bottom(12)),
         ..button::Style::default()
+    }
+}
+
+fn tooltip_style(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(theme.extended_palette().background.strongest.color)),
+        text_color: Some(theme.palette().text),
+        border: Border::default().rounded(8),
+        ..container::Style::default()
     }
 }
