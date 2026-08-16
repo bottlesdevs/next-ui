@@ -11,7 +11,11 @@ use iced::{
     keyboard::{self, key},
     widget::{Column, column, container, image, row, scrollable, svg, text},
 };
-use next_proto::bottles::profiles::v1::{UserProfile, profile_event};
+use next_proto::bottles::{
+    common::v1::{Game, Storefront},
+    library::v1::{ListGamesRequest, library_client::LibraryClient},
+    profiles::v1::{UserProfile, profile_event},
+};
 use uuid::Uuid;
 use next_ui::{
     components::{
@@ -41,6 +45,7 @@ const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
+const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -167,6 +172,7 @@ struct Example {
     profiles: Vec<UserProfile>,
     active_profile: Option<UserProfile>,
     profile_switcher_open: bool,
+    games: Vec<Game>,
 }
 
 #[derive(Clone)]
@@ -238,6 +244,7 @@ enum Message {
     ActivateProfile(String),
     CreateProfile,
     ProfileUpdated(Result<UserProfile, String>),
+    LibraryLoaded(Result<Vec<Game>, String>),
     Noop,
 }
 
@@ -262,6 +269,7 @@ impl Example {
             profiles: Vec::new(),
             active_profile: None,
             profile_switcher_open: false,
+            games: Vec::new(),
         }
     }
 
@@ -330,6 +338,12 @@ impl Example {
                 if tab == PrimaryTab::Library {
                     self.selected_bottle = None;
                     self.creating_bottle = false;
+
+                    if let Some(profile_id) =
+                        self.active_profile.as_ref().map(|profile| profile.id.clone())
+                    {
+                        return Task::perform(list_games(profile_id), Message::LibraryLoaded);
+                    }
                 }
             }
             Message::DetailTabSelected(tab) => self.detail_tab = tab,
@@ -550,9 +564,16 @@ impl Example {
             }
             Message::ProfileUpdated(Ok(profile)) => {
                 upsert_profile(&mut self.profiles, profile.clone());
+                let profile_id = profile.id.clone();
                 self.active_profile = Some(profile);
+
+                if self.primary_tab == PrimaryTab::Library {
+                    return Task::perform(list_games(profile_id), Message::LibraryLoaded);
+                }
             }
             Message::ProfileUpdated(Err(err)) => eprintln!("failed to update profile: {err}"),
+            Message::LibraryLoaded(Ok(games)) => self.games = games,
+            Message::LibraryLoaded(Err(err)) => eprintln!("failed to load library: {err}"),
             Message::OpenMenu | Message::TogglePower | Message::ProgramLaunched(Ok(_)) | Message::Noop => {}
         }
 
@@ -669,13 +690,7 @@ impl Example {
 
                 container(rows).max_width(1150).into()
             }
-            PrimaryTab::Library => container(InfoCard::new(
-                Kind::Hint,
-                "Library is on its way",
-                "Cross-bottle installed software isn't tracked yet.",
-            ))
-            .max_width(1150)
-            .into(),
+            PrimaryTab::Library => self.library_view(width, mode),
         };
 
         column![header, scroll_panel(content)]
@@ -774,6 +789,42 @@ impl Example {
             .width(Fill)
             .height(Fill)
             .into()
+    }
+
+    fn library_view(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
+        if self.active_profile.is_none() {
+            return container(InfoCard::new(
+                Kind::Hint,
+                "No active profile",
+                "Sign in to a profile to see its library.",
+            ))
+            .max_width(1150)
+            .into();
+        }
+
+        if self.games.is_empty() {
+            return container(InfoCard::new(
+                Kind::Hint,
+                "Nothing here yet",
+                "Games linked to this profile's storefronts will show up here.",
+            ))
+            .max_width(1150)
+            .into();
+        }
+
+        let columns =
+            usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
+        let rows = self.games.iter().fold(RowGroup::new().columns(columns), |rows, game| {
+            let storefront = Storefront::try_from(game.storefront).unwrap_or_default();
+
+            rows.add(
+                ActionRow::new(&game.title, State::Ready(Message::Noop))
+                    .description(storefront_label(storefront))
+                    .icon(storefront_icon(storefront)),
+            )
+        });
+
+        container(rows).max_width(1150).into()
     }
 
     fn program_grid(&self, width: f32) -> Element<'_, Message> {
@@ -903,6 +954,28 @@ fn environment_row(description: String) -> ListRow<'static, Message> {
     )
 }
 
+fn storefront_label(storefront: Storefront) -> &'static str {
+    match storefront {
+        Storefront::Steam => "Steam",
+        Storefront::EpicGames => "Epic Games Store",
+        Storefront::Gog => "GOG",
+        Storefront::AmazonGames => "Amazon Games",
+        Storefront::EaApp => "EA App",
+        Storefront::UbisoftConnect => "Ubisoft Connect",
+        Storefront::BattleNet => "Battle.net",
+        Storefront::Unspecified => "Unknown storefront",
+    }
+}
+
+fn storefront_icon(storefront: Storefront) -> Icon {
+    match storefront {
+        Storefront::Steam => Icon::Computer,
+        Storefront::EpicGames | Storefront::Gog | Storefront::AmazonGames => Icon::Disk,
+        Storefront::EaApp | Storefront::UbisoftConnect | Storefront::BattleNet => Icon::Controller,
+        Storefront::Unspecified => Icon::Warning,
+    }
+}
+
 fn relative_time(seconds: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -915,6 +988,21 @@ fn relative_time(seconds: i64) -> String {
         3600..=86399 => format!("{} hours ago", diff / 3600),
         _ => format!("{} days ago", diff / 86400),
     }
+}
+
+async fn list_games(profile_id: String) -> Result<Vec<Game>, String> {
+    let mut client = LibraryClient::connect(SERVER_ENDPOINT)
+        .await
+        .map_err(|err| format!("next-server unavailable: {err}"))?;
+
+    client
+        .list_games(ListGamesRequest {
+            profile_id,
+            storefronts: Vec::new(),
+        })
+        .await
+        .map(|response| response.into_inner().games)
+        .map_err(|err| err.to_string())
 }
 
 fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
