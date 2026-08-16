@@ -1,13 +1,17 @@
 //! Profile switcher + management screen, driven directly by
-//! `bottles_core::profile::ProfileManager` (in-process, no RPC).
+//! `bottles_core::profile::ProfileManager` (in-process, no RPC) for
+//! everything except storefront login, which genuinely requires it: the
+//! login challenge (a URL to open, a code to hand back) is served by a
+//! Store plugin process (`next-plugin-egs`/`next-plugin-gog`) reached via
+//! the plugin registry, and completed through `next-server`'s
+//! `ProfileService`. `ProfileManager` deliberately doesn't own that
+//! multi-process dance (see its module docs) — this is exactly the case
+//! flagged as "prepare for RPC as a fallback."
 //!
-//! Linking a storefront account here fabricates a `LinkedAccount` locally
-//! instead of performing a real login handshake: per `ProfileManager`'s own
-//! module docs, that handshake is deliberately a multi-process concern
-//! (Store plugins via `next-server`'s `ProfileService`), not something this
-//! local persistence layer does. This screen is structured so a real
-//! "begin login" step can be dropped in ahead of `Message::LinkAccount`
-//! later without changing anything else.
+//! Only Epic Games and GOG are wired up (both plugins exist and expose a
+//! browser/OAuth-redirect challenge with a URL to open and a code to paste
+//! back). Every other storefront shows "Coming soon" instead of a Link
+//! action, since no plugin exists for it yet.
 
 use std::sync::Arc;
 
@@ -15,11 +19,13 @@ use bottles_core::profile::ProfileManager;
 use iced::{
     ContentFit, Element, Fill, Subscription, Task, Theme,
     futures::StreamExt as _,
-    widget::{column, container, svg, text},
+    widget::{column, container, scrollable, svg, text},
 };
 use next_proto::bottles::{
-    common::v1::{AuthState, LinkedAccount, Storefront},
-    profiles::v1::{SteamLink, UserProfile, profile_event},
+    common::v1::{AuthState, Storefront},
+    profiles::v1::{LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event},
+    registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
+    store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
 };
 use next_ui::{
     components::{
@@ -47,6 +53,9 @@ const STOREFRONTS: &[Storefront] = &[
     Storefront::UbisoftConnect,
     Storefront::BattleNet,
 ];
+const LOGIN_STOREFRONTS: &[Storefront] = &[Storefront::EpicGames, Storefront::Gog];
+const REGISTRY_ENDPOINT: &str = "http://127.0.0.1:50250";
+const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -79,7 +88,16 @@ struct App {
     link_open: bool,
     steam_open: bool,
     steam_candidates: Vec<bottles_core::steam::SteamUser>,
+    login: Option<LoginChallenge>,
     error: Option<String>,
+}
+
+struct LoginChallenge {
+    storefront: Storefront,
+    challenge_id: String,
+    url: String,
+    code_draft: String,
+    submitting: bool,
 }
 
 #[derive(Clone)]
@@ -97,7 +115,12 @@ enum Message {
     NameChanged(String),
     RenameSubmit,
     UnlinkAccount(i32),
-    LinkAccount(Storefront),
+    BeginLogin(Storefront),
+    LoginChallengeReceived(Result<(Storefront, String, String), String>),
+    LoginCodeChanged(String),
+    OpenLoginUrl,
+    SubmitLoginCode,
+    CancelLogin,
     UnlinkSteam,
     LinkSteam(String, String),
     DeleteProfile(String),
@@ -118,6 +141,7 @@ impl App {
             link_open: false,
             steam_open: false,
             steam_candidates: Vec::new(),
+            login: None,
             error: None,
         };
         let boot = Task::perform(
@@ -317,32 +341,54 @@ impl App {
                     );
                 }
             }
-            Message::LinkAccount(storefront) => {
+            Message::BeginLogin(storefront) => {
                 self.link_open = false;
 
-                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone())
-                {
-                    let account = LinkedAccount {
-                        storefront: storefront as i32,
-                        account_display_name: format!(
-                            "{} on {}",
-                            active.name,
-                            storefront_label(storefront)
-                        ),
-                        account_id: uuid::Uuid::new_v4().to_string(),
-                        auth_state: AuthState::Active as i32,
-                        linked_at: None,
-                        last_verified_at: None,
-                        expires_at: None,
-                    };
+                if let Some(active) = self.active.clone() {
+                    return Task::perform(
+                        async move {
+                            begin_login(active.id, storefront)
+                                .await
+                                .map(|(challenge_id, url)| (storefront, challenge_id, url))
+                        },
+                        Message::LoginChallengeReceived,
+                    );
+                }
+            }
+            Message::LoginChallengeReceived(Ok((storefront, challenge_id, url))) => {
+                self.login = Some(LoginChallenge {
+                    storefront,
+                    challenge_id,
+                    url,
+                    code_draft: String::new(),
+                    submitting: false,
+                });
+            }
+            Message::LoginChallengeReceived(Err(err)) => self.error = Some(err),
+            Message::LoginCodeChanged(code) => {
+                if let Some(login) = &mut self.login {
+                    login.code_draft = code;
+                }
+            }
+            Message::OpenLoginUrl => {
+                if let Some(login) = &self.login {
+                    open_url(&login.url);
+                }
+            }
+            Message::CancelLogin => self.login = None,
+            Message::SubmitLoginCode => {
+                if let (Some(active), Some(login)) = (self.active.clone(), &mut self.login) {
+                    login.submitting = true;
+
+                    let profile_id = active.id;
+                    let challenge_id = login.challenge_id.clone();
+                    let storefront = login.storefront;
+                    let user_input = login.code_draft.clone();
 
                     return Task::perform(
                         async move {
-                            handle
-                                .0
-                                .link_account(&active.id, account)
+                            complete_login(profile_id, challenge_id, storefront, user_input)
                                 .await
-                                .map_err(|err| err.to_string())
                         },
                         Message::ProfileUpdated,
                     );
@@ -390,8 +436,15 @@ impl App {
                 upsert_profile(&mut self.profiles, profile.clone());
                 self.name_draft = profile.name.clone();
                 self.active = Some(profile);
+                self.login = None;
             }
-            Message::ProfileUpdated(Err(err)) => self.error = Some(err),
+            Message::ProfileUpdated(Err(err)) => {
+                self.error = Some(err);
+
+                if let Some(login) = &mut self.login {
+                    login.submitting = false;
+                }
+            }
             Message::Window(action) => return action.task(),
             Message::Noop => {}
         }
@@ -459,11 +512,16 @@ impl App {
                     continue;
                 }
 
-                link_popover = link_popover.add(
-                    PopoverItem::new(storefront_label(*storefront))
-                        .icon(storefront_icon(*storefront))
-                        .action("Link", Message::LinkAccount(*storefront)),
-                );
+                let mut item = PopoverItem::new(storefront_label(*storefront))
+                    .icon(storefront_icon(*storefront));
+
+                item = if LOGIN_STOREFRONTS.contains(storefront) {
+                    item.action("Link", Message::BeginLogin(*storefront))
+                } else {
+                    item.subtitle("Coming soon")
+                };
+
+                link_popover = link_popover.add(item);
             }
 
             let steam_row: Element<'_, Message> = if let Some(link) = &active.steam_link {
@@ -493,33 +551,72 @@ impl App {
                 steam_popover.into()
             };
 
-            column![
-                RowGroup::new()
-                    .title("Profile")
-                    .add(
-                        TextRow::new("Profile name", &self.name_draft)
-                            .icon(Icon::Person)
-                            .on_input(Message::NameChanged)
-                            .on_submit(Message::RenameSubmit),
-                    )
-                    .add(action_button_row(
-                        Icon::Cross,
-                        "Delete profile",
-                        "Removes this profile and its linked accounts from this device",
-                        "Delete",
-                        Message::DeleteProfile(active.id.clone()),
-                    )),
-                accounts,
-                container(link_popover).width(Fill),
-                container(steam_row).width(Fill),
-            ]
-            .spacing(18)
-            .into()
+            let mut content = column![].spacing(18);
+
+            if let Some(login) = &self.login {
+                let submit_label = if login.submitting { "Submitting…" } else { "Submit" };
+
+                content = content.push(
+                    column![
+                        RowGroup::new()
+                            .title("Sign in")
+                            .description(storefront_label(login.storefront))
+                            .add(action_button_row(
+                                storefront_icon(login.storefront),
+                                &login.url,
+                                "Open this link, sign in, then paste the code you're given below.",
+                                "Open",
+                                Message::OpenLoginUrl,
+                            ))
+                            .add(
+                                TextRow::new("Authorization code", &login.code_draft)
+                                    .icon(Icon::Checkmark)
+                                    .on_input(Message::LoginCodeChanged)
+                                    .on_submit(Message::SubmitLoginCode),
+                            ),
+                        iced::widget::row![
+                            Button::new(submit_label)
+                                .kind(ButtonKind::Primary)
+                                .on_press_maybe(
+                                    (!login.submitting).then_some(Message::SubmitLoginCode)
+                                ),
+                            Button::new("Cancel")
+                                .kind(ButtonKind::Transparent)
+                                .on_press(Message::CancelLogin),
+                        ]
+                        .spacing(12),
+                    ]
+                    .spacing(12),
+                );
+            }
+
+            content
+                .push(
+                    RowGroup::new()
+                        .title("Profile")
+                        .add(
+                            TextRow::new("Profile name", &self.name_draft)
+                                .icon(Icon::Person)
+                                .on_input(Message::NameChanged)
+                                .on_submit(Message::RenameSubmit),
+                        )
+                        .add(action_button_row(
+                            Icon::Cross,
+                            "Delete profile",
+                            "Removes this profile and its linked accounts from this device",
+                            "Delete",
+                            Message::DeleteProfile(active.id.clone()),
+                        )),
+                )
+                .push(accounts)
+                .push(container(link_popover).width(Fill))
+                .push(container(steam_row).width(Fill))
+                .into()
         } else {
             column![].into()
         };
 
-        let body = container(content).width(Fill).padding(24);
+        let body = scroll_panel(content);
 
         window_frame::WindowFrame::new(
             column![header, body].width(Fill).height(Fill),
@@ -527,6 +624,23 @@ impl App {
         )
         .into()
     }
+}
+
+fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    let content = container(content).width(Fill).padding(24).center_x(Fill);
+
+    container(
+        scrollable(content)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new().width(4).scroller_width(4).margin(12),
+            ))
+            .style(theme::scrollbar)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(Fill)
+    .height(Fill)
+    .into()
 }
 
 fn profile_events(
@@ -582,6 +696,87 @@ fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
     } else {
         profiles.push(profile);
     }
+}
+
+/// Resolves `storefront` to its owning plugin via the registry, dials it,
+/// and starts an interactive login. Returns the challenge id (needed to
+/// complete the login later) and the URL the user needs to open — this
+/// mirrors `next-server`'s own `store_client_for` + `BeginLogin` dance
+/// (`crates/next-server/src/profile.rs`), since that resolution isn't
+/// something `next-server`'s `Profile` service proxies for callers.
+async fn begin_login(profile_id: String, storefront: Storefront) -> Result<(String, String), String> {
+    let mut registry = RegistryClient::connect(REGISTRY_ENDPOINT)
+        .await
+        .map_err(|err| format!("plugin registry unavailable: {err}"))?;
+    let resolved = registry
+        .resolve_plugin(ResolvePluginRequest {
+            storefront: storefront as i32,
+        })
+        .await
+        .map_err(|err| err.to_string())?
+        .into_inner();
+    let endpoint = resolved
+        .endpoint
+        .ok_or_else(|| format!("no {} plugin is running", storefront_label(storefront)))?;
+    let mut store = StoreClient::connect(endpoint)
+        .await
+        .map_err(|err| err.to_string())?;
+    let challenge = store
+        .begin_login(BeginLoginRequest {
+            profile_id,
+            storefront: storefront as i32,
+        })
+        .await
+        .map_err(|err| err.to_string())?
+        .into_inner();
+
+    if let Some(error) = challenge.error {
+        return Err(error);
+    }
+
+    let url = match challenge.kind {
+        Some(login_challenge::Kind::BrowserRedirect(challenge)) => challenge.url,
+        Some(login_challenge::Kind::OauthRedirect(challenge)) => challenge.auth_url,
+        _ => return Err("this storefront's login flow isn't supported yet".into()),
+    };
+
+    Ok((challenge.challenge_id, url))
+}
+
+/// Completes the login started by [`begin_login`] against `next-server`'s
+/// `Profile` service, which resolves the same plugin again to exchange
+/// `user_input` and persists the resulting linked account.
+async fn complete_login(
+    profile_id: String,
+    challenge_id: String,
+    storefront: Storefront,
+    user_input: String,
+) -> Result<UserProfile, String> {
+    let mut client = ProfileClient::connect(SERVER_ENDPOINT)
+        .await
+        .map_err(|err| format!("next-server unavailable: {err}"))?;
+
+    client
+        .link_account(LinkAccountRequest {
+            profile_id,
+            challenge_id,
+            storefront: storefront as i32,
+            user_input,
+        })
+        .await
+        .map(|response| response.into_inner())
+        .map_err(|err| err.to_string())
+}
+
+fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 fn detect_steam_users() -> Vec<bottles_core::steam::SteamUser> {
