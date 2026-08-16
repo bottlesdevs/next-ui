@@ -3,6 +3,7 @@ use std::sync::Arc;
 use bottles_core::{
     Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig, Slot,
     SnapshotSummary, Storage,
+    profile::ProfileManager,
 };
 use iced::{
     Element, Fill, Padding, Subscription, Task, Theme,
@@ -10,6 +11,7 @@ use iced::{
     keyboard::{self, key},
     widget::{Column, column, container, image, row, scrollable, svg, text},
 };
+use next_proto::bottles::profiles::v1::{UserProfile, profile_event};
 use uuid::Uuid;
 use next_ui::{
     components::{
@@ -20,6 +22,7 @@ use next_ui::{
         info_card::{InfoCard, Kind},
         list_row::ListRow,
         picker_row::PickerRow,
+        popover::{Popover, PopoverItem},
         row_group::RowGroup,
         selector_row::SelectorRow,
         split_view::{PaneMode, PaneSide, SplitView},
@@ -53,8 +56,8 @@ fn main() -> iced::Result {
 }
 
 enum App {
-    Onboarding(next_ui::onboarding::State),
-    Main(Example),
+    Onboarding(Box<next_ui::onboarding::State>),
+    Main(Box<Example>),
 }
 
 #[derive(Clone)]
@@ -67,7 +70,7 @@ impl App {
     fn new() -> (Self, Task<AppMessage>) {
         let (state, task) = next_ui::onboarding::State::new();
 
-        (Self::Onboarding(state), task.map(AppMessage::Onboarding))
+        (Self::Onboarding(Box::new(state)), task.map(AppMessage::Onboarding))
     }
 
     fn theme(&self) -> Theme {
@@ -92,16 +95,12 @@ impl App {
                 };
 
                 if let next_ui::onboarding::Message::Finished = message {
-                    let example = match state.take_bottles() {
+                    let (example, task) = match state.take_bottles() {
                         Some(bottles) => Example::new_with_bottles(bottles),
-                        None => {
-                            let (example, task) = Example::new();
-                            *self = Self::Main(example);
-                            return task.map(AppMessage::Main);
-                        }
+                        None => Example::new(),
                     };
-                    *self = Self::Main(example);
-                    return Task::none();
+                    *self = Self::Main(Box::new(example));
+                    return task.map(AppMessage::Main);
                 }
 
                 state.update(message).map(AppMessage::Onboarding)
@@ -164,6 +163,31 @@ struct Example {
     selected_runner: Option<RunnerOption>,
     purpose: &'static str,
     architecture: &'static str,
+    profile_manager: Option<ProfileManagerHandle>,
+    profiles: Vec<UserProfile>,
+    active_profile: Option<UserProfile>,
+    profile_switcher_open: bool,
+}
+
+#[derive(Clone)]
+struct ProfileManagerHandle(Arc<ProfileManager>);
+
+impl std::hash::Hash for ProfileManagerHandle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (Arc::as_ptr(&self.0) as usize).hash(state);
+    }
+}
+
+fn profile_events(
+    handle: &ProfileManagerHandle,
+) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
+    let manager = handle.0.clone();
+
+    Box::pin(
+        manager
+            .watch()
+            .filter_map(|event| async move { event.event.map(Message::ProfileEvent) }),
+    )
 }
 
 #[derive(Clone)]
@@ -207,6 +231,13 @@ enum Message {
     ToggleGamescope(bool),
     ToggleMangoHud(bool),
     WrapperUpdated(Result<(), String>),
+    ProfileManagerLoaded(Result<Arc<ProfileManager>, String>),
+    ProfilesLoaded(Vec<UserProfile>),
+    ProfileEvent(profile_event::Event),
+    ToggleProfileSwitcher,
+    ActivateProfile(String),
+    CreateProfile,
+    ProfileUpdated(Result<UserProfile, String>),
     Noop,
 }
 
@@ -227,11 +258,27 @@ impl Example {
             selected_runner: None,
             purpose: PURPOSES[0],
             architecture: ARCHITECTURES[0],
+            profile_manager: None,
+            profiles: Vec::new(),
+            active_profile: None,
+            profile_switcher_open: false,
         }
     }
 
+    fn profile_manager_boot() -> Task<Message> {
+        Task::perform(
+            async {
+                ProfileManager::load()
+                    .await
+                    .map(Arc::new)
+                    .map_err(|err| err.to_string())
+            },
+            Message::ProfileManagerLoaded,
+        )
+    }
+
     fn new() -> (Self, Task<Message>) {
-        let boot = Task::perform(
+        let bottles_boot = Task::perform(
             async {
                 Bottles::open(CoreConfig::default())
                     .await
@@ -241,13 +288,17 @@ impl Example {
             Message::BottlesLoaded,
         );
 
-        (Self::empty(), boot)
+        (
+            Self::empty(),
+            Task::batch([bottles_boot, Self::profile_manager_boot()]),
+        )
     }
 
-    fn new_with_bottles(bottles: Bottles) -> Self {
+    fn new_with_bottles(bottles: Bottles) -> (Self, Task<Message>) {
         let mut state = Self::empty();
         state.apply_bottles(bottles);
-        state
+
+        (state, Self::profile_manager_boot())
     }
 
     fn apply_bottles(&mut self, bottles: Bottles) {
@@ -404,6 +455,104 @@ impl Example {
             }
             Message::WrapperUpdated(Ok(())) => self.refresh_bottle_states(),
             Message::WrapperUpdated(Err(err)) => eprintln!("failed to update settings: {err}"),
+            Message::ProfileManagerLoaded(Ok(manager)) => {
+                self.profile_manager = Some(ProfileManagerHandle(manager.clone()));
+                let list_manager = manager.clone();
+
+                let activate = Task::perform(
+                    async move {
+                        if let Some(active) = manager.active().await {
+                            return Ok(active);
+                        }
+
+                        let profiles = manager.list().await;
+                        let profile = match profiles.into_iter().next() {
+                            Some(profile) => profile,
+                            None => manager
+                                .create("Player".into(), "person".into())
+                                .await
+                                .map_err(|err| err.to_string())?,
+                        };
+
+                        manager
+                            .apply_activation(&profile.id, Default::default())
+                            .await
+                            .map_err(|err| err.to_string())
+                    },
+                    Message::ProfileUpdated,
+                );
+                let list = Task::perform(
+                    async move { list_manager.list().await },
+                    Message::ProfilesLoaded,
+                );
+
+                return Task::batch([activate, list]);
+            }
+            Message::ProfilesLoaded(profiles) => self.profiles = profiles,
+            Message::ProfileManagerLoaded(Err(err)) => {
+                eprintln!("failed to load profile manager: {err}");
+            }
+            Message::ProfileEvent(profile_event::Event::Activated(profile)) => {
+                upsert_profile(&mut self.profiles, profile.clone());
+                self.active_profile = Some(profile);
+            }
+            Message::ProfileEvent(profile_event::Event::Updated(profile)) => {
+                upsert_profile(&mut self.profiles, profile.clone());
+
+                if self.active_profile.as_ref().is_some_and(|active| active.id == profile.id) {
+                    self.active_profile = Some(profile);
+                }
+            }
+            Message::ProfileEvent(profile_event::Event::DeletedProfileId(id)) => {
+                self.profiles.retain(|profile| profile.id != id);
+
+                if self.active_profile.as_ref().is_some_and(|active| active.id == id) {
+                    self.active_profile = self.profiles.first().cloned();
+                }
+            }
+            Message::ToggleProfileSwitcher => self.profile_switcher_open = !self.profile_switcher_open,
+            Message::ActivateProfile(id) => {
+                self.profile_switcher_open = false;
+
+                if let Some(handle) = self.profile_manager.clone() {
+                    return Task::perform(
+                        async move {
+                            handle
+                                .0
+                                .apply_activation(&id, Default::default())
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
+            Message::CreateProfile => {
+                self.profile_switcher_open = false;
+
+                if let Some(handle) = self.profile_manager.clone() {
+                    return Task::perform(
+                        async move {
+                            let profile = handle
+                                .0
+                                .create("New profile".into(), "person".into())
+                                .await
+                                .map_err(|err| err.to_string())?;
+                            handle
+                                .0
+                                .apply_activation(&profile.id, Default::default())
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
+            Message::ProfileUpdated(Ok(profile)) => {
+                upsert_profile(&mut self.profiles, profile.clone());
+                self.active_profile = Some(profile);
+            }
+            Message::ProfileUpdated(Err(err)) => eprintln!("failed to update profile: {err}"),
             Message::OpenMenu | Message::TogglePower | Message::ProgramLaunched(Ok(_)) | Message::Noop => {}
         }
 
@@ -444,12 +593,18 @@ impl Example {
             _ => None,
         });
 
-        let Some(bottles) = &self.bottles else {
-            return keys;
-        };
-        let handle = BottleManagerHandle(bottles.bottles().clone());
+        let mut subscriptions = vec![keys];
 
-        Subscription::batch([keys, Subscription::run_with(handle, bottle_events)])
+        if let Some(bottles) = &self.bottles {
+            let handle = BottleManagerHandle(bottles.bottles().clone());
+            subscriptions.push(Subscription::run_with(handle, bottle_events));
+        }
+
+        if let Some(handle) = self.profile_manager.clone() {
+            subscriptions.push(Subscription::run_with(handle, profile_events));
+        }
+
+        Subscription::batch(subscriptions)
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -492,7 +647,8 @@ impl Example {
                 self.selected_bottle.is_none()
             })
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
-            .middle(tabs);
+            .middle(tabs)
+            .end(self.profile_switcher());
         let content: Element<'_, Message> = match self.primary_tab {
             PrimaryTab::Bottles => {
                 let columns =
@@ -642,6 +798,30 @@ impl Example {
         }
     }
 
+    fn profile_switcher(&self) -> Element<'_, Message> {
+        let label = self
+            .active_profile
+            .as_ref()
+            .map(|profile| profile.name.as_str())
+            .unwrap_or("No profile");
+        let trigger = Button::icon_only(label, Icon::Person)
+            .kind(ButtonKind::Transparent)
+            .on_press(Message::ToggleProfileSwitcher);
+        let mut switcher = Popover::new(trigger, self.profile_switcher_open)
+            .on_dismiss(Message::ToggleProfileSwitcher)
+            .footer("New profile", Message::CreateProfile);
+
+        for profile in &self.profiles {
+            switcher = switcher.add(
+                PopoverItem::new(&profile.name)
+                    .icon(Icon::Person)
+                    .on_select(Message::ActivateProfile(profile.id.clone())),
+            );
+        }
+
+        switcher.into()
+    }
+
     fn settings_view(&self) -> Element<'_, Message> {
         let Some(state) = self.selected_bottle_state() else {
             return column![].into();
@@ -734,6 +914,14 @@ fn relative_time(seconds: i64) -> String {
         60..=3599 => format!("{} minutes ago", diff / 60),
         3600..=86399 => format!("{} hours ago", diff / 3600),
         _ => format!("{} days ago", diff / 86400),
+    }
+}
+
+fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
+    if let Some(existing) = profiles.iter_mut().find(|existing| existing.id == profile.id) {
+        *existing = profile;
+    } else {
+        profiles.push(profile);
     }
 }
 
