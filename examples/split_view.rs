@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bottles_core::{
-    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig,
-    SnapshotSummary,
+    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig, Slot,
+    SnapshotSummary, Storage,
 };
 use iced::{
     Element, Fill, Padding, Subscription, Task, Theme,
@@ -35,7 +35,6 @@ use next_ui::{
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
-const RUNNERS: [&str; 3] = ["soda-7.0-9", "soda-9.0-1", "sys-wine"];
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 
@@ -63,6 +62,18 @@ fn main() -> iced::Result {
         .run()
 }
 
+#[derive(Clone, PartialEq)]
+struct RunnerOption {
+    id: Uuid,
+    label: String,
+}
+
+impl std::fmt::Display for RunnerOption {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.label)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PrimaryTab {
     Bottles,
@@ -87,7 +98,8 @@ struct Example {
     snapshot_rows: Vec<(String, String)>,
     creating_bottle: bool,
     bottle_name: String,
-    runner: &'static str,
+    runners: Vec<RunnerOption>,
+    selected_runner: Option<RunnerOption>,
     purpose: &'static str,
     architecture: &'static str,
 }
@@ -116,8 +128,9 @@ enum Message {
     AddBottle,
     CancelBottle,
     CreateBottle,
+    BottleCreated(Result<Bottle, String>),
     BottleNameChanged(String),
-    RunnerSelected(&'static str),
+    RunnerSelected(RunnerOption),
     PurposeSelected(&'static str),
     ArchitectureSelected(&'static str),
     OpenMenu,
@@ -148,7 +161,8 @@ impl Example {
             snapshot_rows: Vec::new(),
             creating_bottle: false,
             bottle_name: "Gaming paradise".into(),
-            runner: RUNNERS[0],
+            runners: Vec::new(),
+            selected_runner: None,
             purpose: PURPOSES[0],
             architecture: ARCHITECTURES[0],
         };
@@ -196,9 +210,29 @@ impl Example {
             }
             Message::Back => self.selected_bottle = None,
             Message::AddBottle => self.creating_bottle = true,
-            Message::CancelBottle | Message::CreateBottle => self.creating_bottle = false,
+            Message::CancelBottle => self.creating_bottle = false,
+            Message::CreateBottle => {
+                if let (Some(bottles), Some(runner)) =
+                    (&self.bottles, self.selected_runner.clone())
+                {
+                    let name = self.bottle_name.clone();
+                    let manager = bottles.bottles().clone();
+
+                    return Task::perform(
+                        async move {
+                            manager
+                                .create(name, Storage::Standard, runner.id)
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::BottleCreated,
+                    );
+                }
+            }
+            Message::BottleCreated(Ok(_)) => self.creating_bottle = false,
+            Message::BottleCreated(Err(err)) => eprintln!("failed to create bottle: {err}"),
             Message::BottleNameChanged(name) => self.bottle_name = name,
-            Message::RunnerSelected(runner) => self.runner = runner,
+            Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
             Message::PurposeSelected(purpose) => self.purpose = purpose,
             Message::ArchitectureSelected(architecture) => self.architecture = architecture,
             Message::Window(action) => return action.task(),
@@ -212,6 +246,17 @@ impl Example {
             Message::BottlesLoaded(Ok(bottles)) => {
                 if let Ok(bottles) = Arc::try_unwrap(bottles) {
                     self.bottle_list = bottles.bottles().list();
+                    self.runners = bottles
+                        .addons()
+                        .components()
+                        .iter()
+                        .filter(|entry| entry.slot() == Slot::Runner)
+                        .map(|entry| RunnerOption {
+                            id: entry.id(),
+                            label: format!("{} {}", entry.name(), entry.version()),
+                        })
+                        .collect();
+                    self.selected_runner = self.runners.first().cloned();
                     self.bottles = Some(bottles);
                     self.refresh_bottle_states();
                 }
@@ -423,7 +468,7 @@ impl Example {
             TextRow::new("Bottle Name", &self.bottle_name)
                 .icon(Icon::Person)
                 .on_input(Message::BottleNameChanged),
-            SelectorRow::new("Runner", &RUNNERS, Some(&self.runner))
+            SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
                 .icon(Icon::Run)
                 .on_selected(Message::RunnerSelected),
             SelectorRow::new("Purpose", &PURPOSES, Some(&self.purpose))
