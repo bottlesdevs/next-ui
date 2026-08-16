@@ -17,6 +17,7 @@ use next_ui::{
         artwork_card::{ArtworkCard, CardAction},
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
+        info_card::{InfoCard, Kind},
         list_row::ListRow,
         picker_row::PickerRow,
         row_group::RowGroup,
@@ -37,17 +38,6 @@ const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
-
-const LIBRARY: [(&str, &str, Icon); 4] = [
-    ("Battle.net", "Installed program", Icon::Computer),
-    (
-        "Assassin’s Creed Valhalla",
-        "Installed program",
-        Icon::Controller,
-    ),
-    ("Cyberpunk 2077", "Installed program", Icon::Controller),
-    ("Steam", "Runtime library", Icon::Computer),
-];
 
 fn main() -> iced::Result {
     iced::application(Example::new, Example::update, Example::view)
@@ -438,7 +428,13 @@ impl Example {
 
                 container(rows).max_width(1150).into()
             }
-            PrimaryTab::Library => action_grid(&LIBRARY, width),
+            PrimaryTab::Library => container(InfoCard::new(
+                Kind::Hint,
+                "Library is on its way",
+                "Cross-bottle installed software isn't tracked yet.",
+            ))
+            .max_width(1150)
+            .into(),
         };
 
         column![header, scroll_panel(content)]
@@ -654,25 +650,6 @@ fn relative_time(seconds: i64) -> String {
         3600..=86399 => format!("{} hours ago", diff / 3600),
         _ => format!("{} days ago", diff / 86400),
     }
-}
-
-fn action_grid(
-    entries: &'static [(&'static str, &'static str, Icon)],
-    width: f32,
-) -> Element<'static, Message> {
-    let columns = usize::from(width >= CONTENT_GRID_BREAKPOINT) + 1;
-    let rows = entries.iter().fold(
-        RowGroup::new().columns(columns),
-        |rows, (title, description, icon)| {
-            rows.add(
-                ActionRow::new(title, State::Ready(Message::Noop))
-                    .description(description)
-                    .icon(*icon),
-            )
-        },
-    );
-
-    container(rows).max_width(1150).into()
 }
 
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
