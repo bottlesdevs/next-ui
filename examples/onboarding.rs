@@ -18,7 +18,7 @@ use iced::{
     Background, Border, Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
     futures::{SinkExt as _, Stream, StreamExt as _, future},
-    widget::{button, center, column, container, row, text},
+    widget::{button, column, container, row, scrollable, text},
 };
 use next_ui::{
     components::{
@@ -65,6 +65,25 @@ const TUTORIAL_STEPS: &[TutorialStep] = &[
         body: "The first time you create a bottle using an environment, it takes some minutes. Then the next bottles will takes just a few seconds as the first created will be used as a template for all the others.",
     },
 ];
+
+/// Wraps a step's content in a themed, horizontally-centered scrollable so
+/// nothing gets clipped if a step's content is taller than the window.
+fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    let content = container(content).width(Fill).padding(32).center_x(Fill);
+
+    container(
+        scrollable(content)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new().width(4).scroller_width(4).margin(12),
+            ))
+            .style(theme::scrollbar)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
 
 fn os_label() -> &'static str {
     match std::env::consts::OS {
@@ -300,12 +319,9 @@ impl App {
         };
 
         window_frame::WindowFrame::new(
-            column![
-                header,
-                container(content).width(Fill).height(Fill).padding(32)
-            ]
-            .width(Fill)
-            .height(Fill),
+            column![header, scroll_panel(content)]
+                .width(Fill)
+                .height(Fill),
             Message::Window,
         )
         .into()
@@ -321,24 +337,26 @@ impl App {
         .align_x(Horizontal::Center)
         .spacing(8);
 
+        // Left column stays `Fill`-height so it stretches to match the
+        // right panel's natural (taller) height, rather than each side
+        // sizing independently and ending up visibly mismatched.
         let experiences = column![
             self.experience_button(Mode::Next),
             self.experience_button(Mode::Classic),
         ]
         .spacing(12)
-        .width(Length::FillPortion(1));
+        .width(Length::FillPortion(1))
+        .height(Fill);
 
         let selector = row![experiences, self.selected_mode_view()]
             .spacing(20)
             .width(Fill);
 
-        center(
-            column![header, selector, self.apply_button()]
-                .spacing(48)
-                .width(STEP_WIDTH)
-                .align_x(Horizontal::Center),
-        )
-        .into()
+        column![header, selector, self.apply_button()]
+            .spacing(48)
+            .width(STEP_WIDTH)
+            .align_x(Horizontal::Center)
+            .into()
     }
 
     fn downloads_view(&self) -> Element<'_, Message> {
@@ -381,13 +399,11 @@ impl App {
             .padding([16, 24])
             .on_press(Message::CancelDownloads);
 
-        center(
-            column![header, container(group).width(Fill), cancel]
-                .spacing(40)
-                .width(STEP_WIDTH)
-                .align_x(Horizontal::Center),
-        )
-        .into()
+        column![header, container(group).width(Fill), cancel]
+            .spacing(40)
+            .width(STEP_WIDTH)
+            .align_x(Horizontal::Center)
+            .into()
     }
 
     fn apply_button(&self) -> Element<'_, Message> {
@@ -449,6 +465,7 @@ impl App {
         .on_press(Message::SelectMode(mode))
         .padding(18)
         .width(Fill)
+        .height(Fill)
         .into()
     }
 
@@ -502,16 +519,14 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
     .padding([16, 24])
     .on_press(Message::NextTutorialStep);
 
-    center(
-        column![
-            row![icon, text_block]
-                .spacing(48)
-                .align_y(Vertical::Center),
-            container(next).center_x(Fill),
-        ]
-        .spacing(64)
-        .width(STEP_WIDTH),
-    )
+    column![
+        row![icon, text_block]
+            .spacing(48)
+            .align_y(Vertical::Center),
+        container(next).center_x(Fill),
+    ]
+    .spacing(64)
+    .width(STEP_WIDTH)
     .into()
 }
 
