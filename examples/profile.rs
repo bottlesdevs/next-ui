@@ -602,10 +602,15 @@ fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
         column![
             Title::new("Sign in").subtitle(storefront_label(login.storefront)),
             RowGroup::new()
-                .add(action_button_row(
+                .add(label_row(
                     storefront_icon(login.storefront),
+                    "Sign-in link",
                     &login.url,
-                    "Open this link, sign in, then paste the code you're given below.",
+                ))
+                .add(action_button_row(
+                    Icon::Arrow,
+                    "Open in your browser",
+                    "Sign in there, then paste the code you're given below.",
                     "Open",
                     Message::OpenLoginUrl,
                 ))
@@ -693,6 +698,24 @@ fn account_row<'a>(
     on_unlink: Message,
 ) -> ListRow<'a, Message> {
     action_button_row(icon, title, description, "Unlink", on_unlink)
+}
+
+/// A plain, non-interactive info row — no trailing button, so a long
+/// description (e.g. a full URL, which can't word-wrap) never has
+/// anything next to it to overlap.
+fn label_row<'a>(
+    icon: Icon,
+    title: &'a str,
+    description: impl text::IntoFragment<'a>,
+) -> ListRow<'a, Message> {
+    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
+
+    ListRow::new(labels).leading(
+        svg(icon.handle())
+            .width(24)
+            .height(24)
+            .content_fit(ContentFit::Contain),
+    )
 }
 
 fn action_button_row<'a>(
