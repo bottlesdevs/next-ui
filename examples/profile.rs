@@ -119,6 +119,7 @@ enum Message {
     LoginChallengeReceived(Result<(Storefront, String, String), String>),
     LoginCodeChanged(String),
     OpenLoginUrl,
+    CopyLoginUrl,
     SubmitLoginCode,
     CancelLogin,
     UnlinkSteam,
@@ -375,6 +376,11 @@ impl App {
                     open_url(&login.url);
                 }
             }
+            Message::CopyLoginUrl => {
+                if let Some(login) = &self.login {
+                    return iced::clipboard::write(login.url.clone());
+                }
+            }
             Message::CancelLogin => self.login = None,
             Message::SubmitLoginCode => {
                 if let (Some(active), Some(login)) = (self.active.clone(), &mut self.login) {
@@ -602,11 +608,10 @@ fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
         column![
             Title::new("Sign in").subtitle(storefront_label(login.storefront)),
             RowGroup::new()
-                .add(label_row(
-                    storefront_icon(login.storefront),
-                    "Sign-in link",
-                    &login.url,
-                ))
+                .add(
+                    label_row(storefront_icon(login.storefront), "Sign-in link (click to copy)", &login.url)
+                        .on_press(Message::CopyLoginUrl),
+                )
                 .add(action_button_row(
                     Icon::Arrow,
                     "Open in your browser",
@@ -632,7 +637,7 @@ fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
         ]
         .spacing(18),
     )
-    .width(420)
+    .width(560)
     .padding(24)
     .style(theme::panel)
     .into()
