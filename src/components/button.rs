@@ -30,7 +30,8 @@ pub enum ButtonKind {
 }
 
 pub struct Button<'a, Message> {
-    label: &'a str,
+    content: Element<'a, Message>,
+    tooltip: Option<&'a str>,
     icon: Option<Icon>,
     icon_trailing: bool,
     icon_rotation: f32,
@@ -43,9 +44,10 @@ pub struct Button<'a, Message> {
 }
 
 impl<'a, Message> Button<'a, Message> {
-    pub fn new(label: &'a str) -> Self {
+    pub fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
-            label,
+            content: content.into(),
+            tooltip: None,
             icon: None,
             icon_trailing: false,
             icon_rotation: 0.0,
@@ -58,11 +60,12 @@ impl<'a, Message> Button<'a, Message> {
         }
     }
 
-    pub fn icon_only(label: &'a str, icon: Icon) -> Self {
+    pub fn icon_only(tooltip: &'a str, icon: Icon) -> Self {
         Self {
             icon: Some(icon),
             shape: Shape::IconOnly,
-            ..Self::new(label)
+            tooltip: Some(tooltip),
+            ..Self::new(text(""))
         }
     }
 
@@ -138,10 +141,10 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .center(Fill)
             .into()
         } else {
-            let mut content = Row::new().spacing(spacing::XS).align_y(Center);
+            let mut row = Row::new().spacing(spacing::XS).align_y(Center);
 
             if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
-                content = content.push(icon_element(
+                row = row.push(icon_element(
                     icon,
                     button.icon_rotation,
                     button.icon_size,
@@ -150,10 +153,10 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 ));
             }
 
-            content = content.push(text(button.label).label());
+            row = row.push(button.content);
 
             if let Some(icon) = button.icon.filter(|_| button.icon_trailing) {
-                content = content.push(icon_element(
+                row = row.push(icon_element(
                     icon,
                     button.icon_rotation,
                     button.icon_size,
@@ -162,8 +165,9 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 ));
             }
 
-            content.into()
+            row.into()
         };
+
         let shape = button.shape;
         let kind = button.kind;
         let mut pressable = Pressable::new(content)
@@ -187,9 +191,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         let element: Element<'a, Message> = pressable.into();
 
         if shape == Shape::IconOnly {
-            tooltip(element, text(button.label), tooltip::Position::Bottom)
-                .gap(spacing::XS)
-                .into()
+            if let Some(tooltip_text) = button.tooltip {
+                tooltip(element, text(tooltip_text), tooltip::Position::Bottom)
+                    .gap(spacing::XS)
+                    .into()
+            } else {
+                element
+            }
         } else {
             element
         }

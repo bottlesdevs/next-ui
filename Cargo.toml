@@ -17,6 +17,7 @@ tokio-util.workspace = true
 bottles-core.workspace = true
 next-proto.workspace = true
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
+uuid.workspace = true
 
 [features]
 debug = ["iced/hot"]

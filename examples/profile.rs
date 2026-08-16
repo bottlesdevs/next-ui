@@ -23,7 +23,9 @@ use iced::{
 };
 use next_proto::bottles::{
     common::v1::{AuthState, Storefront},
-    profiles::v1::{LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event},
+    profiles::v1::{
+        LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event,
+    },
     registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
     store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
 };
@@ -219,7 +221,11 @@ impl App {
             Message::ProfileEvent(profile_event::Event::Updated(profile)) => {
                 upsert_profile(&mut self.profiles, profile.clone());
 
-                if self.active.as_ref().is_some_and(|active| active.id == profile.id) {
+                if self
+                    .active
+                    .as_ref()
+                    .is_some_and(|active| active.id == profile.id)
+                {
                     self.name_draft = profile.name.clone();
                     self.active = Some(profile);
                 }
@@ -297,8 +303,7 @@ impl App {
             }
             Message::NameChanged(name) => self.name_draft = name,
             Message::RenameSubmit => {
-                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone())
-                {
+                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone()) {
                     let name = self.name_draft.clone();
                     return Task::perform(
                         async move {
@@ -326,8 +331,7 @@ impl App {
             // uses to update `self.profiles`/`self.active`.
             Message::ProfileDeleted(Ok(())) => {}
             Message::UnlinkAccount(storefront) => {
-                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone())
-                {
+                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone()) {
                     return Task::perform(
                         async move {
                             handle
@@ -391,16 +395,14 @@ impl App {
 
                     return Task::perform(
                         async move {
-                            complete_login(profile_id, challenge_id, storefront, user_input)
-                                .await
+                            complete_login(profile_id, challenge_id, storefront, user_input).await
                         },
                         Message::ProfileUpdated,
                     );
                 }
             }
             Message::UnlinkSteam => {
-                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone())
-                {
+                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone()) {
                     return Task::perform(
                         async move {
                             handle
@@ -416,8 +418,7 @@ impl App {
             Message::LinkSteam(steam_id64, account_name) => {
                 self.steam_open = false;
 
-                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone())
-                {
+                if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone()) {
                     return Task::perform(
                         async move {
                             handle
@@ -484,8 +485,8 @@ impl App {
 
         let header = HeaderBar::new(Message::Window)
             .show_window_controls(true)
-            .middle(Title::new("Profiles").subtitle("Manage local profiles and linked accounts"))
-            .end(switcher);
+            .start(switcher)
+            .middle(Title::new("Profiles").subtitle("Manage local profiles and linked accounts"));
 
         let content: Element<'_, Message> = if let Some(active) = &self.active {
             let mut accounts = RowGroup::new().title("Linked accounts");
@@ -569,10 +570,7 @@ impl App {
                     } else {
                         item.action(
                             "Link",
-                            Message::LinkSteam(
-                                user.steam_id64.clone(),
-                                user.account_name.clone(),
-                            ),
+                            Message::LinkSteam(user.steam_id64.clone(), user.account_name.clone()),
                         )
                     };
 
@@ -623,15 +621,23 @@ impl App {
 }
 
 fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
-    let submit_label = if login.submitting { "Submitting…" } else { "Submit" };
+    let submit_label = if login.submitting {
+        "Submitting…"
+    } else {
+        "Submit"
+    };
 
     container(
         column![
             Title::new("Sign in").subtitle(storefront_label(login.storefront)),
             RowGroup::new()
                 .add(
-                    label_row(storefront_icon(login.storefront), "Sign-in link (click to copy)", &login.url)
-                        .on_press(Message::CopyLoginUrl),
+                    label_row(
+                        storefront_icon(login.storefront),
+                        "Sign-in link (click to copy)",
+                        &login.url
+                    )
+                    .on_press(Message::CopyLoginUrl),
                 )
                 .add(action_button_row(
                     Icon::Arrow,
@@ -691,7 +697,10 @@ fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Mes
     container(
         scrollable(content)
             .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new().width(4).scroller_width(4).margin(12),
+                scrollable::Scrollbar::new()
+                    .width(4)
+                    .scroller_width(4)
+                    .margin(12),
             ))
             .style(theme::scrollbar)
             .width(Fill)
@@ -768,7 +777,10 @@ fn action_button_row<'a>(
 }
 
 fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
-    if let Some(existing) = profiles.iter_mut().find(|existing| existing.id == profile.id) {
+    if let Some(existing) = profiles
+        .iter_mut()
+        .find(|existing| existing.id == profile.id)
+    {
         *existing = profile;
     } else {
         profiles.push(profile);
@@ -781,7 +793,10 @@ fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
 /// mirrors `next-server`'s own `store_client_for` + `BeginLogin` dance
 /// (`crates/next-server/src/profile.rs`), since that resolution isn't
 /// something `next-server`'s `Profile` service proxies for callers.
-async fn begin_login(profile_id: String, storefront: Storefront) -> Result<(String, String), String> {
+async fn begin_login(
+    profile_id: String,
+    storefront: Storefront,
+) -> Result<(String, String), String> {
     let mut registry = RegistryClient::connect(REGISTRY_ENDPOINT)
         .await
         .map_err(|err| format!("plugin registry unavailable: {err}"))?;
