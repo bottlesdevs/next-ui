@@ -1,8 +1,13 @@
+use std::sync::Arc;
+
+use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig};
 use iced::{
     Element, Fill, Padding, Subscription, Task, Theme,
+    futures::StreamExt as _,
     keyboard::{self, key},
     widget::{Column, column, container, image, row, scrollable},
 };
+use uuid::Uuid;
 use next_ui::{
     components::{
         action_row::{ActionRow, State},
@@ -27,13 +32,6 @@ const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 const RUNNERS: [&str; 3] = ["soda-7.0-9", "soda-9.0-1", "sys-wine"];
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
-
-const BOTTLES: [(&str, &str, Icon); 4] = [
-    ("Gaming paradise", "Gaming", Icon::Controller),
-    ("Windows development", "Software", Icon::Gear),
-    ("Game engines", "Gaming", Icon::Controller),
-    ("Weird experiments", "Custom", Icon::Custom),
-];
 
 const PROGRAMS: [[(&str, &str); 4]; 4] = [
     [
@@ -132,7 +130,7 @@ const SNAPSHOTS: [[(&str, &str, Icon); 3]; 4] = [
 ];
 
 fn main() -> iced::Result {
-    iced::application(Example::default, Example::update, Example::view)
+    iced::application(Example::new, Example::update, Example::view)
         .title("Bottles Next split view")
         .theme(Example::theme)
         .subscription(Example::subscription)
@@ -160,7 +158,10 @@ enum DetailTab {
 struct Example {
     primary_tab: PrimaryTab,
     detail_tab: DetailTab,
-    selected_bottle: Option<usize>,
+    bottles: Option<Bottles>,
+    bottle_list: Vec<Bottle>,
+    bottle_states: Vec<Arc<BottleState>>,
+    selected_bottle: Option<Uuid>,
     creating_bottle: bool,
     bottle_name: String,
     runner: &'static str,
@@ -168,26 +169,26 @@ struct Example {
     architecture: &'static str,
 }
 
-impl Default for Example {
-    fn default() -> Self {
-        Self {
-            primary_tab: PrimaryTab::Bottles,
-            detail_tab: DetailTab::Programs,
-            selected_bottle: None,
-            creating_bottle: false,
-            bottle_name: "Gaming paradise".into(),
-            runner: RUNNERS[0],
-            purpose: PURPOSES[0],
-            architecture: ARCHITECTURES[0],
-        }
-    }
+#[derive(Clone)]
+struct BottleManagerHandle(BottleManager);
+
+impl std::hash::Hash for BottleManagerHandle {
+    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
-#[derive(Debug, Clone)]
+fn bottle_events(
+    handle: &BottleManagerHandle,
+) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
+    let manager = handle.0.clone();
+
+    Box::pin(manager.watch().map(Message::BottleListChanged))
+}
+
+#[derive(Clone)]
 enum Message {
     PrimaryTabSelected(PrimaryTab),
     DetailTabSelected(DetailTab),
-    BottleSelected(usize),
+    BottleSelected(Uuid),
     Back,
     AddBottle,
     CancelBottle,
@@ -200,10 +201,39 @@ enum Message {
     TogglePower,
     Window(window_frame::Action),
     MoveFocus(bool),
+    BottlesLoaded(Result<Arc<Bottles>, String>),
+    BottleListChanged(Vec<Bottle>),
     Noop,
 }
 
 impl Example {
+    fn new() -> (Self, Task<Message>) {
+        let state = Self {
+            primary_tab: PrimaryTab::Bottles,
+            detail_tab: DetailTab::Programs,
+            bottles: None,
+            bottle_list: Vec::new(),
+            bottle_states: Vec::new(),
+            selected_bottle: None,
+            creating_bottle: false,
+            bottle_name: "Gaming paradise".into(),
+            runner: RUNNERS[0],
+            purpose: PURPOSES[0],
+            architecture: ARCHITECTURES[0],
+        };
+        let boot = Task::perform(
+            async {
+                Bottles::open(CoreConfig::default())
+                    .await
+                    .map(Arc::new)
+                    .map_err(|err| err.to_string())
+            },
+            Message::BottlesLoaded,
+        );
+
+        (state, boot)
+    }
+
     fn theme(&self) -> Theme {
         theme::theme()
     }
@@ -219,9 +249,9 @@ impl Example {
                 }
             }
             Message::DetailTabSelected(tab) => self.detail_tab = tab,
-            Message::BottleSelected(index) => {
+            Message::BottleSelected(id) => {
                 self.primary_tab = PrimaryTab::Bottles;
-                self.selected_bottle = Some(index);
+                self.selected_bottle = Some(id);
                 self.creating_bottle = false;
             }
             Message::Back => self.selected_bottle = None,
@@ -239,14 +269,34 @@ impl Example {
                     iced::widget::operation::focus_next()
                 };
             }
+            Message::BottlesLoaded(Ok(bottles)) => {
+                if let Ok(bottles) = Arc::try_unwrap(bottles) {
+                    self.bottle_list = bottles.bottles().list();
+                    self.bottles = Some(bottles);
+                    self.refresh_bottle_states();
+                }
+            }
+            Message::BottlesLoaded(Err(err)) => eprintln!("failed to open Bottles: {err}"),
+            Message::BottleListChanged(list) => {
+                self.bottle_list = list;
+                self.refresh_bottle_states();
+            }
             Message::OpenMenu | Message::TogglePower | Message::Noop => {}
         }
 
         Task::none()
     }
 
+    fn refresh_bottle_states(&mut self) {
+        self.bottle_states = self
+            .bottle_list
+            .iter()
+            .filter_map(|bottle| bottle.state().ok())
+            .collect();
+    }
+
     fn subscription(&self) -> Subscription<Message> {
-        keyboard::listen().filter_map(|event| match event {
+        let keys = keyboard::listen().filter_map(|event| match event {
             keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(key::Named::Tab),
                 modifiers,
@@ -254,7 +304,14 @@ impl Example {
                 ..
             } => Some(Message::MoveFocus(modifiers.shift())),
             _ => None,
-        })
+        });
+
+        let Some(bottles) = &self.bottles else {
+            return keys;
+        };
+        let handle = BottleManagerHandle(bottles.bottles().clone());
+
+        Subscription::batch([keys, Subscription::run_with(handle, bottle_events)])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -302,13 +359,16 @@ impl Example {
             PrimaryTab::Bottles => {
                 let columns =
                     usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
-                let rows = BOTTLES.iter().enumerate().fold(
+                let rows = self.bottle_states.iter().fold(
                     RowGroup::new().columns(columns),
-                    |rows, (index, (title, description, icon))| {
+                    |rows, state| {
                         rows.add(
-                            ActionRow::new(title, State::Ready(Message::BottleSelected(index)))
-                                .description(description)
-                                .icon(*icon),
+                            ActionRow::new(
+                                state.name(),
+                                State::Ready(Message::BottleSelected(state.id())),
+                            )
+                            .description(state.runner().name())
+                            .icon(Icon::Bottles),
                         )
                     },
                 );
@@ -368,8 +428,9 @@ impl Example {
     fn detail_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
         let bottle = self
             .selected_bottle
-            .unwrap_or_default()
-            .min(BOTTLES.len() - 1);
+            .and_then(|id| self.bottle_states.iter().position(|state| state.id() == id))
+            .unwrap_or(0)
+            .min(SETTINGS.len() - 1);
         let tabs = Tabs::new(
             [
                 Tab::new(DetailTab::Programs, "Programs"),
