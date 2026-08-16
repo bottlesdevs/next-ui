@@ -19,6 +19,8 @@ pub mod info_card;
 pub mod info_row;
 pub mod list_row;
 pub mod picker_row;
+pub mod popover;
+pub mod progress_ring;
 pub mod row_group;
 pub mod search;
 pub mod selector_row;

@@ -5,12 +5,14 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, spacing, text::TextExt as _};
+use super::{list_row::ListRow, progress_ring::ProgressRing, spacing, text::TextExt as _};
 
 #[derive(Debug, Clone)]
 pub enum State<Message> {
     Ready(Message),
     Disabled,
+    /// In-flight state (e.g. downloading a component, linking an account), `0.0..=1.0`.
+    Progress(f32),
 }
 
 pub struct ActionRow<'a, Message> {
@@ -63,12 +65,15 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
         description = description.push(text(action.description).detail().muted());
 
         let labels = column![text(action.title).label(), description].spacing(spacing::XS);
-
-        let row = ListRow::new(labels).trailing(Icon::Arrow.rotated(std::f32::consts::PI));
+        let trailing: Element<'a, Message> = match &action.state {
+            State::Progress(progress) => ProgressRing::new(*progress).into(),
+            State::Ready(_) | State::Disabled => Icon::Arrow.rotated(std::f32::consts::PI),
+        };
+        let row = ListRow::new(labels).trailing(trailing);
 
         match action.state {
             State::Ready(message) => row.on_press(message),
-            State::Disabled => row.enabled(false),
+            State::Disabled | State::Progress(_) => row.enabled(false),
         }
     }
 }
