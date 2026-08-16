@@ -40,16 +40,88 @@ const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 
 fn main() -> iced::Result {
-    iced::application(Example::new, Example::update, Example::view)
+    iced::application(App::new, App::update, App::view)
         .title("Bottles Next")
-        .theme(Example::theme)
-        .subscription(Example::subscription)
+        .theme(App::theme)
+        .subscription(App::subscription)
         .style(|_, theme| theme::application(theme))
         .window_size((1600.0, 1000.0))
         .centered()
         .decorations(false)
         .transparent(true)
         .run()
+}
+
+enum App {
+    Onboarding(next_ui::onboarding::State),
+    Main(Example),
+}
+
+#[derive(Clone)]
+enum AppMessage {
+    Onboarding(next_ui::onboarding::Message),
+    Main(Message),
+}
+
+impl App {
+    fn new() -> (Self, Task<AppMessage>) {
+        let (state, task) = next_ui::onboarding::State::new();
+
+        (Self::Onboarding(state), task.map(AppMessage::Onboarding))
+    }
+
+    fn theme(&self) -> Theme {
+        match self {
+            Self::Onboarding(state) => state.theme(),
+            Self::Main(example) => example.theme(),
+        }
+    }
+
+    fn subscription(&self) -> Subscription<AppMessage> {
+        match self {
+            Self::Onboarding(_) => Subscription::none(),
+            Self::Main(example) => example.subscription().map(AppMessage::Main),
+        }
+    }
+
+    fn update(&mut self, message: AppMessage) -> Task<AppMessage> {
+        match message {
+            AppMessage::Onboarding(message) => {
+                let Self::Onboarding(state) = self else {
+                    return Task::none();
+                };
+
+                if let next_ui::onboarding::Message::Finished = message {
+                    let example = match state.take_bottles() {
+                        Some(bottles) => Example::new_with_bottles(bottles),
+                        None => {
+                            let (example, task) = Example::new();
+                            *self = Self::Main(example);
+                            return task.map(AppMessage::Main);
+                        }
+                    };
+                    *self = Self::Main(example);
+                    return Task::none();
+                }
+
+                state.update(message).map(AppMessage::Onboarding)
+            }
+            AppMessage::Main(message) => {
+                let Self::Main(example) = self else {
+                    return Task::none();
+                };
+
+                example.update(message).map(AppMessage::Main)
+            }
+        }
+    }
+
+    fn view(&self) -> Element<'_, AppMessage> {
+        match self {
+            Self::Onboarding(state) => state.view().map(AppMessage::Onboarding),
+            Self::Main(example) => example.view().map(AppMessage::Main),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -139,8 +211,8 @@ enum Message {
 }
 
 impl Example {
-    fn new() -> (Self, Task<Message>) {
-        let state = Self {
+    fn empty() -> Self {
+        Self {
             primary_tab: PrimaryTab::Bottles,
             detail_tab: DetailTab::Programs,
             bottles: None,
@@ -155,7 +227,10 @@ impl Example {
             selected_runner: None,
             purpose: PURPOSES[0],
             architecture: ARCHITECTURES[0],
-        };
+        }
+    }
+
+    fn new() -> (Self, Task<Message>) {
         let boot = Task::perform(
             async {
                 Bottles::open(CoreConfig::default())
@@ -166,7 +241,30 @@ impl Example {
             Message::BottlesLoaded,
         );
 
-        (state, boot)
+        (Self::empty(), boot)
+    }
+
+    fn new_with_bottles(bottles: Bottles) -> Self {
+        let mut state = Self::empty();
+        state.apply_bottles(bottles);
+        state
+    }
+
+    fn apply_bottles(&mut self, bottles: Bottles) {
+        self.bottle_list = bottles.bottles().list();
+        self.runners = bottles
+            .addons()
+            .components()
+            .iter()
+            .filter(|entry| entry.slot() == Slot::Runner)
+            .map(|entry| RunnerOption {
+                id: entry.id(),
+                label: format!("{} {}", entry.name(), entry.version()),
+            })
+            .collect();
+        self.selected_runner = self.runners.first().cloned();
+        self.bottles = Some(bottles);
+        self.refresh_bottle_states();
     }
 
     fn theme(&self) -> Theme {
@@ -235,20 +333,7 @@ impl Example {
             }
             Message::BottlesLoaded(Ok(bottles)) => {
                 if let Ok(bottles) = Arc::try_unwrap(bottles) {
-                    self.bottle_list = bottles.bottles().list();
-                    self.runners = bottles
-                        .addons()
-                        .components()
-                        .iter()
-                        .filter(|entry| entry.slot() == Slot::Runner)
-                        .map(|entry| RunnerOption {
-                            id: entry.id(),
-                            label: format!("{} {}", entry.name(), entry.version()),
-                        })
-                        .collect();
-                    self.selected_runner = self.runners.first().cloned();
-                    self.bottles = Some(bottles);
-                    self.refresh_bottle_states();
+                    self.apply_bottles(bottles);
                 }
             }
             Message::BottlesLoaded(Err(err)) => eprintln!("failed to open Bottles: {err}"),
