@@ -337,16 +337,15 @@ impl App {
         .align_x(Horizontal::Center)
         .spacing(8);
 
-        // Left column stays `Fill`-height so it stretches to match the
-        // right panel's natural (taller) height, rather than each side
-        // sizing independently and ending up visibly mismatched.
+        // Left column sizes naturally (two buttons); the right panel
+        // matches that height via `Fill` instead of the other way around,
+        // so the buttons never get stretched taller than their content.
         let experiences = column![
             self.experience_button(Mode::Next),
             self.experience_button(Mode::Classic),
         ]
         .spacing(12)
-        .width(Length::FillPortion(1))
-        .height(Fill);
+        .width(Length::FillPortion(1));
 
         let selector = row![experiences, self.selected_mode_view()]
             .spacing(20)
@@ -465,7 +464,6 @@ impl App {
         .on_press(Message::SelectMode(mode))
         .padding(18)
         .width(Fill)
-        .height(Fill)
         .into()
     }
 
@@ -478,6 +476,8 @@ impl App {
 
         container(column![title, description].spacing(16))
             .width(Fill)
+            .height(Fill)
+            .max_height(220)
             .padding(20)
             .style(|theme: &Theme| container::Style {
                 background: Some(Background::Color(
