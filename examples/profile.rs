@@ -13,9 +13,9 @@ use std::sync::Arc;
 
 use bottles_core::profile::ProfileManager;
 use iced::{
-    Element, Fill, Subscription, Task, Theme,
+    ContentFit, Element, Fill, Subscription, Task, Theme,
     futures::StreamExt as _,
-    widget::{column, container},
+    widget::{column, container, svg, text},
 };
 use next_proto::bottles::{
     common::v1::{AuthState, LinkedAccount, Storefront},
@@ -23,12 +23,13 @@ use next_proto::bottles::{
 };
 use next_ui::{
     components::{
-        action_row::{ActionRow, State as RowState},
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
+        list_row::ListRow,
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
         row_group::RowGroup,
+        text::TextExt as _,
         text_row::TextRow,
         title::Title,
         window_frame,
@@ -99,7 +100,9 @@ enum Message {
     LinkAccount(Storefront),
     UnlinkSteam,
     LinkSteam(String, String),
+    DeleteProfile(String),
     ProfileUpdated(Result<UserProfile, String>),
+    ProfileDeleted(Result<(), String>),
     Window(window_frame::Action),
     Noop,
 }
@@ -286,6 +289,19 @@ impl App {
                     );
                 }
             }
+            Message::DeleteProfile(id) => {
+                if let Some(handle) = self.manager.clone() {
+                    return Task::perform(
+                        async move { handle.0.delete(&id).await.map_err(|err| err.to_string()) },
+                        Message::ProfileDeleted,
+                    );
+                }
+            }
+            Message::ProfileDeleted(Err(err)) => self.error = Some(err),
+            // Success is a no-op here: `delete()` already broadcasts a
+            // `DeletedProfileId` event, which the `ProfileEvent` arm below
+            // uses to update `self.profiles`/`self.active`.
+            Message::ProfileDeleted(Ok(())) => {}
             Message::UnlinkAccount(storefront) => {
                 if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone())
                 {
@@ -419,14 +435,12 @@ impl App {
 
             for account in &active.accounts {
                 let storefront = Storefront::try_from(account.storefront).unwrap_or_default();
-                accounts = accounts.add(
-                    ActionRow::new(
-                        &account.account_display_name,
-                        RowState::Ready(Message::UnlinkAccount(account.storefront)),
-                    )
-                    .description(auth_state_label(account.auth_state))
-                    .icon(storefront_icon(storefront)),
-                );
+                accounts = accounts.add(account_row(
+                    storefront_icon(storefront),
+                    &account.account_display_name,
+                    auth_state_label(account.auth_state),
+                    Message::UnlinkAccount(account.storefront),
+                ));
             }
 
             let link_trigger = PickerRow::new("Link a storefront account")
@@ -453,10 +467,13 @@ impl App {
             }
 
             let steam_row: Element<'_, Message> = if let Some(link) = &active.steam_link {
-                ActionRow::new(&link.account_name, RowState::Ready(Message::UnlinkSteam))
-                    .description("Linked Steam account")
-                    .icon(Icon::Computer)
-                    .into()
+                account_row(
+                    Icon::Computer,
+                    &link.account_name,
+                    "Linked Steam account",
+                    Message::UnlinkSteam,
+                )
+                .into()
             } else {
                 let steam_trigger = PickerRow::new("Link Steam account")
                     .description("Detected from your local Steam installation")
@@ -477,12 +494,21 @@ impl App {
             };
 
             column![
-                RowGroup::new().title("Profile").add(
-                    TextRow::new("Profile name", &self.name_draft)
-                        .icon(Icon::Person)
-                        .on_input(Message::NameChanged)
-                        .on_submit(Message::RenameSubmit),
-                ),
+                RowGroup::new()
+                    .title("Profile")
+                    .add(
+                        TextRow::new("Profile name", &self.name_draft)
+                            .icon(Icon::Person)
+                            .on_input(Message::NameChanged)
+                            .on_submit(Message::RenameSubmit),
+                    )
+                    .add(action_button_row(
+                        Icon::Cross,
+                        "Delete profile",
+                        "Removes this profile and its linked accounts from this device",
+                        "Delete",
+                        Message::DeleteProfile(active.id.clone()),
+                    )),
                 accounts,
                 container(link_popover).width(Fill),
                 container(steam_row).width(Fill),
@@ -513,6 +539,41 @@ fn profile_events(
             .watch()
             .filter_map(|event| async move { event.event.map(Message::ProfileEvent) }),
     )
+}
+
+/// A linked-account row where only the trailing "Unlink" button is
+/// clickable — unlike `ActionRow`, whose entire row acts as a single press
+/// target, which would make a destructive action a one-tap accident.
+fn account_row<'a>(
+    icon: Icon,
+    title: &'a str,
+    description: &'a str,
+    on_unlink: Message,
+) -> ListRow<'a, Message> {
+    action_button_row(icon, title, description, "Unlink", on_unlink)
+}
+
+fn action_button_row<'a>(
+    icon: Icon,
+    title: &'a str,
+    description: &'a str,
+    button_label: &'a str,
+    on_press: Message,
+) -> ListRow<'a, Message> {
+    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
+
+    ListRow::new(labels)
+        .leading(
+            svg(icon.handle())
+                .width(24)
+                .height(24)
+                .content_fit(ContentFit::Contain),
+        )
+        .trailing(
+            Button::new(button_label)
+                .kind(ButtonKind::Surface)
+                .on_press(on_press),
+        )
 }
 
 fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
