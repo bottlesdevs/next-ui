@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
-use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, SnapshotSummary};
+use bottles_core::{
+    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig,
+    SnapshotSummary,
+};
 use iced::{
     Element, Fill, Padding, Subscription, Task, Theme,
     futures::StreamExt as _,
     keyboard::{self, key},
-    widget::{Column, column, container, image, row, scrollable},
+    widget::{Column, column, container, image, row, scrollable, svg, text},
 };
 use uuid::Uuid;
 use next_ui::{
@@ -14,11 +17,14 @@ use next_ui::{
         artwork_card::{ArtworkCard, CardAction},
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
+        list_row::ListRow,
         picker_row::PickerRow,
         row_group::RowGroup,
         selector_row::SelectorRow,
         split_view::{PaneMode, PaneSide, SplitView},
+        switcher_row::SwitcherRow,
         tabs::{Tab, Tabs},
+        text::TextExt as _,
         text_row::TextRow,
         title::Title,
         window_frame,
@@ -42,41 +48,6 @@ const LIBRARY: [(&str, &str, Icon); 4] = [
     ),
     ("Cyberpunk 2077", "Installed program", Icon::Controller),
     ("Steam", "Runtime library", Icon::Computer),
-];
-
-const SETTINGS: [[(&str, &str, Icon); 4]; 4] = [
-    [
-        ("Runner", "soda-9.0-1", Icon::Run),
-        ("Windows version", "Windows 11", Icon::Computer),
-        ("Working directory", "Games", Icon::Folder),
-        ("Environment variables", "Game mode enabled", Icon::Gear),
-    ],
-    [
-        ("Runner", "caffe-9.7", Icon::Run),
-        ("Windows version", "Windows 10", Icon::Computer),
-        ("Working directory", "Development", Icon::Folder),
-        (
-            "Environment variables",
-            "Compiler paths configured",
-            Icon::Gear,
-        ),
-    ],
-    [
-        ("Runner", "soda-experimental", Icon::Run),
-        ("Windows version", "Windows 11", Icon::Computer),
-        ("Working directory", "Engine projects", Icon::Folder),
-        ("Environment variables", "GPU tools enabled", Icon::Gear),
-    ],
-    [
-        ("Runner", "sys-wine", Icon::Run),
-        ("Windows version", "Windows 7", Icon::Computer),
-        ("Working directory", "Temporary lab", Icon::Folder),
-        (
-            "Environment variables",
-            "Debug overrides active",
-            Icon::Gear,
-        ),
-    ],
 ];
 
 fn main() -> iced::Result {
@@ -158,6 +129,9 @@ enum Message {
     SnapshotsLoaded(Result<Vec<SnapshotSummary>, String>),
     LaunchProgram(Uuid),
     ProgramLaunched(Result<u32, String>),
+    ToggleGamescope(bool),
+    ToggleMangoHud(bool),
+    WrapperUpdated(Result<(), String>),
     Noop,
 }
 
@@ -213,12 +187,7 @@ impl Example {
                 self.snapshots.clear();
                 self.snapshot_rows.clear();
 
-                if let Some(bottle) = self
-                    .bottle_list
-                    .iter()
-                    .find(|bottle| bottle.state().is_ok_and(|state| state.id() == id))
-                    .cloned()
-                {
+                if let Some(bottle) = self.selected_bottle_handle() {
                     return Task::perform(
                         async move { bottle.snapshots().await.map_err(|err| err.to_string()) },
                         Message::SnapshotsLoaded,
@@ -274,12 +243,7 @@ impl Example {
             }
             Message::SnapshotsLoaded(Err(err)) => eprintln!("failed to load snapshots: {err}"),
             Message::LaunchProgram(id) => {
-                if let Some(bottle) = self.selected_bottle.and_then(|selected| {
-                    self.bottle_list
-                        .iter()
-                        .find(|bottle| bottle.state().is_ok_and(|state| state.id() == selected))
-                        .cloned()
-                }) {
+                if let Some(bottle) = self.selected_bottle_handle() {
                     return Task::perform(
                         async move { bottle.run(id).await.map_err(|err| err.to_string()) },
                         Message::ProgramLaunched,
@@ -287,6 +251,39 @@ impl Example {
                 }
             }
             Message::ProgramLaunched(Err(err)) => eprintln!("failed to launch program: {err}"),
+            Message::ToggleGamescope(enabled) => {
+                if let (Some(bottle), Some(state)) =
+                    (self.selected_bottle_handle(), self.selected_bottle_state())
+                {
+                    let mut config = state.wrappers().gamescope.clone();
+                    config.enabled = enabled;
+
+                    return Task::perform(
+                        async move {
+                            let mut edit = bottle.edit();
+                            edit.set_gamescope(config);
+                            edit.commit().await.map_err(|err| err.to_string())
+                        },
+                        Message::WrapperUpdated,
+                    );
+                }
+            }
+            Message::ToggleMangoHud(enabled) => {
+                if let Some(bottle) = self.selected_bottle_handle() {
+                    let config = MangoHudConfig { enabled };
+
+                    return Task::perform(
+                        async move {
+                            let mut edit = bottle.edit();
+                            edit.set_mangohud(config);
+                            edit.commit().await.map_err(|err| err.to_string())
+                        },
+                        Message::WrapperUpdated,
+                    );
+                }
+            }
+            Message::WrapperUpdated(Ok(())) => self.refresh_bottle_states(),
+            Message::WrapperUpdated(Err(err)) => eprintln!("failed to update settings: {err}"),
             Message::OpenMenu | Message::TogglePower | Message::ProgramLaunched(Ok(_)) | Message::Noop => {}
         }
 
@@ -299,6 +296,21 @@ impl Example {
             .iter()
             .filter_map(|bottle| bottle.state().ok())
             .collect();
+    }
+
+    fn selected_bottle_handle(&self) -> Option<Bottle> {
+        let id = self.selected_bottle?;
+
+        self.bottle_list
+            .iter()
+            .find(|bottle| bottle.state().is_ok_and(|state| state.id() == id))
+            .cloned()
+    }
+
+    fn selected_bottle_state(&self) -> Option<&Arc<BottleState>> {
+        let id = self.selected_bottle?;
+
+        self.bottle_states.iter().find(|state| state.id() == id)
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -432,11 +444,6 @@ impl Example {
     }
 
     fn detail_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
-        let bottle = self
-            .selected_bottle
-            .and_then(|id| self.bottle_states.iter().position(|state| state.id() == id))
-            .unwrap_or(0)
-            .min(SETTINGS.len() - 1);
         let tabs = Tabs::new(
             [
                 Tab::new(DetailTab::Programs, "Programs"),
@@ -477,7 +484,7 @@ impl Example {
             .middle(tabs);
         let content = match self.detail_tab {
             DetailTab::Programs => self.program_grid(width),
-            DetailTab::Settings => action_grid(&SETTINGS[bottle], width),
+            DetailTab::Settings => self.settings_view(),
             DetailTab::Snapshots => self.snapshot_grid(width),
         };
 
@@ -509,6 +516,55 @@ impl Example {
         }
     }
 
+    fn settings_view(&self) -> Element<'_, Message> {
+        let Some(state) = self.selected_bottle_state() else {
+            return column![].into();
+        };
+        let wrappers = state.wrappers();
+        let environment_count = state.environment().iter().count();
+        let environment_label = if environment_count == 0 {
+            "None set".to_string()
+        } else {
+            format!("{environment_count} variables set")
+        };
+
+        let bottle = RowGroup::new()
+            .title("Bottle")
+            .add(
+                ActionRow::new(state.runner().name(), State::Disabled)
+                    .description(state.runner().version())
+                    .icon(Icon::Run),
+            )
+            .add(environment_row(environment_label));
+
+        let graphics = RowGroup::new()
+            .title("Graphics")
+            .add(
+                SwitcherRow::new("DLSS", false)
+                    .description("Deep Learning Super Sampling"),
+            )
+            .add(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
+            .add(
+                SwitcherRow::new("Discrete GPU", false)
+                    .description("Force use your dedicated GPU"),
+            )
+            .add(
+                SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
+                    .description("Use the SteamOS compositor")
+                    .on_toggle(Message::ToggleGamescope),
+            )
+            .add(
+                SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
+                    .description("Show a performance overlay")
+                    .on_toggle(Message::ToggleMangoHud),
+            )
+            .add(PickerRow::new("Display Settings").description("Resolution and other options"));
+
+        container(column![bottle, graphics].spacing(12))
+            .max_width(1150)
+            .into()
+    }
+
     fn snapshot_grid(&self, width: f32) -> Element<'_, Message> {
         let columns = usize::from(width >= CONTENT_GRID_BREAKPOINT) + 1;
         let rows = self.snapshot_rows.iter().fold(
@@ -524,6 +580,21 @@ impl Example {
 
         container(rows).max_width(1150).into()
     }
+}
+
+fn environment_row(description: String) -> ListRow<'static, Message> {
+    let labels = column![
+        text("Environment variables").label(),
+        text(description).detail().muted(),
+    ]
+    .spacing(6);
+
+    ListRow::new(labels).leading(
+        svg(Icon::Gear.handle())
+            .width(24)
+            .height(24)
+            .content_fit(iced::ContentFit::Contain),
+    )
 }
 
 fn relative_time(seconds: i64) -> String {
