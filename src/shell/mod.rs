@@ -4,25 +4,15 @@ use bottles_core::{Bottle, BottleState, Bottles};
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
     keyboard::{self, key},
-    widget::{center, column, container, mouse_area, opaque, row, scrollable, stack, svg, text},
-};
-use next_proto::bottles::{
-    common::v1::{AuthState, Storefront},
-    profiles::v1::{LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient},
-    registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
-    store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
+    widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
 use crate::{
     components::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
-        list_row::ListRow,
-        picker_row::PickerRow,
-        popover::{Popover, PopoverItem},
         row_group::RowGroup,
         split_view::{PaneMode, PaneSide, SplitView},
         tabs::{Tab, Tabs},
-        text::TextExt as _,
         text_row::TextRow,
         title::Title,
         window_frame,
@@ -31,20 +21,6 @@ use crate::{
     theme,
 };
 use uuid::Uuid;
-
-const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
-const REGISTRY_ENDPOINT: &str = "http://127.0.0.1:50250";
-
-const STOREFRONTS: &[Storefront] = &[
-    Storefront::Steam,
-    Storefront::EpicGames,
-    Storefront::Gog,
-    Storefront::AmazonGames,
-    Storefront::EaApp,
-    Storefront::UbisoftConnect,
-    Storefront::BattleNet,
-];
-const LOGIN_STOREFRONTS: &[Storefront] = &[Storefront::EpicGames, Storefront::Gog];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryTab {
@@ -67,9 +43,7 @@ pub struct State {
     snapshots: crate::features::snapshots::State,
     profiles: crate::features::profiles::State,
     library: crate::features::library::State,
-    account_link_popover: AccountLinkPopover,
-    steam_candidates: Vec<bottles_core::steam::SteamUser>,
-    profile_modal: ProfileModal,
+    accounts: crate::features::accounts::State,
     settings: crate::features::settings::State,
 }
 
@@ -79,35 +53,6 @@ pub enum SplitViewState {
     NewBottle,
     Profiles,
     None,
-}
-
-/// Which of the two storefront-picker popovers on the Profiles pane is
-/// open, if any — `ToggleLink`/`ToggleSteam` are mutually exclusive.
-#[derive(Clone, PartialEq, Eq)]
-enum AccountLinkPopover {
-    Closed,
-    Storefront,
-    Steam,
-}
-
-/// The Profiles pane's storefront sign-in modal, if any. The new-profile
-/// dialog is a separate, mutually-exclusive overlay owned by
-/// `features::profiles`; the shell only needs to know about this one so it
-/// can compose the two atop the settings page.
-#[derive(Clone, PartialEq, Eq, Default)]
-enum ProfileModal {
-    #[default]
-    None,
-    Login(LoginChallenge),
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct LoginChallenge {
-    storefront: Storefront,
-    challenge_id: String,
-    url: String,
-    code_draft: String,
-    submitting: bool,
 }
 
 #[derive(Clone)]
@@ -127,22 +72,7 @@ pub enum Message {
     Snapshots(crate::features::snapshots::Message),
     Library(crate::features::library::Message),
     Profiles(crate::features::profiles::Message),
-    ToggleLink,
-    ToggleSteam,
-    SteamCandidatesDetected(Vec<bottles_core::steam::SteamUser>),
-    Dismiss,
-    UnlinkAccount(i32),
-    BeginLogin(Storefront),
-    LoginChallengeReceived(Result<(Storefront, String, String), String>),
-    LoginCodeChanged(String),
-    OpenLoginUrl,
-    CopyLoginUrl,
-    SubmitLoginCode,
-    CancelLogin,
-    UnlinkSteam,
-    LinkSteam(String, String),
-    ProfileUpdated(Result<UserProfile, String>),
-    Noop,
+    Accounts(crate::features::accounts::Message),
 }
 
 impl State {
@@ -155,9 +85,7 @@ impl State {
             snapshots: crate::features::snapshots::State::new(),
             profiles: crate::features::profiles::State::new(),
             library: crate::features::library::State::new(),
-            account_link_popover: AccountLinkPopover::Closed,
-            steam_candidates: Vec::new(),
-            profile_modal: ProfileModal::None,
+            accounts: crate::features::accounts::State::new(),
             settings: crate::features::settings::State::new(),
         }
     }
@@ -303,10 +231,9 @@ impl State {
                 let previous_active_id =
                     self.profiles.active_profile().map(|profile| profile.id.clone());
                 // Opening the new-profile dialog, submitting it, or a
-                // successful profile update all also close the shell's
-                // login modal, since only one of the two profile-pane
-                // overlays can be open at a time (previously enforced by
-                // both dialogs sharing a single `ProfileModal` field).
+                // successful profile update all also close the accounts
+                // feature's login modal, since only one of the two
+                // profile-pane overlays can be open at a time.
                 let closes_login_modal = matches!(
                     message,
                     crate::features::profiles::Message::ToggleNewProfile
@@ -317,182 +244,61 @@ impl State {
                 let task = self.profiles.update(message).map(Message::Profiles);
 
                 if closes_login_modal {
-                    self.profile_modal = ProfileModal::None;
+                    self.accounts.close_login();
                 }
 
                 self.sync_library_to_active_profile(previous_active_id.as_deref());
 
                 return task;
             }
-            Message::ToggleLink => {
-                self.account_link_popover = match self.account_link_popover {
-                    AccountLinkPopover::Storefront => AccountLinkPopover::Closed,
-                    AccountLinkPopover::Closed | AccountLinkPopover::Steam => {
-                        AccountLinkPopover::Storefront
+            Message::Accounts(message) => {
+                // `BeginLogin` opens the accounts feature's sign-in modal,
+                // which is mutually exclusive with `profiles`' new-profile
+                // dialog (previously enforced by both sharing one field).
+                let opens_login_modal = matches!(
+                    message,
+                    crate::features::accounts::Message::LoginChallengeReceived(Ok(_))
+                );
+                // A successful account/Steam mutation hands back a fresh
+                // profile — only `features::profiles` owns `active_profile`,
+                // so the shell relays it in as a cross-feature effect
+                // rather than letting `accounts` reach into `profiles`.
+                let updated_profile = match &message {
+                    crate::features::accounts::Message::ProfileUpdated(Ok(profile)) => {
+                        Some(profile.clone())
                     }
-                };
-            }
-            Message::ToggleSteam => {
-                self.account_link_popover = match self.account_link_popover {
-                    AccountLinkPopover::Steam => AccountLinkPopover::Closed,
-                    AccountLinkPopover::Closed | AccountLinkPopover::Storefront => {
-                        AccountLinkPopover::Steam
-                    }
+                    _ => None,
                 };
 
-                if self.account_link_popover == AccountLinkPopover::Steam {
-                    return Task::perform(
-                        async { detect_steam_users() },
-                        Message::SteamCandidatesDetected,
-                    );
-                }
-            }
-            Message::SteamCandidatesDetected(candidates) => self.steam_candidates = candidates,
-            Message::Dismiss => self.account_link_popover = AccountLinkPopover::Closed,
-            Message::UnlinkAccount(storefront) => {
-                if let (Some(handle), Some(active)) = (
-                    self.profiles.manager_handle(),
-                    self.profiles.active_profile().cloned(),
-                ) {
-                    return Task::perform(
-                        async move {
-                            handle
-                                .0
-                                .unlink_account(&active.id, storefront)
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
-            }
-            Message::BeginLogin(storefront) => {
-                self.account_link_popover = AccountLinkPopover::Closed;
-
-                if let Some(active) = self.profiles.active_profile().cloned() {
-                    return Task::perform(
-                        async move {
-                            begin_login(active.id, storefront)
-                                .await
-                                .map(|(challenge_id, url)| (storefront, challenge_id, url))
-                        },
-                        Message::LoginChallengeReceived,
-                    );
-                }
-            }
-            Message::LoginChallengeReceived(Ok((storefront, challenge_id, url))) => {
-                self.profile_modal = ProfileModal::Login(LoginChallenge {
-                    storefront,
-                    challenge_id,
-                    url,
-                    code_draft: String::new(),
-                    submitting: false,
-                });
-                // Mutually exclusive with the new-profile dialog, which
-                // previously shared a single `ProfileModal` field with this
-                // one.
-                return self
-                    .profiles
-                    .update(crate::features::profiles::Message::CancelNewProfile)
-                    .map(Message::Profiles);
-            }
-            Message::LoginChallengeReceived(Err(err)) => eprintln!("failed to start login: {err}"),
-            Message::LoginCodeChanged(code) => {
-                if let ProfileModal::Login(login) = &mut self.profile_modal {
-                    login.code_draft = code;
-                }
-            }
-            Message::OpenLoginUrl => {
-                if let ProfileModal::Login(login) = &self.profile_modal {
-                    open_url(&login.url);
-                }
-            }
-            Message::CopyLoginUrl => {
-                if let ProfileModal::Login(login) = &self.profile_modal {
-                    return iced::clipboard::write(login.url.clone());
-                }
-            }
-            Message::CancelLogin => self.profile_modal = ProfileModal::None,
-            Message::SubmitLoginCode => {
-                if let (Some(active), ProfileModal::Login(login)) = (
-                    self.profiles.active_profile().cloned(),
-                    &mut self.profile_modal,
-                ) {
-                    login.submitting = true;
-
-                    let profile_id = active.id;
-                    let challenge_id = login.challenge_id.clone();
-                    let storefront = login.storefront;
-                    let user_input = login.code_draft.clone();
-
-                    return Task::perform(
-                        async move {
-                            complete_login(profile_id, challenge_id, storefront, user_input).await
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
-            }
-            Message::UnlinkSteam => {
-                if let (Some(handle), Some(active)) = (
-                    self.profiles.manager_handle(),
-                    self.profiles.active_profile().cloned(),
-                ) {
-                    return Task::perform(
-                        async move {
-                            handle
-                                .0
-                                .unlink_steam(&active.id)
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
-            }
-            Message::LinkSteam(steam_id64, account_name) => {
-                self.account_link_popover = AccountLinkPopover::Closed;
-
-                if let (Some(handle), Some(active)) = (
-                    self.profiles.manager_handle(),
-                    self.profiles.active_profile().cloned(),
-                ) {
-                    return Task::perform(
-                        async move {
-                            handle
-                                .0
-                                .link_steam(
-                                    &active.id,
-                                    SteamLink {
-                                        steam_id64,
-                                        account_name,
-                                    },
-                                )
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
-            }
-            Message::ProfileUpdated(Ok(profile)) => {
                 let previous_active_id =
                     self.profiles.active_profile().map(|profile| profile.id.clone());
-                self.profile_modal = ProfileModal::None;
-                self.profiles.set_active_profile(profile);
-                self.sync_library_to_active_profile(previous_active_id.as_deref());
-            }
-            Message::ProfileUpdated(Err(err)) => {
-                eprintln!("failed to update profile: {err}");
+                let ctx = crate::features::accounts::Context {
+                    active_profile: self.profiles.active_profile(),
+                    profiles: self.profiles.profiles(),
+                    profile_manager: self.profiles.manager_handle(),
+                };
+                let mut tasks = vec![self.accounts.update(message, &ctx).map(Message::Accounts)];
 
-                if let ProfileModal::Login(login) = &mut self.profile_modal {
-                    login.submitting = false;
+                if opens_login_modal {
+                    tasks.push(
+                        self.profiles
+                            .update(crate::features::profiles::Message::CancelNewProfile)
+                            .map(Message::Profiles),
+                    );
                 }
+
+                if let Some(profile) = updated_profile {
+                    self.profiles.set_active_profile(profile);
+                }
+
+                self.sync_library_to_active_profile(previous_active_id.as_deref());
+
+                return Task::batch(tasks);
             }
             Message::Library(message) => {
                 return self.library.update(message).map(Message::Library);
             }
-            Message::OpenMenu | Message::TogglePower | Message::Noop => {}
+            Message::OpenMenu | Message::TogglePower => {}
         }
 
         Task::none()
@@ -640,102 +446,12 @@ impl State {
             ));
 
         let content: Element<'_, Message> = if let Some(active) = self.profiles.active_profile() {
-            let mut accounts = RowGroup::new().title("Linked accounts");
-
-            for account in &active.accounts {
-                let storefront = Storefront::try_from(account.storefront).unwrap_or_default();
-                accounts = accounts.add(account_row(
-                    storefront_icon(storefront),
-                    format!(
-                        "{} on {}",
-                        account.account_display_name,
-                        storefront_label(storefront)
-                    ),
-                    auth_state_label(account.auth_state),
-                    Message::UnlinkAccount(account.storefront),
-                ));
-            }
-
-            let link_trigger = PickerRow::new("Link a storefront account")
-                .description("Choose the account to connect")
-                .on_press(Message::ToggleLink);
-            let mut link_popover = Popover::new(
-                link_trigger,
-                self.account_link_popover == AccountLinkPopover::Storefront,
-            )
-            .on_dismiss(Message::Dismiss)
-            .footer("Not listed, install manually", Message::Noop);
-
-            for storefront in STOREFRONTS {
-                if active
-                    .accounts
-                    .iter()
-                    .any(|account| account.storefront == *storefront as i32)
-                {
-                    continue;
-                }
-
-                let mut item = PopoverItem::new(storefront_label(*storefront))
-                    .icon(storefront_icon(*storefront));
-
-                item = if LOGIN_STOREFRONTS.contains(storefront) {
-                    item.action("Link", Message::BeginLogin(*storefront))
-                } else {
-                    item.subtitle("Coming soon")
-                };
-
-                link_popover = link_popover.add(item);
-            }
-
-            let steam_row: Element<'_, Message> = if let Some(link) = &active.steam_link {
-                account_row(
-                    Icon::Computer,
-                    &link.account_name,
-                    "Linked Steam account",
-                    Message::UnlinkSteam,
-                )
-                .into()
-            } else {
-                let steam_trigger = PickerRow::new("Link Steam account")
-                    .description("Detected from your local Steam installation")
-                    .on_press(Message::ToggleSteam);
-                let mut steam_popover = Popover::new(
-                    steam_trigger,
-                    self.account_link_popover == AccountLinkPopover::Steam,
-                )
-                .on_dismiss(Message::Dismiss);
-
-                for user in &self.steam_candidates {
-                    let taken_by = self.profiles.profiles().iter().find(|profile| {
-                        profile.id != active.id
-                            && profile
-                                .steam_link
-                                .as_ref()
-                                .is_some_and(|link| link.steam_id64 == user.steam_id64)
-                    });
-
-                    let mut item = PopoverItem::new(&user.account_name).icon(Icon::Computer);
-
-                    item = if let Some(owner) = taken_by {
-                        item.disabled_action("Taken").tooltip(
-                            column![
-                                text("Already linked").detail(),
-                                text(&owner.name).detail().muted(),
-                            ]
-                            .spacing(2),
-                        )
-                    } else {
-                        item.action(
-                            "Link",
-                            Message::LinkSteam(user.steam_id64.clone(), user.account_name.clone()),
-                        )
-                    };
-
-                    steam_popover = steam_popover.add(item);
-                }
-
-                steam_popover.into()
+            let accounts_ctx = crate::features::accounts::Context {
+                active_profile: Some(active),
+                profiles: self.profiles.profiles(),
+                profile_manager: self.profiles.manager_handle(),
             };
+            let links = self.accounts.view_links(&accounts_ctx).map(Message::Accounts);
 
             column![
                 RowGroup::new()
@@ -752,7 +468,7 @@ impl State {
                                 crate::features::profiles::Message::RenameSubmit,
                             )),
                     )
-                    .add(action_button_row(
+                    .add(crate::features::accounts::action_button_row(
                         Icon::Cross,
                         "Delete profile",
                         "Removes this profile and its linked accounts from this device",
@@ -761,9 +477,7 @@ impl State {
                             active.id.clone(),
                         )),
                     )),
-                accounts,
-                container(link_popover).width(Fill),
-                container(steam_row).width(Fill),
+                links,
             ]
             .spacing(18)
             .into()
@@ -776,8 +490,12 @@ impl State {
             .height(Fill)
             .into();
 
-        if let ProfileModal::Login(login) = &self.profile_modal {
-            return modal(page, login_dialog(login), Message::CancelLogin);
+        if let Some(login) = self.accounts.login_dialog() {
+            return modal(
+                page,
+                login.map(Message::Accounts),
+                Message::Accounts(crate::features::accounts::Message::CancelLogin),
+            );
         }
 
         if let Some(draft) = self.profiles.new_profile_draft() {
@@ -882,28 +600,6 @@ impl State {
 
 }
 
-fn storefront_label(storefront: Storefront) -> &'static str {
-    match storefront {
-        Storefront::Steam => "Steam",
-        Storefront::EpicGames => "Epic Games Store",
-        Storefront::Gog => "GOG",
-        Storefront::AmazonGames => "Amazon Games",
-        Storefront::EaApp => "EA App",
-        Storefront::UbisoftConnect => "Ubisoft Connect",
-        Storefront::BattleNet => "Battle.net",
-        Storefront::Unspecified => "Unknown storefront",
-    }
-}
-
-fn storefront_icon(storefront: Storefront) -> Icon {
-    match storefront {
-        Storefront::Steam => Icon::Computer,
-        Storefront::EpicGames | Storefront::Gog | Storefront::AmazonGames => Icon::Disk,
-        Storefront::EaApp | Storefront::UbisoftConnect | Storefront::BattleNet => Icon::Controller,
-        Storefront::Unspecified => Icon::Warning,
-    }
-}
-
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     let content = container(content).width(Fill).padding(24).center_x(Fill);
 
@@ -934,56 +630,6 @@ fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Messag
         .on_press(message)
 }
 
-fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
-    let submit_label = if login.submitting {
-        "Submitting…"
-    } else {
-        "Submit"
-    };
-
-    container(
-        column![
-            Title::new("Sign in").subtitle(storefront_label(login.storefront)),
-            RowGroup::new()
-                .add(
-                    label_row(
-                        storefront_icon(login.storefront),
-                        "Sign-in link (click to copy)",
-                        &login.url
-                    )
-                    .on_press(Message::CopyLoginUrl),
-                )
-                .add(action_button_row(
-                    Icon::Arrow,
-                    "Open in your browser",
-                    "Sign in there, then paste the code you're given below.",
-                    "Open",
-                    Message::OpenLoginUrl,
-                ))
-                .add(
-                    TextRow::new("Authorization code", &login.code_draft)
-                        .icon(Icon::Checkmark)
-                        .on_input(Message::LoginCodeChanged)
-                        .on_submit(Message::SubmitLoginCode),
-                ),
-            row![
-                Button::new(submit_label)
-                    .kind(ButtonKind::Primary)
-                    .on_press_maybe((!login.submitting).then_some(Message::SubmitLoginCode)),
-                Button::new("Cancel")
-                    .kind(ButtonKind::Transparent)
-                    .on_press(Message::CancelLogin),
-            ]
-            .spacing(12),
-        ]
-        .spacing(18),
-    )
-    .width(560)
-    .padding(24)
-    .style(theme::panel)
-    .into()
-}
-
 fn modal<'a>(
     base: impl Into<Element<'a, Message>>,
     content: impl Into<Element<'a, Message>>,
@@ -1002,139 +648,3 @@ fn modal<'a>(
     .into()
 }
 
-fn account_row<'a>(
-    icon: Icon,
-    title: impl text::IntoFragment<'a>,
-    description: &'a str,
-    on_unlink: Message,
-) -> ListRow<'a, Message> {
-    action_button_row(icon, title, description, "Unlink", on_unlink)
-}
-
-fn label_row<'a>(
-    icon: Icon,
-    title: &'a str,
-    description: impl text::IntoFragment<'a>,
-) -> ListRow<'a, Message> {
-    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
-
-    ListRow::new(labels).leading(
-        svg(icon.handle())
-            .width(24)
-            .height(24)
-            .content_fit(iced::ContentFit::Contain),
-    )
-}
-
-fn action_button_row<'a>(
-    icon: Icon,
-    title: impl text::IntoFragment<'a>,
-    description: &'a str,
-    button_label: &'a str,
-    on_press: Message,
-) -> ListRow<'a, Message> {
-    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
-
-    ListRow::new(labels)
-        .leading(
-            svg(icon.handle())
-                .width(24)
-                .height(24)
-                .content_fit(iced::ContentFit::Contain),
-        )
-        .trailing(
-            Button::new(button_label)
-                .kind(ButtonKind::Surface)
-                .on_press(on_press),
-        )
-}
-
-async fn begin_login(
-    profile_id: String,
-    storefront: Storefront,
-) -> Result<(String, String), String> {
-    let mut registry = RegistryClient::connect(REGISTRY_ENDPOINT)
-        .await
-        .map_err(|err| format!("plugin registry unavailable: {err}"))?;
-    let resolved = registry
-        .resolve_plugin(ResolvePluginRequest {
-            storefront: storefront as i32,
-        })
-        .await
-        .map_err(|err| err.to_string())?
-        .into_inner();
-    let endpoint = resolved
-        .endpoint
-        .ok_or_else(|| format!("no {} plugin is running", storefront_label(storefront)))?;
-    let mut store = StoreClient::connect(endpoint)
-        .await
-        .map_err(|err| err.to_string())?;
-    let challenge = store
-        .begin_login(BeginLoginRequest {
-            profile_id,
-            storefront: storefront as i32,
-        })
-        .await
-        .map_err(|err| err.to_string())?
-        .into_inner();
-
-    if let Some(error) = challenge.error {
-        return Err(error);
-    }
-
-    let url = match challenge.kind {
-        Some(login_challenge::Kind::BrowserRedirect(challenge)) => challenge.url,
-        Some(login_challenge::Kind::OauthRedirect(challenge)) => challenge.auth_url,
-        _ => return Err("this storefront's login flow isn't supported yet".into()),
-    };
-
-    Ok((challenge.challenge_id, url))
-}
-
-async fn complete_login(
-    profile_id: String,
-    challenge_id: String,
-    storefront: Storefront,
-    user_input: String,
-) -> Result<UserProfile, String> {
-    let mut client = ProfileClient::connect(SERVER_ENDPOINT)
-        .await
-        .map_err(|err| format!("next-server unavailable: {err}"))?;
-
-    client
-        .link_account(LinkAccountRequest {
-            profile_id,
-            challenge_id,
-            storefront: storefront as i32,
-            user_input,
-        })
-        .await
-        .map(|response| response.into_inner())
-        .map_err(|err| err.to_string())
-}
-
-fn open_url(url: &str) {
-    #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(url).spawn();
-    #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn();
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
-}
-
-fn detect_steam_users() -> Vec<bottles_core::steam::SteamUser> {
-    bottles_core::steam::loginusers_vdf_path()
-        .and_then(|path| bottles_core::steam::parse_loginusers(&path).ok())
-        .unwrap_or_default()
-}
-
-fn auth_state_label(state: i32) -> &'static str {
-    match AuthState::try_from(state).unwrap_or_default() {
-        AuthState::Active => "Connected",
-        AuthState::Stale => "Needs re-authentication",
-        AuthState::Inactive => "Signed out",
-        AuthState::Unspecified => "Unknown",
-    }
-}

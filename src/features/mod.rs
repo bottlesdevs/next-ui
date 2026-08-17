@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod bottles;
 pub mod library;
 pub mod onboarding;

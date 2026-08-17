@@ -39,6 +39,15 @@ impl std::hash::Hash for ProfileManagerHandle {
     }
 }
 
+impl ProfileManagerHandle {
+    /// Exposes the underlying manager for other features (namely
+    /// `features::accounts`) that need to issue mutations but don't own
+    /// the manager themselves.
+    pub fn manager(&self) -> &Arc<ProfileManager> {
+        &self.0
+    }
+}
+
 pub fn profile_events(
     handle: &ProfileManagerHandle,
 ) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
