@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
-use bottles_core::{Bottle, BottleState, Bottles, profile::ProfileManager};
+use bottles_core::{Bottle, BottleState, Bottles};
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
-    futures::StreamExt as _,
     keyboard::{self, key},
     widget::{center, column, container, mouse_area, opaque, row, scrollable, stack, svg, text},
 };
 use next_proto::bottles::{
     common::v1::{AuthState, Storefront},
-    profiles::v1::{
-        LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event,
-    },
+    profiles::v1::{LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient},
     registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
     store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
 };
@@ -68,12 +65,8 @@ pub struct State {
     bottles: crate::features::bottles::State,
     split_view_state: SplitViewState,
     snapshots: crate::features::snapshots::State,
-    profile_manager: Option<ProfileManagerHandle>,
-    profiles: Vec<UserProfile>,
-    active_profile: Option<UserProfile>,
-    profile_switcher_open: bool,
+    profiles: crate::features::profiles::State,
     library: crate::features::library::State,
-    name_draft: String,
     account_link_popover: AccountLinkPopover,
     steam_candidates: Vec<bottles_core::steam::SteamUser>,
     profile_modal: ProfileModal,
@@ -97,15 +90,15 @@ enum AccountLinkPopover {
     Steam,
 }
 
-/// The Profiles pane's modal, if any — signing in to a storefront and
-/// naming a new profile are mutually exclusive, so one field covers both
-/// instead of an `Option<LoginChallenge>` alongside its own open flag.
+/// The Profiles pane's storefront sign-in modal, if any. The new-profile
+/// dialog is a separate, mutually-exclusive overlay owned by
+/// `features::profiles`; the shell only needs to know about this one so it
+/// can compose the two atop the settings page.
 #[derive(Clone, PartialEq, Eq, Default)]
 enum ProfileModal {
     #[default]
     None,
     Login(LoginChallenge),
-    NewProfile(String),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -115,27 +108,6 @@ struct LoginChallenge {
     url: String,
     code_draft: String,
     submitting: bool,
-}
-
-#[derive(Clone)]
-struct ProfileManagerHandle(Arc<ProfileManager>);
-
-impl std::hash::Hash for ProfileManagerHandle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (Arc::as_ptr(&self.0) as usize).hash(state);
-    }
-}
-
-fn profile_events(
-    handle: &ProfileManagerHandle,
-) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
-    let manager = handle.0.clone();
-
-    Box::pin(
-        manager
-            .watch()
-            .filter_map(|event| async move { event.event.map(Message::ProfileEvent) }),
-    )
 }
 
 #[derive(Clone)]
@@ -154,23 +126,11 @@ pub enum Message {
     Settings(crate::features::settings::Message),
     Snapshots(crate::features::snapshots::Message),
     Library(crate::features::library::Message),
-    ProfileManagerLoaded(Result<Arc<ProfileManager>, String>),
-    ProfilesLoaded(Vec<UserProfile>),
-    ProfileEvent(profile_event::Event),
-    ToggleProfileSwitcher,
-    ToggleProfileSettings,
-    ActivateProfile(String),
-    ToggleNewProfile,
-    CancelNewProfile,
-    NewProfileNameChanged(String),
-    SubmitNewProfile,
-    ProfileUpdated(Result<UserProfile, String>),
+    Profiles(crate::features::profiles::Message),
     ToggleLink,
     ToggleSteam,
     SteamCandidatesDetected(Vec<bottles_core::steam::SteamUser>),
     Dismiss,
-    NameChanged(String),
-    RenameSubmit,
     UnlinkAccount(i32),
     BeginLogin(Storefront),
     LoginChallengeReceived(Result<(Storefront, String, String), String>),
@@ -181,8 +141,7 @@ pub enum Message {
     CancelLogin,
     UnlinkSteam,
     LinkSteam(String, String),
-    DeleteProfile(String),
-    ProfileDeleted(Result<(), String>),
+    ProfileUpdated(Result<UserProfile, String>),
     Noop,
 }
 
@@ -194,12 +153,8 @@ impl State {
             bottles: crate::features::bottles::State::new(),
             split_view_state: SplitViewState::None,
             snapshots: crate::features::snapshots::State::new(),
-            profile_manager: None,
-            profiles: Vec::new(),
-            active_profile: None,
-            profile_switcher_open: false,
+            profiles: crate::features::profiles::State::new(),
             library: crate::features::library::State::new(),
-            name_draft: String::new(),
             account_link_popover: AccountLinkPopover::Closed,
             steam_candidates: Vec::new(),
             profile_modal: ProfileModal::None,
@@ -207,41 +162,37 @@ impl State {
         }
     }
 
-    fn set_active_profile(&mut self, profile: UserProfile) {
-        upsert_profile(&mut self.profiles, profile.clone());
+    /// Resets the library for whatever profile is active now, if the
+    /// active profile's identity actually changed since `previous`. Called
+    /// after every `profiles` update (and after the account/login flows
+    /// still living in the shell hand back a fresh profile) since only
+    /// `features::profiles` knows the new active profile, but only the
+    /// shell may reach into `library` — cross-feature effects are always
+    /// intercepted here rather than let features call each other.
+    fn sync_library_to_active_profile(&mut self, previous: Option<&str>) {
+        let current = self.profiles.active_profile().map(|profile| profile.id.as_str());
 
-        if self
-            .active_profile
-            .as_ref()
-            .is_none_or(|active| active.id != profile.id)
-        {
-            let has_watchable_accounts =
-                !(profile.accounts.is_empty() && profile.steam_link.is_none());
-            self.library.reset_for_profile(Some(has_watchable_accounts));
+        if current == previous {
+            return;
         }
 
-        self.name_draft = profile.name.clone();
-        self.active_profile = Some(profile);
-    }
-
-    fn profile_manager_boot() -> Task<Message> {
-        Task::perform(
-            async {
-                ProfileManager::load()
-                    .await
-                    .map(Arc::new)
-                    .map_err(|err| err.to_string())
-            },
-            Message::ProfileManagerLoaded,
-        )
+        match self.profiles.active_profile() {
+            Some(profile) => {
+                let has_watchable_accounts =
+                    !(profile.accounts.is_empty() && profile.steam_link.is_none());
+                self.library.reset_for_profile(Some(has_watchable_accounts));
+            }
+            None => self.library.reset_for_profile(None),
+        }
     }
 
     pub fn new() -> (Self, Task<Message>) {
         let bottles_boot = crate::features::bottles::State::boot().map(Message::Bottles);
+        let profiles_boot = crate::features::profiles::State::boot().map(Message::Profiles);
 
         (
             Self::empty(),
-            Task::batch([bottles_boot, Self::profile_manager_boot()]),
+            Task::batch([bottles_boot, profiles_boot]),
         )
     }
 
@@ -249,7 +200,10 @@ impl State {
         let mut state = Self::empty();
         state.bottles = crate::features::bottles::State::new_with_bottles(bottles);
 
-        (state, Self::profile_manager_boot())
+        (
+            state,
+            crate::features::profiles::State::boot().map(Message::Profiles),
+        )
     }
 
     pub fn theme(&self) -> Theme {
@@ -333,158 +287,42 @@ impl State {
 
                 return task;
             }
-            Message::ProfileManagerLoaded(Ok(manager)) => {
-                self.profile_manager = Some(ProfileManagerHandle(manager.clone()));
-                let list_manager = manager.clone();
-
-                let activate = Task::perform(
-                    async move {
-                        if let Some(active) = manager.active().await {
-                            return Ok(active);
-                        }
-
-                        let profiles = manager.list().await;
-                        let profile = match profiles.into_iter().next() {
-                            Some(profile) => profile,
-                            None => manager
-                                .create("Player".into(), "person".into())
-                                .await
-                                .map_err(|err| err.to_string())?,
-                        };
-
-                        manager
-                            .apply_activation(&profile.id, Default::default())
-                            .await
-                            .map_err(|err| err.to_string())
-                    },
-                    Message::ProfileUpdated,
-                );
-                let list = Task::perform(
-                    async move { list_manager.list().await },
-                    Message::ProfilesLoaded,
-                );
-
-                return Task::batch([activate, list]);
-            }
-            Message::ProfilesLoaded(profiles) => self.profiles = profiles,
-            Message::ProfileManagerLoaded(Err(err)) => {
-                eprintln!("failed to load profile manager: {err}");
-            }
-            Message::ProfileEvent(profile_event::Event::Activated(profile)) => {
-                self.set_active_profile(profile);
-            }
-            Message::ProfileEvent(profile_event::Event::Updated(profile)) => {
-                upsert_profile(&mut self.profiles, profile.clone());
-
-                if self
-                    .active_profile
-                    .as_ref()
-                    .is_some_and(|active| active.id == profile.id)
-                {
-                    self.active_profile = Some(profile);
-                }
-            }
-            Message::ProfileEvent(profile_event::Event::DeletedProfileId(id)) => {
-                self.profiles.retain(|profile| profile.id != id);
-
-                if self
-                    .active_profile
-                    .as_ref()
-                    .is_some_and(|active| active.id == id)
-                {
-                    self.active_profile = None;
-                    self.name_draft.clear();
-                    self.library.reset_for_profile(None);
-
-                    if let (Some(handle), Some(fallback)) =
-                        (self.profile_manager.clone(), self.profiles.first().cloned())
-                    {
-                        return Task::perform(
-                            async move {
-                                handle
-                                    .0
-                                    .apply_activation(&fallback.id, Default::default())
-                                    .await
-                                    .map_err(|err| err.to_string())
-                            },
-                            Message::ProfileUpdated,
-                        );
-                    }
-                }
-            }
-            Message::ToggleProfileSwitcher => {
-                self.profile_switcher_open = !self.profile_switcher_open
-            }
-            Message::ToggleProfileSettings => {
+            Message::Profiles(crate::features::profiles::Message::ToggleProfileSettings) => {
                 self.split_view_state = if self.split_view_state == SplitViewState::Profiles {
                     SplitViewState::None
                 } else {
                     SplitViewState::Profiles
                 };
-            }
-            Message::ActivateProfile(id) => {
-                if let Some(handle) = self.profile_manager.clone() {
-                    return Task::perform(
-                        async move {
-                            handle
-                                .0
-                                .apply_activation(&id, Default::default())
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
-            }
-            Message::ToggleNewProfile => {
-                self.profile_modal = ProfileModal::NewProfile(String::new());
-            }
-            Message::CancelNewProfile => self.profile_modal = ProfileModal::None,
-            Message::NewProfileNameChanged(name) => {
-                if let ProfileModal::NewProfile(draft) = &mut self.profile_modal {
-                    *draft = name;
-                }
-            }
-            Message::SubmitNewProfile => {
-                let ProfileModal::NewProfile(draft) = std::mem::take(&mut self.profile_modal)
-                else {
-                    return Task::none();
-                };
 
-                if let Some(handle) = self.profile_manager.clone() {
-                    let name = if draft.trim().is_empty() {
-                        "New profile".to_string()
-                    } else {
-                        draft.trim().to_string()
-                    };
-
-                    return Task::perform(
-                        async move {
-                            let profile = handle
-                                .0
-                                .create(name, "person".into())
-                                .await
-                                .map_err(|err| err.to_string())?;
-                            handle
-                                .0
-                                .apply_activation(&profile.id, Default::default())
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
+                return self
+                    .profiles
+                    .update(crate::features::profiles::Message::ToggleProfileSettings)
+                    .map(Message::Profiles);
             }
-            Message::ProfileUpdated(Ok(profile)) => {
-                self.profile_modal = ProfileModal::None;
-                self.set_active_profile(profile);
-            }
-            Message::ProfileUpdated(Err(err)) => {
-                eprintln!("failed to update profile: {err}");
+            Message::Profiles(message) => {
+                let previous_active_id =
+                    self.profiles.active_profile().map(|profile| profile.id.clone());
+                // Opening the new-profile dialog, submitting it, or a
+                // successful profile update all also close the shell's
+                // login modal, since only one of the two profile-pane
+                // overlays can be open at a time (previously enforced by
+                // both dialogs sharing a single `ProfileModal` field).
+                let closes_login_modal = matches!(
+                    message,
+                    crate::features::profiles::Message::ToggleNewProfile
+                        | crate::features::profiles::Message::SubmitNewProfile
+                        | crate::features::profiles::Message::ProfileUpdated(Ok(_))
+                );
 
-                if let ProfileModal::Login(login) = &mut self.profile_modal {
-                    login.submitting = false;
+                let task = self.profiles.update(message).map(Message::Profiles);
+
+                if closes_login_modal {
+                    self.profile_modal = ProfileModal::None;
                 }
+
+                self.sync_library_to_active_profile(previous_active_id.as_deref());
+
+                return task;
             }
             Message::ToggleLink => {
                 self.account_link_popover = match self.account_link_popover {
@@ -511,39 +349,11 @@ impl State {
             }
             Message::SteamCandidatesDetected(candidates) => self.steam_candidates = candidates,
             Message::Dismiss => self.account_link_popover = AccountLinkPopover::Closed,
-            Message::NameChanged(name) => self.name_draft = name,
-            Message::RenameSubmit => {
-                if let (Some(handle), Some(active)) =
-                    (self.profile_manager.clone(), self.active_profile.clone())
-                {
-                    let name = self.name_draft.clone();
-
-                    return Task::perform(
-                        async move {
-                            handle
-                                .0
-                                .rename(&active.id, name)
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
-                        Message::ProfileUpdated,
-                    );
-                }
-            }
-            Message::DeleteProfile(id) => {
-                if let Some(handle) = self.profile_manager.clone() {
-                    return Task::perform(
-                        async move { handle.0.delete(&id).await.map_err(|err| err.to_string()) },
-                        Message::ProfileDeleted,
-                    );
-                }
-            }
-            Message::ProfileDeleted(Err(err)) => eprintln!("failed to delete profile: {err}"),
-            Message::ProfileDeleted(Ok(())) => {}
             Message::UnlinkAccount(storefront) => {
-                if let (Some(handle), Some(active)) =
-                    (self.profile_manager.clone(), self.active_profile.clone())
-                {
+                if let (Some(handle), Some(active)) = (
+                    self.profiles.manager_handle(),
+                    self.profiles.active_profile().cloned(),
+                ) {
                     return Task::perform(
                         async move {
                             handle
@@ -559,7 +369,7 @@ impl State {
             Message::BeginLogin(storefront) => {
                 self.account_link_popover = AccountLinkPopover::Closed;
 
-                if let Some(active) = self.active_profile.clone() {
+                if let Some(active) = self.profiles.active_profile().cloned() {
                     return Task::perform(
                         async move {
                             begin_login(active.id, storefront)
@@ -578,6 +388,13 @@ impl State {
                     code_draft: String::new(),
                     submitting: false,
                 });
+                // Mutually exclusive with the new-profile dialog, which
+                // previously shared a single `ProfileModal` field with this
+                // one.
+                return self
+                    .profiles
+                    .update(crate::features::profiles::Message::CancelNewProfile)
+                    .map(Message::Profiles);
             }
             Message::LoginChallengeReceived(Err(err)) => eprintln!("failed to start login: {err}"),
             Message::LoginCodeChanged(code) => {
@@ -597,9 +414,10 @@ impl State {
             }
             Message::CancelLogin => self.profile_modal = ProfileModal::None,
             Message::SubmitLoginCode => {
-                if let (Some(active), ProfileModal::Login(login)) =
-                    (self.active_profile.clone(), &mut self.profile_modal)
-                {
+                if let (Some(active), ProfileModal::Login(login)) = (
+                    self.profiles.active_profile().cloned(),
+                    &mut self.profile_modal,
+                ) {
                     login.submitting = true;
 
                     let profile_id = active.id;
@@ -616,9 +434,10 @@ impl State {
                 }
             }
             Message::UnlinkSteam => {
-                if let (Some(handle), Some(active)) =
-                    (self.profile_manager.clone(), self.active_profile.clone())
-                {
+                if let (Some(handle), Some(active)) = (
+                    self.profiles.manager_handle(),
+                    self.profiles.active_profile().cloned(),
+                ) {
                     return Task::perform(
                         async move {
                             handle
@@ -634,9 +453,10 @@ impl State {
             Message::LinkSteam(steam_id64, account_name) => {
                 self.account_link_popover = AccountLinkPopover::Closed;
 
-                if let (Some(handle), Some(active)) =
-                    (self.profile_manager.clone(), self.active_profile.clone())
-                {
+                if let (Some(handle), Some(active)) = (
+                    self.profiles.manager_handle(),
+                    self.profiles.active_profile().cloned(),
+                ) {
                     return Task::perform(
                         async move {
                             handle
@@ -653,6 +473,20 @@ impl State {
                         },
                         Message::ProfileUpdated,
                     );
+                }
+            }
+            Message::ProfileUpdated(Ok(profile)) => {
+                let previous_active_id =
+                    self.profiles.active_profile().map(|profile| profile.id.clone());
+                self.profile_modal = ProfileModal::None;
+                self.profiles.set_active_profile(profile);
+                self.sync_library_to_active_profile(previous_active_id.as_deref());
+            }
+            Message::ProfileUpdated(Err(err)) => {
+                eprintln!("failed to update profile: {err}");
+
+                if let ProfileModal::Login(login) = &mut self.profile_modal {
+                    login.submitting = false;
                 }
             }
             Message::Library(message) => {
@@ -700,11 +534,14 @@ impl State {
             );
         }
 
-        if let Some(handle) = self.profile_manager.clone() {
-            subscriptions.push(Subscription::run_with(handle, profile_events));
+        if let Some(handle) = self.profiles.manager_handle() {
+            subscriptions.push(
+                Subscription::run_with(handle, crate::features::profiles::profile_events)
+                    .map(Message::Profiles),
+            );
         }
 
-        if let Some(profile) = &self.active_profile {
+        if let Some(profile) = self.profiles.active_profile() {
             let handle = crate::features::library::LibraryHandle(profile.id.clone());
             subscriptions.push(
                 Subscription::run_with(handle, crate::features::library::library_events)
@@ -773,7 +610,7 @@ impl State {
             })
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
             .middle(tabs)
-            .end(self.profile_switcher());
+            .end(self.profiles.view_switcher().map(Message::Profiles));
         let content: Element<'_, Message> = match self.primary_tab {
             PrimaryTab::Bottles => self.bottles.rows_view(width, mode, Message::BottleSelected),
             PrimaryTab::Library => self.library.view(width, mode).map(Message::Library),
@@ -799,10 +636,10 @@ impl State {
             .end(header_button(
                 "New profile",
                 Icon::Plus,
-                Message::ToggleNewProfile,
+                Message::Profiles(crate::features::profiles::Message::ToggleNewProfile),
             ));
 
-        let content: Element<'_, Message> = if let Some(active) = &self.active_profile {
+        let content: Element<'_, Message> = if let Some(active) = self.profiles.active_profile() {
             let mut accounts = RowGroup::new().title("Linked accounts");
 
             for account in &active.accounts {
@@ -869,7 +706,7 @@ impl State {
                 .on_dismiss(Message::Dismiss);
 
                 for user in &self.steam_candidates {
-                    let taken_by = self.profiles.iter().find(|profile| {
+                    let taken_by = self.profiles.profiles().iter().find(|profile| {
                         profile.id != active.id
                             && profile
                                 .steam_link
@@ -904,17 +741,25 @@ impl State {
                 RowGroup::new()
                     .title("Profile")
                     .add(
-                        TextRow::new("Profile name", &self.name_draft)
+                        TextRow::new("Profile name", self.profiles.name_draft())
                             .icon(Icon::Person)
-                            .on_input(Message::NameChanged)
-                            .on_submit(Message::RenameSubmit),
+                            .on_input(|name| {
+                                Message::Profiles(crate::features::profiles::Message::NameChanged(
+                                    name,
+                                ))
+                            })
+                            .on_submit(Message::Profiles(
+                                crate::features::profiles::Message::RenameSubmit,
+                            )),
                     )
                     .add(action_button_row(
                         Icon::Cross,
                         "Delete profile",
                         "Removes this profile and its linked accounts from this device",
                         "Delete",
-                        Message::DeleteProfile(active.id.clone()),
+                        Message::Profiles(crate::features::profiles::Message::DeleteProfile(
+                            active.id.clone(),
+                        )),
                     )),
                 accounts,
                 container(link_popover).width(Fill),
@@ -931,13 +776,19 @@ impl State {
             .height(Fill)
             .into();
 
-        match &self.profile_modal {
-            ProfileModal::Login(login) => modal(page, login_dialog(login), Message::CancelLogin),
-            ProfileModal::NewProfile(name) => {
-                modal(page, new_profile_dialog(name), Message::CancelNewProfile)
-            }
-            ProfileModal::None => page,
+        if let ProfileModal::Login(login) = &self.profile_modal {
+            return modal(page, login_dialog(login), Message::CancelLogin);
         }
+
+        if let Some(draft) = self.profiles.new_profile_draft() {
+            return modal(
+                page,
+                crate::features::profiles::new_profile_dialog(draft).map(Message::Profiles),
+                Message::Profiles(crate::features::profiles::Message::CancelNewProfile),
+            );
+        }
+
+        page
     }
 
     fn new_bottle_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
@@ -1029,39 +880,6 @@ impl State {
             .into()
     }
 
-    fn profile_switcher(&self) -> Element<'_, Message> {
-        let label = self
-            .active_profile
-            .as_ref()
-            .map(|profile| profile.name.as_str())
-            .unwrap_or("No profile");
-        let trigger = Button::icon_only(label, Icon::Person)
-            .diameter(32.0)
-            .icon_size(16.0)
-            .kind(ButtonKind::Transparent)
-            .on_press(Message::ToggleProfileSwitcher);
-
-        let mut switcher = Popover::new(trigger, self.profile_switcher_open)
-            .on_dismiss(Message::ToggleProfileSwitcher)
-            .footer("Profiles", Message::ToggleProfileSettings);
-
-        for profile in &self.profiles {
-            let selected = self
-                .active_profile
-                .as_ref()
-                .is_some_and(|active| active.id == profile.id);
-
-            switcher = switcher.add(
-                PopoverItem::new(&profile.name)
-                    .icon(Icon::Person)
-                    .selected(selected)
-                    .on_select(Message::ActivateProfile(profile.id.clone())),
-            );
-        }
-
-        switcher.into()
-    }
-
 }
 
 fn storefront_label(storefront: Storefront) -> &'static str {
@@ -1083,17 +901,6 @@ fn storefront_icon(storefront: Storefront) -> Icon {
         Storefront::EpicGames | Storefront::Gog | Storefront::AmazonGames => Icon::Disk,
         Storefront::EaApp | Storefront::UbisoftConnect | Storefront::BattleNet => Icon::Controller,
         Storefront::Unspecified => Icon::Warning,
-    }
-}
-
-fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
-    if let Some(existing) = profiles
-        .iter_mut()
-        .find(|existing| existing.id == profile.id)
-    {
-        *existing = profile;
-    } else {
-        profiles.push(profile);
     }
 }
 
@@ -1172,32 +979,6 @@ fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
         .spacing(18),
     )
     .width(560)
-    .padding(24)
-    .style(theme::panel)
-    .into()
-}
-
-fn new_profile_dialog(name: &str) -> Element<'_, Message> {
-    container(
-        column![
-            Title::new("New profile").subtitle("Give this profile a name."),
-            TextRow::new("Profile name", name)
-                .icon(Icon::Person)
-                .on_input(Message::NewProfileNameChanged)
-                .on_submit(Message::SubmitNewProfile),
-            row![
-                Button::new("Create")
-                    .kind(ButtonKind::Primary)
-                    .on_press(Message::SubmitNewProfile),
-                Button::new("Cancel")
-                    .kind(ButtonKind::Transparent)
-                    .on_press(Message::CancelNewProfile),
-            ]
-            .spacing(12),
-        ]
-        .spacing(18),
-    )
-    .width(420)
     .padding(24)
     .style(theme::panel)
     .into()
