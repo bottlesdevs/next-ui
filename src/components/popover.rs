@@ -33,6 +33,7 @@ pub struct PopoverItem<'a, Message> {
     /// hiding it.
     disabled_action: Option<&'a str>,
     tooltip: Option<Element<'a, Message>>,
+    selected: bool,
 }
 
 impl<'a, Message> PopoverItem<'a, Message> {
@@ -45,6 +46,7 @@ impl<'a, Message> PopoverItem<'a, Message> {
             action: None,
             disabled_action: None,
             tooltip: None,
+            selected: false,
         }
     }
 
@@ -77,6 +79,14 @@ impl<'a, Message> PopoverItem<'a, Message> {
     /// [`disabled_action`](Self::disabled_action).
     pub fn tooltip(mut self, tooltip: impl Into<Element<'a, Message>>) -> Self {
         self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    /// Marks this row as the currently active choice — shows a trailing
+    /// checkmark instead of relying on the caller to encode that in the
+    /// title/subtitle text.
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
         self
     }
 }
@@ -177,6 +187,15 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
     content = content
         .push(labels)
         .push(iced::widget::Space::new().width(Fill));
+
+    if item.selected {
+        content = content.push(
+            svg(Icon::Checkmark.handle())
+                .width(16)
+                .height(16)
+                .content_fit(iced::ContentFit::Contain),
+        );
+    }
 
     if let Some((label, message)) = item.action {
         content = content.push(

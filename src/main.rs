@@ -5,15 +5,22 @@ use bottles_core::{
     SnapshotSummary, Storage, profile::ProfileManager,
 };
 use iced::{
-    Element, Fill, Padding, Subscription, Task, Theme,
+    Background, Element, Fill, Padding, Subscription, Task, Theme,
     futures::{SinkExt as _, StreamExt as _},
     keyboard::{self, key},
-    widget::{Column, column, container, image, row, scrollable, svg, text},
+    widget::{
+        Column, center, column, container, image, mouse_area, opaque, row, scrollable, stack, svg,
+        text,
+    },
 };
 use next_proto::bottles::{
-    common::v1::{Game, Storefront},
+    common::v1::{AuthState, Game, Storefront},
     library::v1::{WatchGamesRequest, game_event, library_client::LibraryClient},
-    profiles::v1::{UserProfile, profile_event},
+    profiles::v1::{
+        LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event,
+    },
+    registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
+    store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
 };
 use next_ui::{
     components::{
@@ -45,6 +52,18 @@ const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
+const REGISTRY_ENDPOINT: &str = "http://127.0.0.1:50250";
+
+const STOREFRONTS: &[Storefront] = &[
+    Storefront::Steam,
+    Storefront::EpicGames,
+    Storefront::Gog,
+    Storefront::AmazonGames,
+    Storefront::EaApp,
+    Storefront::UbisoftConnect,
+    Storefront::BattleNet,
+];
+const LOGIN_STOREFRONTS: &[Storefront] = &[Storefront::EpicGames, Storefront::Gog];
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -167,10 +186,9 @@ struct Example {
     bottles: Option<Bottles>,
     bottle_list: Vec<Bottle>,
     bottle_states: Vec<Arc<BottleState>>,
-    selected_bottle: Option<Uuid>,
+    split_view_state: SplitViewState,
     snapshots: Vec<SnapshotSummary>,
     snapshot_rows: Vec<(String, String)>,
-    creating_bottle: bool,
     bottle_name: String,
     runners: Vec<RunnerOption>,
     selected_runner: Option<RunnerOption>,
@@ -181,6 +199,64 @@ struct Example {
     active_profile: Option<UserProfile>,
     profile_switcher_open: bool,
     games: Vec<Game>,
+    library_state: LibraryState,
+    name_draft: String,
+    account_link_popover: AccountLinkPopover,
+    steam_candidates: Vec<bottles_core::steam::SteamUser>,
+    profile_modal: ProfileModal,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum SplitViewState {
+    Bottle(Uuid),
+    NewBottle,
+    Profiles,
+    None,
+}
+
+/// Whether the Library tab has anything to show yet for the active
+/// profile — distinct from `games` being empty, since an empty list can
+/// mean either "still waiting on the first `WatchGames` event" or
+/// "loaded, and there's genuinely nothing linked".
+#[derive(Clone, PartialEq, Eq)]
+enum LibraryState {
+    /// No active profile to load a library for.
+    Idle,
+    /// Waiting on the first event from `WatchGames`.
+    Loading,
+    /// At least one event has arrived (or the profile has nothing to
+    /// watch in the first place), so an empty `games` list is meaningful.
+    Loaded,
+    Failed(String),
+}
+
+/// Which of the two storefront-picker popovers on the Profiles pane is
+/// open, if any — `ToggleLink`/`ToggleSteam` are mutually exclusive.
+#[derive(Clone, PartialEq, Eq)]
+enum AccountLinkPopover {
+    Closed,
+    Storefront,
+    Steam,
+}
+
+/// The Profiles pane's modal, if any — signing in to a storefront and
+/// naming a new profile are mutually exclusive, so one field covers both
+/// instead of an `Option<LoginChallenge>` alongside its own open flag.
+#[derive(Clone, PartialEq, Eq, Default)]
+enum ProfileModal {
+    #[default]
+    None,
+    Login(LoginChallenge),
+    NewProfile(String),
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct LoginChallenge {
+    storefront: Storefront,
+    challenge_id: String,
+    url: String,
+    code_draft: String,
+    submitting: bool,
 }
 
 #[derive(Clone)]
@@ -297,11 +373,33 @@ enum Message {
     ProfilesLoaded(Vec<UserProfile>),
     ProfileEvent(profile_event::Event),
     ToggleProfileSwitcher,
+    ToggleProfileSettings,
     ActivateProfile(String),
-    CreateProfile,
+    ToggleNewProfile,
+    CancelNewProfile,
+    NewProfileNameChanged(String),
+    SubmitNewProfile,
     ProfileUpdated(Result<UserProfile, String>),
     LibraryEvent(game_event::Event),
     LibraryError(String),
+    ToggleLink,
+    ToggleSteam,
+    SteamCandidatesDetected(Vec<bottles_core::steam::SteamUser>),
+    Dismiss,
+    NameChanged(String),
+    RenameSubmit,
+    UnlinkAccount(i32),
+    BeginLogin(Storefront),
+    LoginChallengeReceived(Result<(Storefront, String, String), String>),
+    LoginCodeChanged(String),
+    OpenLoginUrl,
+    CopyLoginUrl,
+    SubmitLoginCode,
+    CancelLogin,
+    UnlinkSteam,
+    LinkSteam(String, String),
+    DeleteProfile(String),
+    ProfileDeleted(Result<(), String>),
     Noop,
 }
 
@@ -313,10 +411,9 @@ impl Example {
             bottles: None,
             bottle_list: Vec::new(),
             bottle_states: Vec::new(),
-            selected_bottle: None,
+            split_view_state: SplitViewState::None,
             snapshots: Vec::new(),
             snapshot_rows: Vec::new(),
-            creating_bottle: false,
             bottle_name: "Gaming paradise".into(),
             runners: Vec::new(),
             selected_runner: None,
@@ -327,7 +424,34 @@ impl Example {
             active_profile: None,
             profile_switcher_open: false,
             games: Vec::new(),
+            library_state: LibraryState::Idle,
+            name_draft: String::new(),
+            account_link_popover: AccountLinkPopover::Closed,
+            steam_candidates: Vec::new(),
+            profile_modal: ProfileModal::None,
         }
+    }
+
+    fn set_active_profile(&mut self, profile: UserProfile) {
+        upsert_profile(&mut self.profiles, profile.clone());
+
+        if self
+            .active_profile
+            .as_ref()
+            .is_none_or(|active| active.id != profile.id)
+        {
+            self.games.clear();
+            self.library_state = if profile.accounts.is_empty() && profile.steam_link.is_none() {
+                // Nothing for `WatchGames` to ever report, so there's no
+                // event to wait on — treat it as already loaded (empty).
+                LibraryState::Loaded
+            } else {
+                LibraryState::Loading
+            };
+        }
+
+        self.name_draft = profile.name.clone();
+        self.active_profile = Some(profile);
     }
 
     fn profile_manager_boot() -> Task<Message> {
@@ -393,15 +517,13 @@ impl Example {
                 self.primary_tab = tab;
 
                 if tab == PrimaryTab::Library {
-                    self.selected_bottle = None;
-                    self.creating_bottle = false;
+                    self.split_view_state = SplitViewState::None;
                 }
             }
             Message::DetailTabSelected(tab) => self.detail_tab = tab,
             Message::BottleSelected(id) => {
                 self.primary_tab = PrimaryTab::Bottles;
-                self.selected_bottle = Some(id);
-                self.creating_bottle = false;
+                self.split_view_state = SplitViewState::Bottle(id);
                 self.snapshots.clear();
                 self.snapshot_rows.clear();
 
@@ -412,9 +534,9 @@ impl Example {
                     );
                 }
             }
-            Message::Back => self.selected_bottle = None,
-            Message::AddBottle => self.creating_bottle = true,
-            Message::CancelBottle => self.creating_bottle = false,
+            Message::Back => self.split_view_state = SplitViewState::None,
+            Message::AddBottle => self.split_view_state = SplitViewState::NewBottle,
+            Message::CancelBottle => self.split_view_state = SplitViewState::None,
             Message::CreateBottle => {
                 if let (Some(bottles), Some(runner)) = (&self.bottles, self.selected_runner.clone())
                 {
@@ -432,7 +554,7 @@ impl Example {
                     );
                 }
             }
-            Message::BottleCreated(Ok(_)) => self.creating_bottle = false,
+            Message::BottleCreated(Ok(_)) => self.split_view_state = SplitViewState::None,
             Message::BottleCreated(Err(err)) => eprintln!("failed to create bottle: {err}"),
             Message::BottleNameChanged(name) => self.bottle_name = name,
             Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
@@ -557,8 +679,7 @@ impl Example {
                 eprintln!("failed to load profile manager: {err}");
             }
             Message::ProfileEvent(profile_event::Event::Activated(profile)) => {
-                upsert_profile(&mut self.profiles, profile.clone());
-                self.active_profile = Some(profile);
+                self.set_active_profile(profile);
             }
             Message::ProfileEvent(profile_event::Event::Updated(profile)) => {
                 upsert_profile(&mut self.profiles, profile.clone());
@@ -579,15 +700,38 @@ impl Example {
                     .as_ref()
                     .is_some_and(|active| active.id == id)
                 {
-                    self.active_profile = self.profiles.first().cloned();
+                    self.active_profile = None;
+                    self.name_draft.clear();
+                    self.games.clear();
+                    self.library_state = LibraryState::Idle;
+
+                    if let (Some(handle), Some(fallback)) =
+                        (self.profile_manager.clone(), self.profiles.first().cloned())
+                    {
+                        return Task::perform(
+                            async move {
+                                handle
+                                    .0
+                                    .apply_activation(&fallback.id, Default::default())
+                                    .await
+                                    .map_err(|err| err.to_string())
+                            },
+                            Message::ProfileUpdated,
+                        );
+                    }
                 }
             }
             Message::ToggleProfileSwitcher => {
                 self.profile_switcher_open = !self.profile_switcher_open
             }
+            Message::ToggleProfileSettings => {
+                self.split_view_state = if self.split_view_state == SplitViewState::Profiles {
+                    SplitViewState::None
+                } else {
+                    SplitViewState::Profiles
+                };
+            }
             Message::ActivateProfile(id) => {
-                self.profile_switcher_open = false;
-
                 if let Some(handle) = self.profile_manager.clone() {
                     return Task::perform(
                         async move {
@@ -601,15 +745,33 @@ impl Example {
                     );
                 }
             }
-            Message::CreateProfile => {
-                self.profile_switcher_open = false;
+            Message::ToggleNewProfile => {
+                self.profile_modal = ProfileModal::NewProfile(String::new());
+            }
+            Message::CancelNewProfile => self.profile_modal = ProfileModal::None,
+            Message::NewProfileNameChanged(name) => {
+                if let ProfileModal::NewProfile(draft) = &mut self.profile_modal {
+                    *draft = name;
+                }
+            }
+            Message::SubmitNewProfile => {
+                let ProfileModal::NewProfile(draft) = std::mem::take(&mut self.profile_modal)
+                else {
+                    return Task::none();
+                };
 
                 if let Some(handle) = self.profile_manager.clone() {
+                    let name = if draft.trim().is_empty() {
+                        "New profile".to_string()
+                    } else {
+                        draft.trim().to_string()
+                    };
+
                     return Task::perform(
                         async move {
                             let profile = handle
                                 .0
-                                .create("New profile".into(), "person".into())
+                                .create(name, "person".into())
                                 .await
                                 .map_err(|err| err.to_string())?;
                             handle
@@ -623,25 +785,195 @@ impl Example {
                 }
             }
             Message::ProfileUpdated(Ok(profile)) => {
-                upsert_profile(&mut self.profiles, profile.clone());
-
-                if self
-                    .active_profile
-                    .as_ref()
-                    .is_none_or(|active| active.id != profile.id)
-                {
-                    self.games.clear();
-                }
-
-                self.active_profile = Some(profile);
+                self.profile_modal = ProfileModal::None;
+                self.set_active_profile(profile);
             }
-            Message::ProfileUpdated(Err(err)) => eprintln!("failed to update profile: {err}"),
+            Message::ProfileUpdated(Err(err)) => {
+                eprintln!("failed to update profile: {err}");
+
+                if let ProfileModal::Login(login) = &mut self.profile_modal {
+                    login.submitting = false;
+                }
+            }
+            Message::ToggleLink => {
+                self.account_link_popover = match self.account_link_popover {
+                    AccountLinkPopover::Storefront => AccountLinkPopover::Closed,
+                    AccountLinkPopover::Closed | AccountLinkPopover::Steam => {
+                        AccountLinkPopover::Storefront
+                    }
+                };
+            }
+            Message::ToggleSteam => {
+                self.account_link_popover = match self.account_link_popover {
+                    AccountLinkPopover::Steam => AccountLinkPopover::Closed,
+                    AccountLinkPopover::Closed | AccountLinkPopover::Storefront => {
+                        AccountLinkPopover::Steam
+                    }
+                };
+
+                if self.account_link_popover == AccountLinkPopover::Steam {
+                    return Task::perform(
+                        async { detect_steam_users() },
+                        Message::SteamCandidatesDetected,
+                    );
+                }
+            }
+            Message::SteamCandidatesDetected(candidates) => self.steam_candidates = candidates,
+            Message::Dismiss => self.account_link_popover = AccountLinkPopover::Closed,
+            Message::NameChanged(name) => self.name_draft = name,
+            Message::RenameSubmit => {
+                if let (Some(handle), Some(active)) =
+                    (self.profile_manager.clone(), self.active_profile.clone())
+                {
+                    let name = self.name_draft.clone();
+
+                    return Task::perform(
+                        async move {
+                            handle
+                                .0
+                                .rename(&active.id, name)
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
+            Message::DeleteProfile(id) => {
+                if let Some(handle) = self.profile_manager.clone() {
+                    return Task::perform(
+                        async move { handle.0.delete(&id).await.map_err(|err| err.to_string()) },
+                        Message::ProfileDeleted,
+                    );
+                }
+            }
+            Message::ProfileDeleted(Err(err)) => eprintln!("failed to delete profile: {err}"),
+            Message::ProfileDeleted(Ok(())) => {}
+            Message::UnlinkAccount(storefront) => {
+                if let (Some(handle), Some(active)) =
+                    (self.profile_manager.clone(), self.active_profile.clone())
+                {
+                    return Task::perform(
+                        async move {
+                            handle
+                                .0
+                                .unlink_account(&active.id, storefront)
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
+            Message::BeginLogin(storefront) => {
+                self.account_link_popover = AccountLinkPopover::Closed;
+
+                if let Some(active) = self.active_profile.clone() {
+                    return Task::perform(
+                        async move {
+                            begin_login(active.id, storefront)
+                                .await
+                                .map(|(challenge_id, url)| (storefront, challenge_id, url))
+                        },
+                        Message::LoginChallengeReceived,
+                    );
+                }
+            }
+            Message::LoginChallengeReceived(Ok((storefront, challenge_id, url))) => {
+                self.profile_modal = ProfileModal::Login(LoginChallenge {
+                    storefront,
+                    challenge_id,
+                    url,
+                    code_draft: String::new(),
+                    submitting: false,
+                });
+            }
+            Message::LoginChallengeReceived(Err(err)) => eprintln!("failed to start login: {err}"),
+            Message::LoginCodeChanged(code) => {
+                if let ProfileModal::Login(login) = &mut self.profile_modal {
+                    login.code_draft = code;
+                }
+            }
+            Message::OpenLoginUrl => {
+                if let ProfileModal::Login(login) = &self.profile_modal {
+                    open_url(&login.url);
+                }
+            }
+            Message::CopyLoginUrl => {
+                if let ProfileModal::Login(login) = &self.profile_modal {
+                    return iced::clipboard::write(login.url.clone());
+                }
+            }
+            Message::CancelLogin => self.profile_modal = ProfileModal::None,
+            Message::SubmitLoginCode => {
+                if let (Some(active), ProfileModal::Login(login)) =
+                    (self.active_profile.clone(), &mut self.profile_modal)
+                {
+                    login.submitting = true;
+
+                    let profile_id = active.id;
+                    let challenge_id = login.challenge_id.clone();
+                    let storefront = login.storefront;
+                    let user_input = login.code_draft.clone();
+
+                    return Task::perform(
+                        async move {
+                            complete_login(profile_id, challenge_id, storefront, user_input).await
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
+            Message::UnlinkSteam => {
+                if let (Some(handle), Some(active)) =
+                    (self.profile_manager.clone(), self.active_profile.clone())
+                {
+                    return Task::perform(
+                        async move {
+                            handle
+                                .0
+                                .unlink_steam(&active.id)
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
+            Message::LinkSteam(steam_id64, account_name) => {
+                self.account_link_popover = AccountLinkPopover::Closed;
+
+                if let (Some(handle), Some(active)) =
+                    (self.profile_manager.clone(), self.active_profile.clone())
+                {
+                    return Task::perform(
+                        async move {
+                            handle
+                                .0
+                                .link_steam(
+                                    &active.id,
+                                    SteamLink {
+                                        steam_id64,
+                                        account_name,
+                                    },
+                                )
+                                .await
+                                .map_err(|err| err.to_string())
+                        },
+                        Message::ProfileUpdated,
+                    );
+                }
+            }
             Message::LibraryEvent(game_event::Event::Added(added)) => {
+                self.library_state = LibraryState::Loaded;
+
                 if let Some(game) = added.game {
                     upsert_game(&mut self.games, game);
                 }
             }
             Message::LibraryEvent(game_event::Event::Updated(updated)) => {
+                self.library_state = LibraryState::Loaded;
+
                 if let Some(game) = updated.game {
                     upsert_game(&mut self.games, game);
                 }
@@ -651,7 +983,10 @@ impl Example {
                     !(game.id == removed.game_id && game.storefront == removed.storefront)
                 });
             }
-            Message::LibraryError(err) => eprintln!("failed to watch library: {err}"),
+            Message::LibraryError(err) => {
+                self.library_state = LibraryState::Failed(err.clone());
+                eprintln!("failed to watch library: {err}");
+            }
             Message::OpenMenu
             | Message::TogglePower
             | Message::ProgramLaunched(Ok(_))
@@ -670,7 +1005,9 @@ impl Example {
     }
 
     fn selected_bottle_handle(&self) -> Option<Bottle> {
-        let id = self.selected_bottle?;
+        let SplitViewState::Bottle(id) = self.split_view_state else {
+            return None;
+        };
 
         self.bottle_list
             .iter()
@@ -679,7 +1016,9 @@ impl Example {
     }
 
     fn selected_bottle_state(&self) -> Option<&Arc<BottleState>> {
-        let id = self.selected_bottle?;
+        let SplitViewState::Bottle(id) = self.split_view_state else {
+            return None;
+        };
 
         self.bottle_states.iter().find(|state| state.id() == id)
     }
@@ -721,13 +1060,27 @@ impl Example {
                     |width, mode| self.primary_page(width, mode),
                     |width, mode| self.detail_page(width, mode),
                 )
-                .show_detail(self.selected_bottle.is_some())
+                .show_detail(matches!(self.split_view_state, SplitViewState::Bottle(_)))
                 .into()
             },
-            |width, mode| self.new_bottle_page(width, mode),
+            |width, mode| {
+                if matches!(self.split_view_state, SplitViewState::Profiles) {
+                    self.profile_settings_page(width, mode)
+                } else {
+                    self.new_bottle_page(width, mode)
+                }
+            },
         )
-        .side(PaneSide::Start)
-        .show_detail(self.creating_bottle)
+        .side(match self.split_view_state {
+            SplitViewState::Bottle(_) => PaneSide::Start,
+            SplitViewState::NewBottle => PaneSide::Start,
+            SplitViewState::Profiles => PaneSide::End,
+            SplitViewState::None => PaneSide::Start,
+        })
+        .show_detail(matches!(
+            self.split_view_state,
+            SplitViewState::NewBottle | SplitViewState::Profiles
+        ))
         .block_master();
 
         let content = container(split)
@@ -749,9 +1102,12 @@ impl Example {
         );
         let header = HeaderBar::new(Message::Window)
             .show_window_controls(if cfg!(target_os = "macos") {
-                !self.creating_bottle
+                !matches!(
+                    self.split_view_state,
+                    SplitViewState::Bottle(_) | SplitViewState::NewBottle
+                )
             } else {
-                self.selected_bottle.is_none()
+                matches!(self.split_view_state, SplitViewState::None)
             })
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
             .middle(tabs)
@@ -783,6 +1139,161 @@ impl Example {
             .width(Fill)
             .height(Fill)
             .into()
+    }
+
+    fn profile_settings_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
+        let header = HeaderBar::new(Message::Window)
+            .show_window_controls(cfg!(target_os = "macos") || mode == PaneMode::Single)
+            .start(header_button("Cancel", Icon::Arrow, Message::Back))
+            .middle(
+                container(
+                    Title::new("Profile Settings")
+                        .subtitle("Manage your profiles and linked accounts."),
+                )
+                .padding(iced::padding::bottom(12)),
+            )
+            .end(header_button(
+                "New profile",
+                Icon::Plus,
+                Message::ToggleNewProfile,
+            ));
+
+        let content: Element<'_, Message> = if let Some(active) = &self.active_profile {
+            let mut accounts = RowGroup::new().title("Linked accounts");
+
+            for account in &active.accounts {
+                let storefront = Storefront::try_from(account.storefront).unwrap_or_default();
+                accounts = accounts.add(account_row(
+                    storefront_icon(storefront),
+                    format!(
+                        "{} on {}",
+                        account.account_display_name,
+                        storefront_label(storefront)
+                    ),
+                    auth_state_label(account.auth_state),
+                    Message::UnlinkAccount(account.storefront),
+                ));
+            }
+
+            let link_trigger = PickerRow::new("Link a storefront account")
+                .description("Choose the account to connect")
+                .on_press(Message::ToggleLink);
+            let mut link_popover = Popover::new(
+                link_trigger,
+                self.account_link_popover == AccountLinkPopover::Storefront,
+            )
+            .on_dismiss(Message::Dismiss)
+            .footer("Not listed, install manually", Message::Noop);
+
+            for storefront in STOREFRONTS {
+                if active
+                    .accounts
+                    .iter()
+                    .any(|account| account.storefront == *storefront as i32)
+                {
+                    continue;
+                }
+
+                let mut item = PopoverItem::new(storefront_label(*storefront))
+                    .icon(storefront_icon(*storefront));
+
+                item = if LOGIN_STOREFRONTS.contains(storefront) {
+                    item.action("Link", Message::BeginLogin(*storefront))
+                } else {
+                    item.subtitle("Coming soon")
+                };
+
+                link_popover = link_popover.add(item);
+            }
+
+            let steam_row: Element<'_, Message> = if let Some(link) = &active.steam_link {
+                account_row(
+                    Icon::Computer,
+                    &link.account_name,
+                    "Linked Steam account",
+                    Message::UnlinkSteam,
+                )
+                .into()
+            } else {
+                let steam_trigger = PickerRow::new("Link Steam account")
+                    .description("Detected from your local Steam installation")
+                    .on_press(Message::ToggleSteam);
+                let mut steam_popover = Popover::new(
+                    steam_trigger,
+                    self.account_link_popover == AccountLinkPopover::Steam,
+                )
+                .on_dismiss(Message::Dismiss);
+
+                for user in &self.steam_candidates {
+                    let taken_by = self.profiles.iter().find(|profile| {
+                        profile.id != active.id
+                            && profile
+                                .steam_link
+                                .as_ref()
+                                .is_some_and(|link| link.steam_id64 == user.steam_id64)
+                    });
+
+                    let mut item = PopoverItem::new(&user.account_name).icon(Icon::Computer);
+
+                    item = if let Some(owner) = taken_by {
+                        item.disabled_action("Taken").tooltip(
+                            column![
+                                text("Already linked").detail(),
+                                text(&owner.name).detail().muted(),
+                            ]
+                            .spacing(2),
+                        )
+                    } else {
+                        item.action(
+                            "Link",
+                            Message::LinkSteam(user.steam_id64.clone(), user.account_name.clone()),
+                        )
+                    };
+
+                    steam_popover = steam_popover.add(item);
+                }
+
+                steam_popover.into()
+            };
+
+            column![
+                RowGroup::new()
+                    .title("Profile")
+                    .add(
+                        TextRow::new("Profile name", &self.name_draft)
+                            .icon(Icon::Person)
+                            .on_input(Message::NameChanged)
+                            .on_submit(Message::RenameSubmit),
+                    )
+                    .add(action_button_row(
+                        Icon::Cross,
+                        "Delete profile",
+                        "Removes this profile and its linked accounts from this device",
+                        "Delete",
+                        Message::DeleteProfile(active.id.clone()),
+                    )),
+                accounts,
+                container(link_popover).width(Fill),
+                container(steam_row).width(Fill),
+            ]
+            .spacing(18)
+            .into()
+        } else {
+            column![].into()
+        };
+
+        let page: Element<'_, Message> = column![header, scroll_panel(content)]
+            .width(Fill)
+            .height(Fill)
+            .into();
+
+        match &self.profile_modal {
+            ProfileModal::Login(login) => modal(page, login_dialog(login), Message::CancelLogin),
+            ProfileModal::NewProfile(name) => {
+                modal(page, new_profile_dialog(name), Message::CancelNewProfile)
+            }
+            ProfileModal::None => page,
+        }
     }
 
     fn new_bottle_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
@@ -838,9 +1349,12 @@ impl Example {
         );
         let mut header =
             HeaderBar::new(Message::Window).show_window_controls(if cfg!(target_os = "macos") {
-                self.selected_bottle.is_some() && mode == PaneMode::Single && !self.creating_bottle
+                matches!(
+                    self.split_view_state,
+                    SplitViewState::Bottle(_) | SplitViewState::NewBottle
+                ) && mode == PaneMode::Single
             } else {
-                self.selected_bottle.is_some()
+                matches!(self.split_view_state, SplitViewState::Bottle(_))
             });
 
         if mode == PaneMode::Single {
@@ -878,14 +1392,35 @@ impl Example {
     }
 
     fn library_view(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
-        if self.active_profile.is_none() {
-            return container(InfoCard::new(
-                Kind::Hint,
-                "No active profile",
-                "Sign in to a profile to see its library.",
-            ))
-            .max_width(1150)
-            .into();
+        match &self.library_state {
+            LibraryState::Idle => {
+                return container(InfoCard::new(
+                    Kind::Hint,
+                    "No active profile",
+                    "Sign in to a profile to see its library.",
+                ))
+                .max_width(1150)
+                .into();
+            }
+            LibraryState::Loading => {
+                return container(InfoCard::new(
+                    Kind::Hint,
+                    "Loading library",
+                    "Fetching games linked to this profile's storefronts.",
+                ))
+                .max_width(1150)
+                .into();
+            }
+            LibraryState::Failed(err) => {
+                return container(InfoCard::new(
+                    Kind::Error,
+                    "Couldn't load library",
+                    err.as_str(),
+                ))
+                .max_width(1150)
+                .into();
+            }
+            LibraryState::Loaded => {}
         }
 
         if self.games.is_empty() {
@@ -916,11 +1451,15 @@ impl Example {
     }
 
     fn program_grid(&self, width: f32) -> Element<'_, Message> {
-        let programs = self
-            .selected_bottle
-            .and_then(|id| self.bottle_states.iter().find(|state| state.id() == id))
-            .map(|state| state.programs())
-            .unwrap_or_default();
+        let programs = if let SplitViewState::Bottle(bottle_id) = self.split_view_state {
+            self.bottle_states
+                .iter()
+                .find(|state| state.id() == bottle_id)
+                .map(|state| state.programs())
+                .unwrap_or_default()
+        } else {
+            &[]
+        };
 
         if width >= CONTENT_GRID_BREAKPOINT {
             Column::with_children(
@@ -948,14 +1487,21 @@ impl Example {
             .icon_size(16.0)
             .kind(ButtonKind::Transparent)
             .on_press(Message::ToggleProfileSwitcher);
+
         let mut switcher = Popover::new(trigger, self.profile_switcher_open)
             .on_dismiss(Message::ToggleProfileSwitcher)
-            .footer("New profile", Message::CreateProfile);
+            .footer("Profiles", Message::ToggleProfileSettings);
 
         for profile in &self.profiles {
+            let selected = self
+                .active_profile
+                .as_ref()
+                .is_some_and(|active| active.id == profile.id);
+
             switcher = switcher.add(
                 PopoverItem::new(&profile.name)
                     .icon(Icon::Person)
+                    .selected(selected)
                     .on_select(Message::ActivateProfile(profile.id.clone())),
             );
         }
@@ -1134,6 +1680,237 @@ fn program_card(program: &bottles_core::Program) -> Element<'_, Message> {
         .primary(CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram(program.id)))
         .banner(sample_image(program.id))
         .into()
+}
+
+fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
+    let submit_label = if login.submitting {
+        "Submitting…"
+    } else {
+        "Submit"
+    };
+
+    container(
+        column![
+            Title::new("Sign in").subtitle(storefront_label(login.storefront)),
+            RowGroup::new()
+                .add(
+                    label_row(
+                        storefront_icon(login.storefront),
+                        "Sign-in link (click to copy)",
+                        &login.url
+                    )
+                    .on_press(Message::CopyLoginUrl),
+                )
+                .add(action_button_row(
+                    Icon::Arrow,
+                    "Open in your browser",
+                    "Sign in there, then paste the code you're given below.",
+                    "Open",
+                    Message::OpenLoginUrl,
+                ))
+                .add(
+                    TextRow::new("Authorization code", &login.code_draft)
+                        .icon(Icon::Checkmark)
+                        .on_input(Message::LoginCodeChanged)
+                        .on_submit(Message::SubmitLoginCode),
+                ),
+            row![
+                Button::new(submit_label)
+                    .kind(ButtonKind::Primary)
+                    .on_press_maybe((!login.submitting).then_some(Message::SubmitLoginCode)),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Transparent)
+                    .on_press(Message::CancelLogin),
+            ]
+            .spacing(12),
+        ]
+        .spacing(18),
+    )
+    .width(560)
+    .padding(24)
+    .style(theme::panel)
+    .into()
+}
+
+fn new_profile_dialog(name: &str) -> Element<'_, Message> {
+    container(
+        column![
+            Title::new("New profile").subtitle("Give this profile a name."),
+            TextRow::new("Profile name", name)
+                .icon(Icon::Person)
+                .on_input(Message::NewProfileNameChanged)
+                .on_submit(Message::SubmitNewProfile),
+            row![
+                Button::new("Create")
+                    .kind(ButtonKind::Primary)
+                    .on_press(Message::SubmitNewProfile),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Transparent)
+                    .on_press(Message::CancelNewProfile),
+            ]
+            .spacing(12),
+        ]
+        .spacing(18),
+    )
+    .width(420)
+    .padding(24)
+    .style(theme::panel)
+    .into()
+}
+
+fn modal<'a>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_dismiss: Message,
+) -> Element<'a, Message> {
+    stack![
+        base.into(),
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| container::Style {
+                background: Some(Background::Color(theme::SCRIM)),
+                ..container::Style::default()
+            }))
+            .on_press(on_dismiss)
+        ),
+    ]
+    .into()
+}
+
+fn account_row<'a>(
+    icon: Icon,
+    title: impl text::IntoFragment<'a>,
+    description: &'a str,
+    on_unlink: Message,
+) -> ListRow<'a, Message> {
+    action_button_row(icon, title, description, "Unlink", on_unlink)
+}
+
+fn label_row<'a>(
+    icon: Icon,
+    title: &'a str,
+    description: impl text::IntoFragment<'a>,
+) -> ListRow<'a, Message> {
+    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
+
+    ListRow::new(labels).leading(
+        svg(icon.handle())
+            .width(24)
+            .height(24)
+            .content_fit(iced::ContentFit::Contain),
+    )
+}
+
+fn action_button_row<'a>(
+    icon: Icon,
+    title: impl text::IntoFragment<'a>,
+    description: &'a str,
+    button_label: &'a str,
+    on_press: Message,
+) -> ListRow<'a, Message> {
+    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
+
+    ListRow::new(labels)
+        .leading(
+            svg(icon.handle())
+                .width(24)
+                .height(24)
+                .content_fit(iced::ContentFit::Contain),
+        )
+        .trailing(
+            Button::new(button_label)
+                .kind(ButtonKind::Surface)
+                .on_press(on_press),
+        )
+}
+
+async fn begin_login(
+    profile_id: String,
+    storefront: Storefront,
+) -> Result<(String, String), String> {
+    let mut registry = RegistryClient::connect(REGISTRY_ENDPOINT)
+        .await
+        .map_err(|err| format!("plugin registry unavailable: {err}"))?;
+    let resolved = registry
+        .resolve_plugin(ResolvePluginRequest {
+            storefront: storefront as i32,
+        })
+        .await
+        .map_err(|err| err.to_string())?
+        .into_inner();
+    let endpoint = resolved
+        .endpoint
+        .ok_or_else(|| format!("no {} plugin is running", storefront_label(storefront)))?;
+    let mut store = StoreClient::connect(endpoint)
+        .await
+        .map_err(|err| err.to_string())?;
+    let challenge = store
+        .begin_login(BeginLoginRequest {
+            profile_id,
+            storefront: storefront as i32,
+        })
+        .await
+        .map_err(|err| err.to_string())?
+        .into_inner();
+
+    if let Some(error) = challenge.error {
+        return Err(error);
+    }
+
+    let url = match challenge.kind {
+        Some(login_challenge::Kind::BrowserRedirect(challenge)) => challenge.url,
+        Some(login_challenge::Kind::OauthRedirect(challenge)) => challenge.auth_url,
+        _ => return Err("this storefront's login flow isn't supported yet".into()),
+    };
+
+    Ok((challenge.challenge_id, url))
+}
+
+async fn complete_login(
+    profile_id: String,
+    challenge_id: String,
+    storefront: Storefront,
+    user_input: String,
+) -> Result<UserProfile, String> {
+    let mut client = ProfileClient::connect(SERVER_ENDPOINT)
+        .await
+        .map_err(|err| format!("next-server unavailable: {err}"))?;
+
+    client
+        .link_account(LinkAccountRequest {
+            profile_id,
+            challenge_id,
+            storefront: storefront as i32,
+            user_input,
+        })
+        .await
+        .map(|response| response.into_inner())
+        .map_err(|err| err.to_string())
+}
+
+fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
+fn detect_steam_users() -> Vec<bottles_core::steam::SteamUser> {
+    bottles_core::steam::loginusers_vdf_path()
+        .and_then(|path| bottles_core::steam::parse_loginusers(&path).ok())
+        .unwrap_or_default()
+}
+
+fn auth_state_label(state: i32) -> &'static str {
+    match AuthState::try_from(state).unwrap_or_default() {
+        AuthState::Active => "Connected",
+        AuthState::Stale => "Needs re-authentication",
+        AuthState::Inactive => "Signed out",
+        AuthState::Unspecified => "Unknown",
+    }
 }
 
 fn sample_image(id: Uuid) -> image::Handle {
