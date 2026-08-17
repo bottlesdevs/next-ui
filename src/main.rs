@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bottles_core::{
-    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig, Slot,
-    SnapshotSummary, Storage, profile::ProfileManager,
+    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig, Progress,
+    Slot, SnapshotSummary, Storage, profile::ProfileManager,
 };
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
@@ -13,6 +13,7 @@ use iced::{
         text,
     },
 };
+use next_config::Config;
 use next_proto::bottles::{
     common::v1::{AuthState, Game, Storefront},
     library::v1::{WatchGamesRequest, game_event, library_client::LibraryClient},
@@ -35,6 +36,7 @@ use next_ui::{
         row_group::RowGroup,
         selector_row::SelectorRow,
         split_view::{PaneMode, PaneSide, SplitView},
+        status_bar::{StatusBar, StatusState},
         switcher_row::SwitcherRow,
         tabs::{Tab, Tabs},
         text::TextExt as _,
@@ -45,6 +47,7 @@ use next_ui::{
     icons::Icon,
     theme,
 };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
@@ -64,6 +67,38 @@ const STOREFRONTS: &[Storefront] = &[
     Storefront::BattleNet,
 ];
 const LOGIN_STOREFRONTS: &[Storefront] = &[Storefront::EpicGames, Storefront::Gog];
+const ONBOARDING_CONFIG_FILE: &str = "onboarding.toml";
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Config)]
+#[config(version = 1)]
+struct OnboardingConfig {
+    completed: bool,
+}
+
+fn onboarding_config_path() -> Option<std::path::PathBuf> {
+    directories::ProjectDirs::from("com", "usebottles", "bottles-next")
+        .map(|dirs| dirs.config_dir().join(ONBOARDING_CONFIG_FILE))
+}
+
+fn has_onboarded() -> bool {
+    let Some(path) = onboarding_config_path() else {
+        return false;
+    };
+
+    futures_lite::future::block_on(next_config::load::<OnboardingConfig>(&path))
+        .map(|config| config.completed)
+        .unwrap_or(false)
+}
+
+fn mark_onboarded<T: Send + 'static>() -> Task<T> {
+    Task::future(async {
+        let Some(path) = onboarding_config_path() else {
+            return;
+        };
+        let _ = next_config::save(&path, &OnboardingConfig { completed: true }).await;
+    })
+    .discard()
+}
 
 fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
@@ -91,6 +126,15 @@ enum AppMessage {
 
 impl App {
     fn new() -> (Self, Task<AppMessage>) {
+        if has_onboarded() {
+            let (example, task) = Example::new();
+
+            return (
+                Self::Main(Box::new(example)),
+                task.map(|message| AppMessage::Main(Box::new(message))),
+            );
+        }
+
         let (state, task) = next_ui::onboarding::State::new();
 
         (
@@ -128,7 +172,10 @@ impl App {
                         None => Example::new(),
                     };
                     *self = Self::Main(Box::new(example));
-                    return task.map(|message| AppMessage::Main(Box::new(message)));
+                    return Task::batch([
+                        task.map(|message| AppMessage::Main(Box::new(message))),
+                        mark_onboarded(),
+                    ]);
                 }
 
                 state.update(message).map(AppMessage::Onboarding)
@@ -194,6 +241,9 @@ struct Example {
     selected_runner: Option<RunnerOption>,
     purpose: &'static str,
     architecture: &'static str,
+    creation_log: String,
+    creation_log_expanded: bool,
+    creation_failed: bool,
     profile_manager: Option<ProfileManagerHandle>,
     profiles: Vec<UserProfile>,
     active_profile: Option<UserProfile>,
@@ -352,7 +402,9 @@ enum Message {
     AddBottle,
     CancelBottle,
     CreateBottle,
+    BottleCreationProgress(Progress),
     BottleCreated(Result<Bottle, String>),
+    ToggleCreationLog,
     BottleNameChanged(String),
     RunnerSelected(RunnerOption),
     PurposeSelected(&'static str),
@@ -419,6 +471,9 @@ impl Example {
             selected_runner: None,
             purpose: PURPOSES[0],
             architecture: ARCHITECTURES[0],
+            creation_log: String::new(),
+            creation_log_expanded: false,
+            creation_failed: false,
             profile_manager: None,
             profiles: Vec::new(),
             active_profile: None,
@@ -535,27 +590,54 @@ impl Example {
                 }
             }
             Message::Back => self.split_view_state = SplitViewState::None,
-            Message::AddBottle => self.split_view_state = SplitViewState::NewBottle,
+            Message::AddBottle => {
+                self.split_view_state = SplitViewState::NewBottle;
+                self.creation_log.clear();
+                self.creation_failed = false;
+            }
             Message::CancelBottle => self.split_view_state = SplitViewState::None,
             Message::CreateBottle => {
                 if let (Some(bottles), Some(runner)) = (&self.bottles, self.selected_runner.clone())
                 {
                     let name = self.bottle_name.clone();
                     let manager = bottles.bottles().clone();
+                    let operation = manager.create(name, Storage::Standard, runner.id);
+                    let progress = operation.progress();
 
-                    return Task::perform(
-                        async move {
-                            manager
-                                .create(name, Storage::Standard, runner.id)
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
+                    self.creation_log.clear();
+                    self.creation_failed = false;
+                    self.creation_log_expanded = true;
+
+                    let progress_task = Task::stream(progress).map(Message::BottleCreationProgress);
+                    let result_task = Task::perform(
+                        async move { operation.await.map_err(|err| err.to_string()) },
                         Message::BottleCreated,
                     );
+
+                    return Task::batch([progress_task, result_task]);
                 }
             }
+            Message::BottleCreationProgress(progress) => {
+                if !self.creation_log.is_empty() {
+                    self.creation_log.push('\n');
+                }
+                self.creation_log.push_str(&progress_log_line(&progress));
+            }
             Message::BottleCreated(Ok(_)) => self.split_view_state = SplitViewState::None,
-            Message::BottleCreated(Err(err)) => eprintln!("failed to create bottle: {err}"),
+            Message::BottleCreated(Err(err)) => {
+                self.creation_failed = true;
+
+                if !self.creation_log.is_empty() {
+                    self.creation_log.push('\n');
+                }
+                self.creation_log
+                    .push_str(&format!("{} Failed: {err}", timestamp()));
+
+                eprintln!("failed to create bottle: {err}");
+            }
+            Message::ToggleCreationLog => {
+                self.creation_log_expanded = !self.creation_log_expanded;
+            }
             Message::BottleNameChanged(name) => self.bottle_name = name,
             Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
             Message::PurposeSelected(purpose) => self.purpose = purpose,
@@ -1331,10 +1413,33 @@ impl Example {
         ]
         .spacing(12);
 
-        column![header, scroll_panel(content)]
+        let mut page = column![header, scroll_panel(content)]
             .width(Fill)
-            .height(Fill)
-            .into()
+            .height(Fill);
+
+        if !self.creation_log.is_empty() {
+            let state = if self.creation_failed {
+                StatusState::Failed
+            } else {
+                StatusState::Starting
+            };
+
+            page = page.push(
+                StatusBar::new(
+                    self.architecture,
+                    self.selected_runner
+                        .as_ref()
+                        .map(|runner| runner.label.as_str())
+                        .unwrap_or_default(),
+                    state,
+                )
+                .log(&self.creation_log)
+                .expanded(self.creation_log_expanded)
+                .on_toggle(Message::ToggleCreationLog),
+            );
+        }
+
+        page.into()
     }
 
     fn detail_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
@@ -1619,6 +1724,32 @@ fn relative_time(seconds: i64) -> String {
         60..=3599 => format!("{} minutes ago", diff / 60),
         3600..=86399 => format!("{} hours ago", diff / 3600),
         _ => format!("{} days ago", diff / 86400),
+    }
+}
+
+fn timestamp() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+
+    format!(
+        "{:02}:{:02}:{:02}",
+        (seconds / 3600) % 24,
+        (seconds / 60) % 60,
+        seconds % 60
+    )
+}
+
+fn progress_log_line(progress: &Progress) -> String {
+    match progress.transfer.as_ref().and_then(|_| progress.fraction()) {
+        Some(fraction) => format!(
+            "{} {} ({:.0}%)",
+            timestamp(),
+            progress.stage,
+            fraction * 100.0
+        ),
+        None => format!("{} {}", timestamp(), progress.stage),
     }
 }
 
