@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bottles_core::{
-    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig, Progress,
-    Slot, SnapshotSummary, Storage, profile::ProfileManager,
+    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, Progress, Slot,
+    SnapshotSummary, Storage, profile::ProfileManager,
 };
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
@@ -36,7 +36,6 @@ use crate::{
         selector_row::SelectorRow,
         split_view::{PaneMode, PaneSide, SplitView},
         status_bar::{StatusBar, StatusState},
-        switcher_row::SwitcherRow,
         tabs::{Tab, Tabs},
         text::TextExt as _,
         text_row::TextRow,
@@ -118,6 +117,7 @@ pub struct State {
     account_link_popover: AccountLinkPopover,
     steam_candidates: Vec<bottles_core::steam::SteamUser>,
     profile_modal: ProfileModal,
+    settings: crate::features::settings::State,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -282,9 +282,7 @@ pub enum Message {
     SnapshotsLoaded(Result<Vec<SnapshotSummary>, String>),
     LaunchProgram(Uuid),
     ProgramLaunched(Result<u32, String>),
-    ToggleGamescope(bool),
-    ToggleMangoHud(bool),
-    WrapperUpdated(Result<(), String>),
+    Settings(crate::features::settings::Message),
     ProfileManagerLoaded(Result<Arc<ProfileManager>, String>),
     ProfilesLoaded(Vec<UserProfile>),
     ProfileEvent(profile_event::Event),
@@ -348,6 +346,7 @@ impl State {
             account_link_popover: AccountLinkPopover::Closed,
             steam_candidates: Vec::new(),
             profile_modal: ProfileModal::None,
+            settings: crate::features::settings::State::new(),
         }
     }
 
@@ -554,39 +553,33 @@ impl State {
                 }
             }
             Message::ProgramLaunched(Err(err)) => eprintln!("failed to launch program: {err}"),
-            Message::ToggleGamescope(enabled) => {
-                if let (Some(bottle), Some(state)) =
-                    (self.selected_bottle_handle(), self.selected_bottle_state())
-                {
-                    let mut config = state.wrappers().gamescope.clone();
-                    config.enabled = enabled;
+            Message::Settings(message) => {
+                let is_wrapper_updated_ok =
+                    matches!(message, crate::features::settings::Message::WrapperUpdated(Ok(())));
+                let selected_id = match self.split_view_state {
+                    SplitViewState::Bottle(id) => Some(id),
+                    _ => None,
+                };
+                let bottle = selected_id.and_then(|id| {
+                    self.bottle_list
+                        .iter()
+                        .find(|bottle| bottle.state().is_ok_and(|state| state.id() == id))
+                        .cloned()
+                });
+                let bottle_state = selected_id
+                    .and_then(|id| self.bottle_states.iter().find(|state| state.id() == id));
+                let ctx = crate::features::settings::Context {
+                    bottle,
+                    bottle_state,
+                };
+                let task = self.settings.update(message, &ctx).map(Message::Settings);
 
-                    return Task::perform(
-                        async move {
-                            let mut edit = bottle.edit();
-                            edit.set_gamescope(config);
-                            edit.commit().await.map_err(|err| err.to_string())
-                        },
-                        Message::WrapperUpdated,
-                    );
+                if is_wrapper_updated_ok {
+                    self.refresh_bottle_states();
                 }
-            }
-            Message::ToggleMangoHud(enabled) => {
-                if let Some(bottle) = self.selected_bottle_handle() {
-                    let config = MangoHudConfig { enabled };
 
-                    return Task::perform(
-                        async move {
-                            let mut edit = bottle.edit();
-                            edit.set_mangohud(config);
-                            edit.commit().await.map_err(|err| err.to_string())
-                        },
-                        Message::WrapperUpdated,
-                    );
-                }
+                return task;
             }
-            Message::WrapperUpdated(Ok(())) => self.refresh_bottle_states(),
-            Message::WrapperUpdated(Err(err)) => eprintln!("failed to update settings: {err}"),
             Message::ProfileManagerLoaded(Ok(manager)) => {
                 self.profile_manager = Some(ProfileManagerHandle(manager.clone()));
                 let list_manager = manager.clone();
@@ -1348,9 +1341,13 @@ impl State {
                 Message::TogglePower,
             ))
             .middle(tabs);
+        let settings_ctx = crate::features::settings::Context {
+            bottle: self.selected_bottle_handle(),
+            bottle_state: self.selected_bottle_state(),
+        };
         let content = match self.detail_tab {
             DetailTab::Programs => self.program_grid(width),
-            DetailTab::Settings => self.settings_view(),
+            DetailTab::Settings => self.settings.view(&settings_ctx).map(Message::Settings),
             DetailTab::Snapshots => self.snapshot_grid(width),
         };
 
@@ -1478,51 +1475,6 @@ impl State {
         switcher.into()
     }
 
-    fn settings_view(&self) -> Element<'_, Message> {
-        let Some(state) = self.selected_bottle_state() else {
-            return column![].into();
-        };
-        let wrappers = state.wrappers();
-        let environment_count = state.environment().iter().count();
-        let environment_label = if environment_count == 0 {
-            "None set".to_string()
-        } else {
-            format!("{environment_count} variables set")
-        };
-
-        let bottle = RowGroup::new()
-            .title("Bottle")
-            .add(
-                ActionRow::new(state.runner().name(), ActionRowState::Disabled)
-                    .description(state.runner().version())
-                    .icon(Icon::Run),
-            )
-            .add(environment_row(environment_label));
-
-        let graphics = RowGroup::new()
-            .title("Graphics")
-            .add(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
-            .add(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
-            .add(
-                SwitcherRow::new("Discrete GPU", false).description("Force use your dedicated GPU"),
-            )
-            .add(
-                SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
-                    .description("Use the SteamOS compositor")
-                    .on_toggle(Message::ToggleGamescope),
-            )
-            .add(
-                SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
-                    .description("Show a performance overlay")
-                    .on_toggle(Message::ToggleMangoHud),
-            )
-            .add(PickerRow::new("Display Settings").description("Resolution and other options"));
-
-        container(column![bottle, graphics].spacing(12))
-            .max_width(1150)
-            .into()
-    }
-
     fn snapshot_grid(&self, width: f32) -> Element<'_, Message> {
         let columns = usize::from(width >= CONTENT_GRID_BREAKPOINT) + 1;
         let rows = self.snapshot_rows.iter().fold(
@@ -1538,21 +1490,6 @@ impl State {
 
         container(rows).max_width(1150).into()
     }
-}
-
-fn environment_row(description: String) -> ListRow<'static, Message> {
-    let labels = column![
-        text("Environment variables").label(),
-        text(description).detail().muted(),
-    ]
-    .spacing(6);
-
-    ListRow::new(labels).leading(
-        svg(Icon::Gear.handle())
-            .width(24)
-            .height(24)
-            .content_fit(iced::ContentFit::Contain),
-    )
 }
 
 fn storefront_label(storefront: Storefront) -> &'static str {
