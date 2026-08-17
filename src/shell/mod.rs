@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bottles_core::{
     Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, Progress, Slot,
-    SnapshotSummary, Storage, profile::ProfileManager,
+    Storage, profile::ProfileManager,
 };
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
@@ -97,8 +97,7 @@ pub struct State {
     bottle_list: Vec<Bottle>,
     bottle_states: Vec<Arc<BottleState>>,
     split_view_state: SplitViewState,
-    snapshots: Vec<SnapshotSummary>,
-    snapshot_rows: Vec<(String, String)>,
+    snapshots: crate::features::snapshots::State,
     bottle_name: String,
     runners: Vec<RunnerOption>,
     selected_runner: Option<RunnerOption>,
@@ -279,10 +278,10 @@ pub enum Message {
     MoveFocus(bool),
     BottlesLoaded(Result<Arc<Bottles>, String>),
     BottleListChanged(Vec<Bottle>),
-    SnapshotsLoaded(Result<Vec<SnapshotSummary>, String>),
     LaunchProgram(Uuid),
     ProgramLaunched(Result<u32, String>),
     Settings(crate::features::settings::Message),
+    Snapshots(crate::features::snapshots::Message),
     ProfileManagerLoaded(Result<Arc<ProfileManager>, String>),
     ProfilesLoaded(Vec<UserProfile>),
     ProfileEvent(profile_event::Event),
@@ -326,8 +325,7 @@ impl State {
             bottle_list: Vec::new(),
             bottle_states: Vec::new(),
             split_view_state: SplitViewState::None,
-            snapshots: Vec::new(),
-            snapshot_rows: Vec::new(),
+            snapshots: crate::features::snapshots::State::new(),
             bottle_name: "Gaming paradise".into(),
             runners: Vec::new(),
             selected_runner: None,
@@ -443,13 +441,9 @@ impl State {
                 self.primary_tab = PrimaryTab::Bottles;
                 self.split_view_state = SplitViewState::Bottle(id);
                 self.snapshots.clear();
-                self.snapshot_rows.clear();
 
                 if let Some(bottle) = self.selected_bottle_handle() {
-                    return Task::perform(
-                        async move { bottle.snapshots().await.map_err(|err| err.to_string()) },
-                        Message::SnapshotsLoaded,
-                    );
+                    return self.snapshots.load(bottle).map(Message::Snapshots);
                 }
             }
             Message::Back => self.split_view_state = SplitViewState::None,
@@ -523,27 +517,9 @@ impl State {
                 self.bottle_list = list;
                 self.refresh_bottle_states();
             }
-            Message::SnapshotsLoaded(Ok(snapshots)) => {
-                self.snapshot_rows = snapshots
-                    .iter()
-                    .map(|snapshot| {
-                        let title = if snapshot.message.is_empty() {
-                            snapshot.state_id.chars().take(12).collect()
-                        } else {
-                            snapshot.message.clone()
-                        };
-                        let description = snapshot
-                            .created_at
-                            .as_ref()
-                            .map(|timestamp| relative_time(timestamp.seconds))
-                            .unwrap_or_default();
-
-                        (title, description)
-                    })
-                    .collect();
-                self.snapshots = snapshots;
+            Message::Snapshots(message) => {
+                return self.snapshots.update(message).map(Message::Snapshots);
             }
-            Message::SnapshotsLoaded(Err(err)) => eprintln!("failed to load snapshots: {err}"),
             Message::LaunchProgram(id) => {
                 if let Some(bottle) = self.selected_bottle_handle() {
                     return Task::perform(
@@ -1348,7 +1324,7 @@ impl State {
         let content = match self.detail_tab {
             DetailTab::Programs => self.program_grid(width),
             DetailTab::Settings => self.settings.view(&settings_ctx).map(Message::Settings),
-            DetailTab::Snapshots => self.snapshot_grid(width),
+            DetailTab::Snapshots => self.snapshots.view(width).map(Message::Snapshots),
         };
 
         column![header, scroll_panel(content)]
@@ -1475,21 +1451,6 @@ impl State {
         switcher.into()
     }
 
-    fn snapshot_grid(&self, width: f32) -> Element<'_, Message> {
-        let columns = usize::from(width >= CONTENT_GRID_BREAKPOINT) + 1;
-        let rows = self.snapshot_rows.iter().fold(
-            RowGroup::new().columns(columns),
-            |rows, (title, description)| {
-                rows.add(
-                    ActionRow::new(title, ActionRowState::Ready(Message::Noop))
-                        .description(description)
-                        .icon(Icon::Timer),
-                )
-            },
-        );
-
-        container(rows).max_width(1150).into()
-    }
 }
 
 fn storefront_label(storefront: Storefront) -> &'static str {
@@ -1511,20 +1472,6 @@ fn storefront_icon(storefront: Storefront) -> Icon {
         Storefront::EpicGames | Storefront::Gog | Storefront::AmazonGames => Icon::Disk,
         Storefront::EaApp | Storefront::UbisoftConnect | Storefront::BattleNet => Icon::Controller,
         Storefront::Unspecified => Icon::Warning,
-    }
-}
-
-fn relative_time(seconds: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(seconds, |duration| duration.as_secs() as i64);
-    let diff = (now - seconds).max(0);
-
-    match diff {
-        0..=59 => "Just now".to_string(),
-        60..=3599 => format!("{} minutes ago", diff / 60),
-        3600..=86399 => format!("{} hours ago", diff / 3600),
-        _ => format!("{} days ago", diff / 86400),
     }
 }
 
