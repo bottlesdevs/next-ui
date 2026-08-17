@@ -30,7 +30,7 @@ use next_proto::bottles::{
     store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
 };
 use next_ui::{
-    components::{
+    widgets::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
         list_row::ListRow,

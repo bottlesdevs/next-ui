@@ -15,7 +15,7 @@ use next_proto::bottles::{
 };
 
 use crate::{
-    components::{
+    widgets::{
         button::{Button, ButtonKind},
         info_row::InfoRow,
         list_row::ListRow,

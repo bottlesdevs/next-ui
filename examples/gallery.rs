@@ -3,8 +3,8 @@ use iced::{
     keyboard::{self, key},
     widget::{Space, column, container, image, row, scrollable, text},
 };
-use next_ui::components::text::TextExt as _;
-use next_ui::components::{
+use next_ui::widgets::text::TextExt as _;
+use next_ui::widgets::{
     action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
     info_row, picker_row, row_group, search, selector_row, status_bar, switcher_row, tabs,

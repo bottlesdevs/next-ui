@@ -12,7 +12,7 @@ use iced::{
 use uuid::Uuid;
 
 use crate::{
-    components::{
+    widgets::{
         action_row::{ActionRow, State as ActionRowState},
         artwork_card::{ArtworkCard, CardAction},
         picker_row::PickerRow,

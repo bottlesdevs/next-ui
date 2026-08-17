@@ -7,7 +7,7 @@ use iced::{
     widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
 use crate::{
-    components::{
+    widgets::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
         row_group::RowGroup,

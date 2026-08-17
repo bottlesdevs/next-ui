@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, container, image, row, stack},
 };
 
-use crate::{components::button::ButtonKind, icons::Icon};
+use crate::{widgets::button::ButtonKind, icons::Icon};
 
 use super::{
     button::Button,

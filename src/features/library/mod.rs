@@ -16,7 +16,7 @@ use next_proto::bottles::{
 };
 
 use crate::{
-    components::{
+    widgets::{
         action_row::{ActionRow, State as ActionRowState},
         info_card::{InfoCard, Kind},
         row_group::RowGroup,

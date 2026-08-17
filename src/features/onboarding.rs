@@ -23,7 +23,7 @@ use iced::{
 use uuid::Uuid;
 
 use crate::{
-    components::{
+    widgets::{
         action_row::{ActionRow, State as RowState},
         header_bar::HeaderBar,
         row_group::RowGroup,

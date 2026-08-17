@@ -11,7 +11,7 @@ use iced::{
 };
 
 use crate::{
-    components::{
+    widgets::{
         action_row::{ActionRow, State as ActionRowState},
         list_row::ListRow,
         picker_row::PickerRow,

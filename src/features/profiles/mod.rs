@@ -21,7 +21,7 @@ use iced::{
 use next_proto::bottles::profiles::v1::{UserProfile, profile_event};
 
 use crate::{
-    components::{
+    widgets::{
         button::{Button, ButtonKind},
         popover::{Popover, PopoverItem},
         text_row::TextRow,

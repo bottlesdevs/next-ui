@@ -9,7 +9,7 @@ use iced::{
 };
 
 use crate::{
-    components::{
+    widgets::{
         action_row::{ActionRow, State as ActionRowState},
         row_group::RowGroup,
     },
