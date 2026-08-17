@@ -1,4 +1,4 @@
-use next_ui::{onboarding::State, theme};
+use next_ui::{features::onboarding::State, theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, State::update, State::view)
