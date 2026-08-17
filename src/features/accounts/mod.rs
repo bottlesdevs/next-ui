@@ -17,6 +17,7 @@ use next_proto::bottles::{
 use crate::{
     components::{
         button::{Button, ButtonKind},
+        info_row::InfoRow,
         list_row::ListRow,
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
@@ -411,10 +412,10 @@ fn login_dialog(login: &LoginChallenge) -> iced::Element<'_, Message> {
             Title::new("Sign in").subtitle(storefront_label(login.storefront)),
             RowGroup::new()
                 .add(
-                    label_row(
-                        storefront_icon(login.storefront),
-                        "Sign-in link (click to copy)",
-                        &login.url
+                    ListRow::from(
+                        InfoRow::new("Sign-in link (click to copy)")
+                            .description(&login.url)
+                            .icon(storefront_icon(login.storefront)),
                     )
                     .on_press(Message::CopyLoginUrl),
                 )
@@ -456,23 +457,6 @@ pub fn account_row<'a>(
     on_unlink: Message,
 ) -> ListRow<'a, Message> {
     action_button_row(icon, title, description, "Unlink", on_unlink)
-}
-
-fn label_row<'a>(
-    icon: Icon,
-    title: &'a str,
-    description: impl iced::widget::text::IntoFragment<'a>,
-) -> ListRow<'a, Message> {
-    use iced::widget::{column, svg, text};
-
-    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
-
-    ListRow::new(labels).leading(
-        svg(icon.handle())
-            .width(24)
-            .height(24)
-            .content_fit(iced::ContentFit::Contain),
-    )
 }
 
 pub fn action_button_row<'a, M: Clone + 'a>(
