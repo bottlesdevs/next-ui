@@ -3,13 +3,12 @@ use std::sync::Arc;
 use bottles_core::{Bottle, BottleState, Bottles, profile::ProfileManager};
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
-    futures::{SinkExt as _, StreamExt as _},
+    futures::StreamExt as _,
     keyboard::{self, key},
     widget::{center, column, container, mouse_area, opaque, row, scrollable, stack, svg, text},
 };
 use next_proto::bottles::{
-    common::v1::{AuthState, Game, Storefront},
-    library::v1::{WatchGamesRequest, game_event, library_client::LibraryClient},
+    common::v1::{AuthState, Storefront},
     profiles::v1::{
         LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event,
     },
@@ -18,10 +17,8 @@ use next_proto::bottles::{
 };
 use crate::{
     components::{
-        action_row::{ActionRow, State as ActionRowState},
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
-        info_card::{InfoCard, Kind},
         list_row::ListRow,
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
@@ -37,8 +34,6 @@ use crate::{
     theme,
 };
 use uuid::Uuid;
-
-const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
 const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
 const REGISTRY_ENDPOINT: &str = "http://127.0.0.1:50250";
@@ -77,8 +72,7 @@ pub struct State {
     profiles: Vec<UserProfile>,
     active_profile: Option<UserProfile>,
     profile_switcher_open: bool,
-    games: Vec<Game>,
-    library_state: LibraryState,
+    library: crate::features::library::State,
     name_draft: String,
     account_link_popover: AccountLinkPopover,
     steam_candidates: Vec<bottles_core::steam::SteamUser>,
@@ -92,22 +86,6 @@ pub enum SplitViewState {
     NewBottle,
     Profiles,
     None,
-}
-
-/// Whether the Library tab has anything to show yet for the active
-/// profile — distinct from `games` being empty, since an empty list can
-/// mean either "still waiting on the first `WatchGames` event" or
-/// "loaded, and there's genuinely nothing linked".
-#[derive(Clone, PartialEq, Eq)]
-enum LibraryState {
-    /// No active profile to load a library for.
-    Idle,
-    /// Waiting on the first event from `WatchGames`.
-    Loading,
-    /// At least one event has arrived (or the profile has nothing to
-    /// watch in the first place), so an empty `games` list is meaningful.
-    Loaded,
-    Failed(String),
 }
 
 /// Which of the two storefront-picker popovers on the Profiles pane is
@@ -160,54 +138,6 @@ fn profile_events(
     )
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-struct LibraryHandle(String);
-
-fn library_events(
-    handle: &LibraryHandle,
-) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
-    let profile_id = handle.0.clone();
-
-    Box::pin(iced::stream::channel(
-        16,
-        move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-            let mut client = match LibraryClient::connect(SERVER_ENDPOINT).await {
-                Ok(client) => client,
-                Err(err) => {
-                    let _ = output
-                        .send(Message::LibraryError(format!(
-                            "next-server unavailable: {err}"
-                        )))
-                        .await;
-                    return;
-                }
-            };
-            let response = client.watch_games(WatchGamesRequest { profile_id }).await;
-            let mut events = match response {
-                Ok(response) => response.into_inner(),
-                Err(err) => {
-                    let _ = output.send(Message::LibraryError(err.to_string())).await;
-                    return;
-                }
-            };
-
-            while let Some(event) = events.next().await {
-                match event {
-                    Ok(event) => {
-                        if let Some(event) = event.event {
-                            let _ = output.send(Message::LibraryEvent(event)).await;
-                        }
-                    }
-                    Err(err) => {
-                        let _ = output.send(Message::LibraryError(err.to_string())).await;
-                        break;
-                    }
-                }
-            }
-        },
-    ))
-}
-
 #[derive(Clone)]
 pub enum Message {
     PrimaryTabSelected(PrimaryTab),
@@ -223,6 +153,7 @@ pub enum Message {
     Bottles(crate::features::bottles::Message),
     Settings(crate::features::settings::Message),
     Snapshots(crate::features::snapshots::Message),
+    Library(crate::features::library::Message),
     ProfileManagerLoaded(Result<Arc<ProfileManager>, String>),
     ProfilesLoaded(Vec<UserProfile>),
     ProfileEvent(profile_event::Event),
@@ -234,8 +165,6 @@ pub enum Message {
     NewProfileNameChanged(String),
     SubmitNewProfile,
     ProfileUpdated(Result<UserProfile, String>),
-    LibraryEvent(game_event::Event),
-    LibraryError(String),
     ToggleLink,
     ToggleSteam,
     SteamCandidatesDetected(Vec<bottles_core::steam::SteamUser>),
@@ -269,8 +198,7 @@ impl State {
             profiles: Vec::new(),
             active_profile: None,
             profile_switcher_open: false,
-            games: Vec::new(),
-            library_state: LibraryState::Idle,
+            library: crate::features::library::State::new(),
             name_draft: String::new(),
             account_link_popover: AccountLinkPopover::Closed,
             steam_candidates: Vec::new(),
@@ -287,14 +215,9 @@ impl State {
             .as_ref()
             .is_none_or(|active| active.id != profile.id)
         {
-            self.games.clear();
-            self.library_state = if profile.accounts.is_empty() && profile.steam_link.is_none() {
-                // Nothing for `WatchGames` to ever report, so there's no
-                // event to wait on — treat it as already loaded (empty).
-                LibraryState::Loaded
-            } else {
-                LibraryState::Loading
-            };
+            let has_watchable_accounts =
+                !(profile.accounts.is_empty() && profile.steam_link.is_none());
+            self.library.reset_for_profile(Some(has_watchable_accounts));
         }
 
         self.name_draft = profile.name.clone();
@@ -471,8 +394,7 @@ impl State {
                 {
                     self.active_profile = None;
                     self.name_draft.clear();
-                    self.games.clear();
-                    self.library_state = LibraryState::Idle;
+                    self.library.reset_for_profile(None);
 
                     if let (Some(handle), Some(fallback)) =
                         (self.profile_manager.clone(), self.profiles.first().cloned())
@@ -733,28 +655,8 @@ impl State {
                     );
                 }
             }
-            Message::LibraryEvent(game_event::Event::Added(added)) => {
-                self.library_state = LibraryState::Loaded;
-
-                if let Some(game) = added.game {
-                    upsert_game(&mut self.games, game);
-                }
-            }
-            Message::LibraryEvent(game_event::Event::Updated(updated)) => {
-                self.library_state = LibraryState::Loaded;
-
-                if let Some(game) = updated.game {
-                    upsert_game(&mut self.games, game);
-                }
-            }
-            Message::LibraryEvent(game_event::Event::Removed(removed)) => {
-                self.games.retain(|game| {
-                    !(game.id == removed.game_id && game.storefront == removed.storefront)
-                });
-            }
-            Message::LibraryError(err) => {
-                self.library_state = LibraryState::Failed(err.clone());
-                eprintln!("failed to watch library: {err}");
+            Message::Library(message) => {
+                return self.library.update(message).map(Message::Library);
             }
             Message::OpenMenu | Message::TogglePower | Message::Noop => {}
         }
@@ -803,8 +705,11 @@ impl State {
         }
 
         if let Some(profile) = &self.active_profile {
-            let handle = LibraryHandle(profile.id.clone());
-            subscriptions.push(Subscription::run_with(handle, library_events));
+            let handle = crate::features::library::LibraryHandle(profile.id.clone());
+            subscriptions.push(
+                Subscription::run_with(handle, crate::features::library::library_events)
+                    .map(Message::Library),
+            );
         }
 
         Subscription::batch(subscriptions)
@@ -871,7 +776,7 @@ impl State {
             .end(self.profile_switcher());
         let content: Element<'_, Message> = match self.primary_tab {
             PrimaryTab::Bottles => self.bottles.rows_view(width, mode, Message::BottleSelected),
-            PrimaryTab::Library => self.library_view(width, mode),
+            PrimaryTab::Library => self.library.view(width, mode).map(Message::Library),
         };
 
         column![header, scroll_panel(content)]
@@ -1124,65 +1029,6 @@ impl State {
             .into()
     }
 
-    fn library_view(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
-        match &self.library_state {
-            LibraryState::Idle => {
-                return container(InfoCard::new(
-                    Kind::Hint,
-                    "No active profile",
-                    "Sign in to a profile to see its library.",
-                ))
-                .max_width(1150)
-                .into();
-            }
-            LibraryState::Loading => {
-                return container(InfoCard::new(
-                    Kind::Hint,
-                    "Loading library",
-                    "Fetching games linked to this profile's storefronts.",
-                ))
-                .max_width(1150)
-                .into();
-            }
-            LibraryState::Failed(err) => {
-                return container(InfoCard::new(
-                    Kind::Error,
-                    "Couldn't load library",
-                    err.as_str(),
-                ))
-                .max_width(1150)
-                .into();
-            }
-            LibraryState::Loaded => {}
-        }
-
-        if self.games.is_empty() {
-            return container(InfoCard::new(
-                Kind::Hint,
-                "Nothing here yet",
-                "Games linked to this profile's storefronts will show up here.",
-            ))
-            .max_width(1150)
-            .into();
-        }
-
-        let columns = usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
-        let rows = self
-            .games
-            .iter()
-            .fold(RowGroup::new().columns(columns), |rows, game| {
-                let storefront = Storefront::try_from(game.storefront).unwrap_or_default();
-
-                rows.add(
-                    ActionRow::new(&game.title, ActionRowState::Ready(Message::Noop))
-                        .description(storefront_label(storefront))
-                        .icon(storefront_icon(storefront)),
-                )
-            });
-
-        container(rows).max_width(1150).into()
-    }
-
     fn profile_switcher(&self) -> Element<'_, Message> {
         let label = self
             .active_profile
@@ -1248,17 +1094,6 @@ fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
         *existing = profile;
     } else {
         profiles.push(profile);
-    }
-}
-
-fn upsert_game(games: &mut Vec<Game>, game: Game) {
-    if let Some(existing) = games
-        .iter_mut()
-        .find(|existing| existing.id == game.id && existing.storefront == game.storefront)
-    {
-        *existing = game;
-    } else {
-        games.push(game);
     }
 }
 
