@@ -1,7 +1,7 @@
 use iced::{
     Background, Border, Color, Theme,
     theme::{
-        Palette, Style as ApplicationStyle,
+        Mode, Palette, Style as ApplicationStyle,
         palette::{
             Background as BackgroundPalette, Danger, Extended, Pair, Primary, Secondary, Success,
             Warning,
@@ -35,6 +35,26 @@ pub const SUCCESS: Color = Color::from_rgb8(53, 71, 51);
 pub const WHITE: Color = Color::WHITE;
 
 pub const SCRIM: Color = Color::from_rgba8(34, 28, 30, 171.0 / 255.0);
+
+pub const BACKGROUND_LIGHT: Color = Color::from_rgb8(247, 242, 243);
+pub const WINDOW_LIGHT: Color = Color::from_rgb8(255, 253, 254);
+pub const WINDOW_BORDER_LIGHT: Color = Color::from_rgb8(226, 215, 219);
+pub const HINT_LIGHT: Color = WINDOW_LIGHT;
+pub const DEEP_BACKGROUND_LIGHT: Color = Color::from_rgb8(251, 248, 249);
+pub const SURFACE_DEEP_LIGHT: Color = Color::from_rgb8(214, 200, 204);
+pub const PANEL_LIGHT: Color = BACKGROUND_LIGHT;
+pub const SURFACE_LIGHT: Color = Color::from_rgb8(238, 231, 233);
+pub const BORDER_LIGHT: Color = Color::from_rgb8(223, 212, 216);
+pub const ROW_HOVER_STRONG_LIGHT: Color = Color::from_rgb8(206, 190, 195);
+pub const SURFACE_SELECTED_LIGHT: Color = Color::from_rgb8(216, 201, 206);
+
+pub const MUTED_LIGHT: Color = Color::from_rgb8(135, 116, 122);
+pub const SUBTLE_LIGHT: Color = Color::from_rgb8(94, 78, 84);
+pub const TEXT_LIGHT: Color = Color::from_rgb8(36, 28, 31);
+pub const ACCENT_LIGHT: Color = Color::from_rgb8(168, 76, 104);
+pub const ACCENT_MUTED_LIGHT: Color = Color::from_rgb8(196, 150, 164);
+
+pub const SCRIM_LIGHT: Color = Color::from_rgba8(58, 50, 53, 120.0 / 255.0);
 
 pub fn theme() -> Theme {
     let palette = Palette {
@@ -86,10 +106,139 @@ pub fn theme() -> Theme {
     })
 }
 
-pub(crate) fn window(_: &Theme) -> container::Style {
+pub fn light_theme() -> Theme {
+    let palette = Palette {
+        background: BACKGROUND_LIGHT,
+        text: TEXT_LIGHT,
+        primary: ACCENT_LIGHT,
+        success: SUCCESS,
+        warning: WARNING,
+        danger: ERROR,
+    };
+
+    Theme::custom_with_fn("Bottles Next Light", palette, |_| Extended {
+        background: BackgroundPalette {
+            base: pair(BACKGROUND_LIGHT, TEXT_LIGHT),
+            weakest: pair(DEEP_BACKGROUND_LIGHT, TEXT_LIGHT),
+            weaker: pair(PANEL_LIGHT, TEXT_LIGHT),
+            weak: pair(SURFACE_LIGHT, TEXT_LIGHT),
+            neutral: pair(BORDER_LIGHT, TEXT_LIGHT),
+            strong: pair(BORDER_LIGHT, TEXT_LIGHT),
+            stronger: pair(SURFACE_SELECTED_LIGHT, TEXT_LIGHT),
+            strongest: pair(SURFACE_DEEP_LIGHT, TEXT_LIGHT),
+        },
+        primary: Primary {
+            base: pair(MUTED_LIGHT, WHITE),
+            weak: pair(SURFACE_SELECTED_LIGHT, TEXT_LIGHT),
+            strong: pair(ACCENT_MUTED_LIGHT, TEXT_LIGHT),
+        },
+        secondary: Secondary {
+            base: pair(WINDOW_LIGHT, MUTED_LIGHT),
+            weak: pair(PANEL_LIGHT, MUTED_LIGHT),
+            strong: pair(SURFACE_DEEP_LIGHT, MUTED_LIGHT),
+        },
+        success: Success {
+            base: pair(SUCCESS, WHITE),
+            weak: pair(SUCCESS, WHITE),
+            strong: pair(SUCCESS, WHITE),
+        },
+        warning: Warning {
+            base: pair(WARNING, WHITE),
+            weak: pair(WARNING, WHITE),
+            strong: pair(WARNING, WHITE),
+        },
+        danger: Danger {
+            base: pair(ERROR, WHITE),
+            weak: pair(ERROR, WHITE),
+            strong: pair(ERROR, WHITE),
+        },
+        is_dark: false,
+    })
+}
+
+/// Colors we need that don't fit anywhere in iced's built-in [`Extended`]
+/// palette shape — window chrome, hint panels, the scrollbar thumb, a
+/// stronger row-hover accent. `Extended` can't be extended with new
+/// fields (it's a fixed struct baked into `Theme::Custom`), so this wraps
+/// the inner [`Theme`] instead: iced still only ever sees plain `Theme`
+/// values (returned by [`BottlesTheme::theme`], handed to
+/// `.theme(...)`/widget style closures as usual), while call sites that
+/// need one of these extra colors go through `BottlesTheme` instead of a
+/// bespoke per-field helper function.
+#[derive(Debug, Clone)]
+pub struct BottlesTheme {
+    pub theme: Theme,
+    pub window: Color,
+    pub window_border: Color,
+    pub panel: Color,
+    pub hint: Pair,
+    pub row_hover_strong: Color,
+    pub muted: Color,
+}
+
+impl BottlesTheme {
+    pub fn dark() -> Self {
+        Self {
+            theme: theme(),
+            window: WINDOW,
+            window_border: WINDOW_BORDER,
+            panel: PANEL,
+            hint: pair(HINT, WHITE),
+            row_hover_strong: ROW_HOVER_STRONG,
+            muted: MUTED,
+        }
+    }
+
+    pub fn light() -> Self {
+        Self {
+            theme: light_theme(),
+            window: WINDOW_LIGHT,
+            window_border: WINDOW_BORDER_LIGHT,
+            panel: PANEL_LIGHT,
+            hint: pair(HINT_LIGHT, TEXT_LIGHT),
+            row_hover_strong: ROW_HOVER_STRONG_LIGHT,
+            muted: MUTED_LIGHT,
+        }
+    }
+
+    /// Builds the [`BottlesTheme`] for the given system [`Mode`], defaulting
+    /// to dark when the system preference can't be determined (`Mode::None`).
+    pub fn for_mode(mode: Mode) -> Self {
+        match mode {
+            Mode::Light => Self::light(),
+            Mode::Dark | Mode::None => Self::dark(),
+        }
+    }
+}
+
+impl std::ops::Deref for BottlesTheme {
+    type Target = Theme;
+
+    fn deref(&self) -> &Theme {
+        &self.theme
+    }
+}
+
+/// Recovers a [`BottlesTheme`] from a plain [`Theme`] — for the widget
+/// style closures iced itself invokes with `&Theme`, which have no way to
+/// receive our richer type directly.
+impl From<&Theme> for BottlesTheme {
+    fn from(theme: &Theme) -> Self {
+        if theme.extended_palette().is_dark {
+            Self::dark()
+        } else {
+            Self::light()
+        }
+    }
+}
+
+pub(crate) fn window(bottles_theme: &BottlesTheme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(WINDOW)),
-        border: Border::default().rounded(12).color(WINDOW_BORDER).width(1),
+        background: Some(Background::Color(bottles_theme.window)),
+        border: Border::default()
+            .rounded(12)
+            .color(bottles_theme.window_border)
+            .width(1),
         ..container::Style::default()
     }
 }
@@ -101,9 +250,11 @@ pub fn application(theme: &Theme) -> ApplicationStyle {
     }
 }
 
-pub fn panel(_: &Theme) -> container::Style {
+pub fn panel(theme: &Theme) -> container::Style {
+    let bottles_theme = BottlesTheme::from(theme);
+
     container::Style {
-        background: Some(Background::Color(PANEL)),
+        background: Some(Background::Color(bottles_theme.panel)),
         border: Border::default().rounded(11),
         ..container::Style::default()
     }
@@ -111,11 +262,12 @@ pub fn panel(_: &Theme) -> container::Style {
 
 pub fn scrollbar(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
     let mut style = scrollable::default(theme, status);
+    let bottles_theme = BottlesTheme::from(theme);
     let rail = scrollable::Rail {
         background: None,
         border: Border::default(),
         scroller: scrollable::Scroller {
-            background: Background::Color(MUTED),
+            background: Background::Color(bottles_theme.muted),
             border: Border::default().rounded(999),
         },
     };
@@ -127,10 +279,6 @@ pub fn scrollbar(theme: &Theme, status: scrollable::Status) -> scrollable::Style
 
 pub(crate) const fn info() -> Pair {
     pair(INFO, WHITE)
-}
-
-pub(crate) const fn hint() -> Pair {
-    pair(HINT, WHITE)
 }
 
 const fn pair(color: Color, text: Color) -> Pair {

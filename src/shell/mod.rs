@@ -1,12 +1,8 @@
 use std::sync::Arc;
 
-use bottles_core::{Bottle, BottleState, Bottles};
-use iced::{
-    Background, Element, Fill, Padding, Subscription, Task, Theme,
-    keyboard::{self, key},
-    widget::{center, column, container, mouse_area, opaque, scrollable, stack},
-};
 use crate::{
+    icons::Icon,
+    theme,
     widgets::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
@@ -17,8 +13,13 @@ use crate::{
         title::Title,
         window_frame,
     },
-    icons::Icon,
-    theme,
+};
+use bottles_core::{Bottle, BottleState, Bottles};
+use iced::{
+    Background, Element, Fill, Padding, Subscription, Task, Theme,
+    keyboard::{self, key},
+    theme::Mode as ThemeMode,
+    widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
 use uuid::Uuid;
 
@@ -45,6 +46,7 @@ pub struct State {
     library: crate::features::library::State,
     accounts: crate::features::accounts::State,
     settings: crate::features::settings::State,
+    system_theme: ThemeMode,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -73,6 +75,7 @@ pub enum Message {
     Library(crate::features::library::Message),
     Profiles(crate::features::profiles::Message),
     Accounts(crate::features::accounts::Message),
+    SystemThemeChanged(ThemeMode),
 }
 
 impl State {
@@ -87,6 +90,7 @@ impl State {
             library: crate::features::library::State::new(),
             accounts: crate::features::accounts::State::new(),
             settings: crate::features::settings::State::new(),
+            system_theme: ThemeMode::default(),
         }
     }
 
@@ -98,7 +102,10 @@ impl State {
     /// shell may reach into `library` — cross-feature effects are always
     /// intercepted here rather than let features call each other.
     fn sync_library_to_active_profile(&mut self, previous: Option<&str>) {
-        let current = self.profiles.active_profile().map(|profile| profile.id.as_str());
+        let current = self
+            .profiles
+            .active_profile()
+            .map(|profile| profile.id.as_str());
 
         if current == previous {
             return;
@@ -117,25 +124,30 @@ impl State {
     pub fn new() -> (Self, Task<Message>) {
         let bottles_boot = crate::features::bottles::State::boot().map(Message::Bottles);
         let profiles_boot = crate::features::profiles::State::boot().map(Message::Profiles);
+        let theme_boot = iced::system::theme().map(Message::SystemThemeChanged);
 
         (
             Self::empty(),
-            Task::batch([bottles_boot, profiles_boot]),
+            Task::batch([bottles_boot, profiles_boot, theme_boot]),
         )
     }
 
     pub fn new_with_bottles(bottles: Bottles) -> (Self, Task<Message>) {
         let mut state = Self::empty();
         state.bottles = crate::features::bottles::State::new_with_bottles(bottles);
+        let theme_boot = iced::system::theme().map(Message::SystemThemeChanged);
 
         (
             state,
-            crate::features::profiles::State::boot().map(Message::Profiles),
+            Task::batch([
+                crate::features::profiles::State::boot().map(Message::Profiles),
+                theme_boot,
+            ]),
         )
     }
 
     pub fn theme(&self) -> Theme {
-        theme::theme()
+        theme::BottlesTheme::for_mode(self.system_theme).theme
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -195,8 +207,10 @@ impl State {
                 return self.snapshots.update(message).map(Message::Snapshots);
             }
             Message::Settings(message) => {
-                let is_wrapper_updated_ok =
-                    matches!(message, crate::features::settings::Message::WrapperUpdated(Ok(())));
+                let is_wrapper_updated_ok = matches!(
+                    message,
+                    crate::features::settings::Message::WrapperUpdated(Ok(()))
+                );
                 let selected_id = match self.split_view_state {
                     SplitViewState::Bottle(id) => Some(id),
                     _ => None,
@@ -228,8 +242,10 @@ impl State {
                     .map(Message::Profiles);
             }
             Message::Profiles(message) => {
-                let previous_active_id =
-                    self.profiles.active_profile().map(|profile| profile.id.clone());
+                let previous_active_id = self
+                    .profiles
+                    .active_profile()
+                    .map(|profile| profile.id.clone());
                 // Opening the new-profile dialog, submitting it, or a
                 // successful profile update all also close the accounts
                 // feature's login modal, since only one of the two
@@ -270,8 +286,10 @@ impl State {
                     _ => None,
                 };
 
-                let previous_active_id =
-                    self.profiles.active_profile().map(|profile| profile.id.clone());
+                let previous_active_id = self
+                    .profiles
+                    .active_profile()
+                    .map(|profile| profile.id.clone());
                 let ctx = crate::features::accounts::Context {
                     active_profile: self.profiles.active_profile(),
                     profiles: self.profiles.profiles(),
@@ -298,6 +316,7 @@ impl State {
             Message::Library(message) => {
                 return self.library.update(message).map(Message::Library);
             }
+            Message::SystemThemeChanged(mode) => self.system_theme = mode,
             Message::OpenMenu | Message::TogglePower => {}
         }
 
@@ -331,7 +350,9 @@ impl State {
             _ => None,
         });
 
-        let mut subscriptions = vec![keys];
+        let theme_changes = iced::system::theme_changes().map(Message::SystemThemeChanged);
+
+        let mut subscriptions = vec![keys, theme_changes];
 
         if let Some(handle) = self.bottles.bottle_manager_handle() {
             subscriptions.push(
@@ -430,7 +451,7 @@ impl State {
 
     fn profile_settings_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
         let header = HeaderBar::new(Message::Window)
-            .show_window_controls(cfg!(target_os = "macos") || mode == PaneMode::Single)
+            .show_window_controls(mode == PaneMode::Single)
             .start(header_button("Cancel", Icon::Arrow, Message::Back))
             .middle(
                 container(
@@ -451,7 +472,10 @@ impl State {
                 profiles: self.profiles.profiles(),
                 profile_manager: self.profiles.manager_handle(),
             };
-            let links = self.accounts.view_links(&accounts_ctx).map(Message::Accounts);
+            let links = self
+                .accounts
+                .view_links(&accounts_ctx)
+                .map(Message::Accounts);
 
             column![
                 RowGroup::new()
@@ -511,7 +535,7 @@ impl State {
 
     fn new_bottle_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
         let header = HeaderBar::new(Message::Window)
-            .show_window_controls(cfg!(target_os = "macos") || mode == PaneMode::Single)
+            .show_window_controls(mode == PaneMode::Single)
             .start(header_button(
                 "Cancel bottle creation",
                 Icon::Arrow,
@@ -597,7 +621,6 @@ impl State {
             .height(Fill)
             .into()
     }
-
 }
 
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
@@ -647,4 +670,3 @@ fn modal<'a>(
     ]
     .into()
 }
-

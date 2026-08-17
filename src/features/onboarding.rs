@@ -15,9 +15,10 @@ use std::sync::Arc;
 
 use bottles_core::{Addons, Bottles, Config as CoreConfig, Slot};
 use iced::{
-    Background, Border, Element, Fill, Length, Task, Theme,
+    Background, Border, Element, Fill, Length, Subscription, Task, Theme,
     alignment::{Horizontal, Vertical},
     futures::{SinkExt as _, Stream, StreamExt as _, future},
+    theme::Mode as ThemeMode,
     widget::{button, center, column, container, row, text},
 };
 use uuid::Uuid;
@@ -144,6 +145,7 @@ pub struct State {
     mode: Mode,
     bottles: Option<Bottles>,
     downloads: Vec<DownloadItem>,
+    system_theme: ThemeMode,
 }
 
 #[derive(Clone)]
@@ -156,6 +158,7 @@ pub enum Message {
     CancelDownloads,
     Finished,
     Window(window_frame::Action),
+    SystemThemeChanged(ThemeMode),
 }
 
 impl State {
@@ -165,6 +168,7 @@ impl State {
             mode: Mode::Next,
             bottles: None,
             downloads: Vec::new(),
+            system_theme: ThemeMode::default(),
         };
         let boot = Task::perform(
             async {
@@ -175,12 +179,17 @@ impl State {
             },
             Message::BottlesLoaded,
         );
+        let theme = iced::system::theme().map(Message::SystemThemeChanged);
 
-        (state, boot)
+        (state, Task::batch([boot, theme]))
     }
 
     pub fn theme(&self) -> Theme {
-        theme::theme()
+        theme::BottlesTheme::for_mode(self.system_theme).theme
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        iced::system::theme_changes().map(Message::SystemThemeChanged)
     }
 
     pub fn take_bottles(&mut self) -> Option<Bottles> {
@@ -226,6 +235,7 @@ impl State {
             Message::CancelDownloads => self.step = Step::Welcome,
             Message::Window(action) => return action.task(),
             Message::Finished => {}
+            Message::SystemThemeChanged(mode) => self.system_theme = mode,
         }
 
         Task::none()

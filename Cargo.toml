@@ -12,7 +12,7 @@ keywords = [""]
 exclude = [""]
 
 [dependencies]
-iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "tokio"] }
+iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "tokio", "linux-theme-detection"] }
 tokio-util.workspace = true
 bottles-core.workspace = true
 next-config.workspace = true

@@ -4,7 +4,7 @@ use iced::{
     widget::{Space, column, container, row, scrollable, text},
 };
 
-use crate::icons::Icon;
+use crate::{icons::Icon, theme};
 
 use super::{button::Button, spacing, style, text::TextExt as _};
 
@@ -124,7 +124,9 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
                     .padding([spacing::MD, spacing::LG])
                     .width(Fill)
                     .max_height(180)
-                    .style(|_| container::background(crate::theme::HINT)),
+                    .style(|current_theme: &Theme| {
+                        container::background(theme::BottlesTheme::from(current_theme).hint.color)
+                    }),
             );
         }
 

@@ -76,7 +76,7 @@ impl App {
 
     pub fn subscription(&self) -> Subscription<AppMessage> {
         match self {
-            Self::Onboarding(_) => Subscription::none(),
+            Self::Onboarding(state) => state.subscription().map(AppMessage::Onboarding),
             Self::Main(example) => example
                 .subscription()
                 .map(|message| AppMessage::Main(Box::new(message))),

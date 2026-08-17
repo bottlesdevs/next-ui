@@ -445,7 +445,7 @@ impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {
 
 fn surface_color(theme: &Theme, raised: bool, hovered: bool, hover_tone: HoverTone) -> iced::Color {
     if hovered && hover_tone == HoverTone::Strong {
-        crate::theme::ROW_HOVER_STRONG
+        crate::theme::BottlesTheme::from(theme).row_hover_strong
     } else if raised || hovered {
         theme.extended_palette().background.neutral.color
     } else {

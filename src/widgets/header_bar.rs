@@ -116,9 +116,11 @@ fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Mess
         .into()
 }
 
-fn style(_: &Theme) -> container::Style {
+fn style(current_theme: &Theme) -> container::Style {
+    let bottles_theme = theme::BottlesTheme::from(current_theme);
+
     container::Style {
-        background: Some(Background::Color(theme::WINDOW)),
+        background: Some(Background::Color(bottles_theme.window)),
         border: Border::default().rounded(iced::border::top(11)),
         ..container::Style::default()
     }

@@ -23,7 +23,9 @@ fn surface_style(colors: Pair) -> container::Style {
 
 pub(crate) fn action(theme: &Theme, status: Status) -> button::Style {
     let background = match status {
-        Status::Hovered | Status::Focused => Some(crate::theme::ROW_HOVER_STRONG),
+        Status::Hovered | Status::Focused => {
+            Some(crate::theme::BottlesTheme::from(theme).row_hover_strong)
+        }
         Status::Pressed => Some(theme.extended_palette().background.stronger.color),
         _ => None,
     };
