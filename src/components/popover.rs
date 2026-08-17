@@ -132,6 +132,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
 
             container(rows).width(Fill).padding(spacing::MD).into()
         };
+
         let footer = popover.footer.map(|(label, message)| {
             Pressable::new(
                 row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
@@ -338,6 +339,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         }
 
         let bounds = layout.bounds();
+
         let (_, panel_trees) = tree.children.split_at_mut(1);
         let (body_trees, footer_trees) = panel_trees.split_at_mut(1);
 
@@ -372,41 +374,72 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     for PopoverOverlay<'_, '_, Message>
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let below = bounds.height - (self.position.y + self.target_height + spacing::XS);
-        let above = self.position.y - spacing::XS;
-        let max_height = below.max(above).max(0.0);
-        let limits = layout::Limits::new(
-            Size::new(self.width, 0.0),
-            Size::new(self.width, max_height),
+        let gap = spacing::XS;
+        let viewport_padding = spacing::SM;
+
+        // Keep the popover away from the window edges.
+        let available_width = (bounds.width - viewport_padding * 2.0).max(0.0);
+
+        let width = self.width.min(available_width);
+
+        // Horizontal placement.
+        let x = self.position.x.clamp(
+            viewport_padding,
+            (bounds.width - width - viewport_padding).max(viewport_padding),
         );
+
+        // Calculate available space above and below the trigger.
+        let below = bounds.height - (self.position.y + self.target_height + gap) - viewport_padding;
+
+        let above = self.position.y - gap - viewport_padding;
+
+        // If neither side can fit the whole popover, use whichever side has
+        // more space and let the scrollable body handle the constrained height.
+        let open_below = below >= above;
+
+        let max_height = below.max(above).max(0.0);
+
+        let limits = layout::Limits::new(Size::new(width, 0.0), Size::new(width, max_height));
+
         let footer = self
             .footer
             .as_mut()
             .map(|(footer, tree)| footer.as_widget_mut().layout(tree, renderer, &limits));
+
         let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
+
         let body_limits = layout::Limits::new(
-            Size::new(self.width, 0.0),
-            Size::new(self.width, (max_height - footer_height).max(0.0)),
+            Size::new(width, 0.0),
+            Size::new(width, (max_height - footer_height).max(0.0)),
         );
+
         let body = self
             .body
             .as_widget_mut()
             .layout(self.body_tree, renderer, &body_limits);
+
         let body_height = body.size().height;
-        let height = body_height + footer_height;
+        let height = (body_height + footer_height).min(max_height);
+
+        let y = if open_below {
+            self.position.y + self.target_height + gap
+        } else {
+            self.position.y - height - gap
+        };
+
+        // Keep the popover away from the top/bottom window edges.
+        let y = y.clamp(
+            viewport_padding,
+            (bounds.height - height - viewport_padding).max(viewport_padding),
+        );
+
         let mut children = vec![body];
 
         if let Some(footer) = footer {
             children.push(footer.move_to(Point::new(0.0, body_height)));
         }
 
-        layout::Node::with_children(Size::new(self.width, height), children).move_to(
-            if below >= height || below >= above {
-                self.position + Vector::new(0.0, self.target_height + spacing::XS)
-            } else {
-                self.position - Vector::new(0.0, height + spacing::XS)
-            },
-        )
+        layout::Node::with_children(Size::new(width, height), children).move_to(Point::new(x, y))
     }
 
     fn update(
@@ -439,6 +472,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         }
 
         let mut children = layout.children();
+
         self.body.as_widget_mut().update(
             self.body_tree,
             event,
@@ -471,6 +505,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         let mut children = layout.children();
+
         let body = self.body.as_widget().mouse_interaction(
             self.body_tree,
             children.next().expect("popover panel body layout"),
@@ -512,6 +547,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         );
 
         let mut children = layout.children();
+
         self.body.as_widget().draw(
             self.body_tree,
             renderer,
@@ -542,8 +578,10 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         operation: &mut dyn Operation,
     ) {
         operation.container(None, layout.bounds());
+
         operation.traverse(&mut |operation| {
             let mut children = layout.children();
+
             self.body.as_widget_mut().operate(
                 self.body_tree,
                 children.next().expect("popover panel body layout"),
@@ -595,7 +633,9 @@ fn footer_style(theme: &Theme, status: Status) -> button::Style {
 
 fn tooltip_style(theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(theme.extended_palette().background.strongest.color)),
+        background: Some(Background::Color(
+            theme.extended_palette().background.strongest.color,
+        )),
         text_color: Some(theme.palette().text),
         border: Border::default().rounded(8),
         ..container::Style::default()

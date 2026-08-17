@@ -2,21 +2,19 @@ use std::sync::Arc;
 
 use bottles_core::{
     Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, MangoHudConfig, Slot,
-    SnapshotSummary, Storage,
-    profile::ProfileManager,
+    SnapshotSummary, Storage, profile::ProfileManager,
 };
 use iced::{
     Element, Fill, Padding, Subscription, Task, Theme,
-    futures::StreamExt as _,
+    futures::{SinkExt as _, StreamExt as _},
     keyboard::{self, key},
     widget::{Column, column, container, image, row, scrollable, svg, text},
 };
 use next_proto::bottles::{
     common::v1::{Game, Storefront},
-    library::v1::{ListGamesRequest, library_client::LibraryClient},
+    library::v1::{WatchGamesRequest, game_event, library_client::LibraryClient},
     profiles::v1::{UserProfile, profile_event},
 };
-use uuid::Uuid;
 use next_ui::{
     components::{
         action_row::{ActionRow, State},
@@ -40,6 +38,7 @@ use next_ui::{
     icons::Icon,
     theme,
 };
+use uuid::Uuid;
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
@@ -68,14 +67,17 @@ enum App {
 #[derive(Clone)]
 enum AppMessage {
     Onboarding(next_ui::onboarding::Message),
-    Main(Message),
+    Main(Box<Message>),
 }
 
 impl App {
     fn new() -> (Self, Task<AppMessage>) {
         let (state, task) = next_ui::onboarding::State::new();
 
-        (Self::Onboarding(Box::new(state)), task.map(AppMessage::Onboarding))
+        (
+            Self::Onboarding(Box::new(state)),
+            task.map(AppMessage::Onboarding),
+        )
     }
 
     fn theme(&self) -> Theme {
@@ -88,7 +90,9 @@ impl App {
     fn subscription(&self) -> Subscription<AppMessage> {
         match self {
             Self::Onboarding(_) => Subscription::none(),
-            Self::Main(example) => example.subscription().map(AppMessage::Main),
+            Self::Main(example) => example
+                .subscription()
+                .map(|message| AppMessage::Main(Box::new(message))),
         }
     }
 
@@ -105,7 +109,7 @@ impl App {
                         None => Example::new(),
                     };
                     *self = Self::Main(Box::new(example));
-                    return task.map(AppMessage::Main);
+                    return task.map(|message| AppMessage::Main(Box::new(message)));
                 }
 
                 state.update(message).map(AppMessage::Onboarding)
@@ -115,7 +119,9 @@ impl App {
                     return Task::none();
                 };
 
-                example.update(message).map(AppMessage::Main)
+                example
+                    .update(*message)
+                    .map(|message| AppMessage::Main(Box::new(message)))
             }
         }
     }
@@ -123,7 +129,9 @@ impl App {
     fn view(&self) -> Element<'_, AppMessage> {
         match self {
             Self::Onboarding(state) => state.view().map(AppMessage::Onboarding),
-            Self::Main(example) => example.view().map(AppMessage::Main),
+            Self::Main(example) => example
+                .view()
+                .map(|message| AppMessage::Main(Box::new(message))),
         }
     }
 }
@@ -196,6 +204,54 @@ fn profile_events(
     )
 }
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct LibraryHandle(String);
+
+fn library_events(
+    handle: &LibraryHandle,
+) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
+    let profile_id = handle.0.clone();
+
+    Box::pin(iced::stream::channel(
+        16,
+        move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+            let mut client = match LibraryClient::connect(SERVER_ENDPOINT).await {
+                Ok(client) => client,
+                Err(err) => {
+                    let _ = output
+                        .send(Message::LibraryError(format!(
+                            "next-server unavailable: {err}"
+                        )))
+                        .await;
+                    return;
+                }
+            };
+            let response = client.watch_games(WatchGamesRequest { profile_id }).await;
+            let mut events = match response {
+                Ok(response) => response.into_inner(),
+                Err(err) => {
+                    let _ = output.send(Message::LibraryError(err.to_string())).await;
+                    return;
+                }
+            };
+
+            while let Some(event) = events.next().await {
+                match event {
+                    Ok(event) => {
+                        if let Some(event) = event.event {
+                            let _ = output.send(Message::LibraryEvent(event)).await;
+                        }
+                    }
+                    Err(err) => {
+                        let _ = output.send(Message::LibraryError(err.to_string())).await;
+                        break;
+                    }
+                }
+            }
+        },
+    ))
+}
+
 #[derive(Clone)]
 struct BottleManagerHandle(BottleManager);
 
@@ -244,7 +300,8 @@ enum Message {
     ActivateProfile(String),
     CreateProfile,
     ProfileUpdated(Result<UserProfile, String>),
-    LibraryLoaded(Result<Vec<Game>, String>),
+    LibraryEvent(game_event::Event),
+    LibraryError(String),
     Noop,
 }
 
@@ -338,12 +395,6 @@ impl Example {
                 if tab == PrimaryTab::Library {
                     self.selected_bottle = None;
                     self.creating_bottle = false;
-
-                    if let Some(profile_id) =
-                        self.active_profile.as_ref().map(|profile| profile.id.clone())
-                    {
-                        return Task::perform(list_games(profile_id), Message::LibraryLoaded);
-                    }
                 }
             }
             Message::DetailTabSelected(tab) => self.detail_tab = tab,
@@ -365,8 +416,7 @@ impl Example {
             Message::AddBottle => self.creating_bottle = true,
             Message::CancelBottle => self.creating_bottle = false,
             Message::CreateBottle => {
-                if let (Some(bottles), Some(runner)) =
-                    (&self.bottles, self.selected_runner.clone())
+                if let (Some(bottles), Some(runner)) = (&self.bottles, self.selected_runner.clone())
                 {
                     let name = self.bottle_name.clone();
                     let manager = bottles.bottles().clone();
@@ -513,18 +563,28 @@ impl Example {
             Message::ProfileEvent(profile_event::Event::Updated(profile)) => {
                 upsert_profile(&mut self.profiles, profile.clone());
 
-                if self.active_profile.as_ref().is_some_and(|active| active.id == profile.id) {
+                if self
+                    .active_profile
+                    .as_ref()
+                    .is_some_and(|active| active.id == profile.id)
+                {
                     self.active_profile = Some(profile);
                 }
             }
             Message::ProfileEvent(profile_event::Event::DeletedProfileId(id)) => {
                 self.profiles.retain(|profile| profile.id != id);
 
-                if self.active_profile.as_ref().is_some_and(|active| active.id == id) {
+                if self
+                    .active_profile
+                    .as_ref()
+                    .is_some_and(|active| active.id == id)
+                {
                     self.active_profile = self.profiles.first().cloned();
                 }
             }
-            Message::ToggleProfileSwitcher => self.profile_switcher_open = !self.profile_switcher_open,
+            Message::ToggleProfileSwitcher => {
+                self.profile_switcher_open = !self.profile_switcher_open
+            }
             Message::ActivateProfile(id) => {
                 self.profile_switcher_open = false;
 
@@ -564,17 +624,38 @@ impl Example {
             }
             Message::ProfileUpdated(Ok(profile)) => {
                 upsert_profile(&mut self.profiles, profile.clone());
-                let profile_id = profile.id.clone();
-                self.active_profile = Some(profile);
 
-                if self.primary_tab == PrimaryTab::Library {
-                    return Task::perform(list_games(profile_id), Message::LibraryLoaded);
+                if self
+                    .active_profile
+                    .as_ref()
+                    .is_none_or(|active| active.id != profile.id)
+                {
+                    self.games.clear();
                 }
+
+                self.active_profile = Some(profile);
             }
             Message::ProfileUpdated(Err(err)) => eprintln!("failed to update profile: {err}"),
-            Message::LibraryLoaded(Ok(games)) => self.games = games,
-            Message::LibraryLoaded(Err(err)) => eprintln!("failed to load library: {err}"),
-            Message::OpenMenu | Message::TogglePower | Message::ProgramLaunched(Ok(_)) | Message::Noop => {}
+            Message::LibraryEvent(game_event::Event::Added(added)) => {
+                if let Some(game) = added.game {
+                    upsert_game(&mut self.games, game);
+                }
+            }
+            Message::LibraryEvent(game_event::Event::Updated(updated)) => {
+                if let Some(game) = updated.game {
+                    upsert_game(&mut self.games, game);
+                }
+            }
+            Message::LibraryEvent(game_event::Event::Removed(removed)) => {
+                self.games.retain(|game| {
+                    !(game.id == removed.game_id && game.storefront == removed.storefront)
+                });
+            }
+            Message::LibraryError(err) => eprintln!("failed to watch library: {err}"),
+            Message::OpenMenu
+            | Message::TogglePower
+            | Message::ProgramLaunched(Ok(_))
+            | Message::Noop => {}
         }
 
         Task::none()
@@ -623,6 +704,11 @@ impl Example {
 
         if let Some(handle) = self.profile_manager.clone() {
             subscriptions.push(Subscription::run_with(handle, profile_events));
+        }
+
+        if let Some(profile) = &self.active_profile {
+            let handle = LibraryHandle(profile.id.clone());
+            subscriptions.push(Subscription::run_with(handle, library_events));
         }
 
         Subscription::batch(subscriptions)
@@ -812,17 +898,19 @@ impl Example {
             .into();
         }
 
-        let columns =
-            usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
-        let rows = self.games.iter().fold(RowGroup::new().columns(columns), |rows, game| {
-            let storefront = Storefront::try_from(game.storefront).unwrap_or_default();
+        let columns = usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
+        let rows = self
+            .games
+            .iter()
+            .fold(RowGroup::new().columns(columns), |rows, game| {
+                let storefront = Storefront::try_from(game.storefront).unwrap_or_default();
 
-            rows.add(
-                ActionRow::new(&game.title, State::Ready(Message::Noop))
-                    .description(storefront_label(storefront))
-                    .icon(storefront_icon(storefront)),
-            )
-        });
+                rows.add(
+                    ActionRow::new(&game.title, State::Ready(Message::Noop))
+                        .description(storefront_label(storefront))
+                        .icon(storefront_icon(storefront)),
+                )
+            });
 
         container(rows).max_width(1150).into()
     }
@@ -856,6 +944,8 @@ impl Example {
             .map(|profile| profile.name.as_str())
             .unwrap_or("No profile");
         let trigger = Button::icon_only(label, Icon::Person)
+            .diameter(32.0)
+            .icon_size(16.0)
             .kind(ButtonKind::Transparent)
             .on_press(Message::ToggleProfileSwitcher);
         let mut switcher = Popover::new(trigger, self.profile_switcher_open)
@@ -896,14 +986,10 @@ impl Example {
 
         let graphics = RowGroup::new()
             .title("Graphics")
-            .add(
-                SwitcherRow::new("DLSS", false)
-                    .description("Deep Learning Super Sampling"),
-            )
+            .add(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
             .add(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
             .add(
-                SwitcherRow::new("Discrete GPU", false)
-                    .description("Force use your dedicated GPU"),
+                SwitcherRow::new("Discrete GPU", false).description("Force use your dedicated GPU"),
             )
             .add(
                 SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
@@ -990,26 +1076,25 @@ fn relative_time(seconds: i64) -> String {
     }
 }
 
-async fn list_games(profile_id: String) -> Result<Vec<Game>, String> {
-    let mut client = LibraryClient::connect(SERVER_ENDPOINT)
-        .await
-        .map_err(|err| format!("next-server unavailable: {err}"))?;
-
-    client
-        .list_games(ListGamesRequest {
-            profile_id,
-            storefronts: Vec::new(),
-        })
-        .await
-        .map(|response| response.into_inner().games)
-        .map_err(|err| err.to_string())
-}
-
 fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
-    if let Some(existing) = profiles.iter_mut().find(|existing| existing.id == profile.id) {
+    if let Some(existing) = profiles
+        .iter_mut()
+        .find(|existing| existing.id == profile.id)
+    {
         *existing = profile;
     } else {
         profiles.push(profile);
+    }
+}
+
+fn upsert_game(games: &mut Vec<Game>, game: Game) {
+    if let Some(existing) = games
+        .iter_mut()
+        .find(|existing| existing.id == game.id && existing.storefront == game.storefront)
+    {
+        *existing = game;
+    } else {
+        games.push(game);
     }
 }
 
