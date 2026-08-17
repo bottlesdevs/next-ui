@@ -1,17 +1,11 @@
 use std::sync::Arc;
 
-use bottles_core::{
-    Bottle, BottleManager, BottleState, Bottles, Config as CoreConfig, Progress, Slot,
-    Storage, profile::ProfileManager,
-};
+use bottles_core::{Bottle, BottleState, Bottles, profile::ProfileManager};
 use iced::{
     Background, Element, Fill, Padding, Subscription, Task, Theme,
     futures::{SinkExt as _, StreamExt as _},
     keyboard::{self, key},
-    widget::{
-        Column, center, column, container, image, mouse_area, opaque, row, scrollable, stack, svg,
-        text,
-    },
+    widget::{center, column, container, mouse_area, opaque, row, scrollable, stack, svg, text},
 };
 use next_proto::bottles::{
     common::v1::{AuthState, Game, Storefront},
@@ -25,7 +19,6 @@ use next_proto::bottles::{
 use crate::{
     components::{
         action_row::{ActionRow, State as ActionRowState},
-        artwork_card::{ArtworkCard, CardAction},
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
         info_card::{InfoCard, Kind},
@@ -33,9 +26,7 @@ use crate::{
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
         row_group::RowGroup,
-        selector_row::SelectorRow,
         split_view::{PaneMode, PaneSide, SplitView},
-        status_bar::{StatusBar, StatusState},
         tabs::{Tab, Tabs},
         text::TextExt as _,
         text_row::TextRow,
@@ -49,8 +40,6 @@ use uuid::Uuid;
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
-const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
-const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
 const REGISTRY_ENDPOINT: &str = "http://127.0.0.1:50250";
 
@@ -64,18 +53,6 @@ const STOREFRONTS: &[Storefront] = &[
     Storefront::BattleNet,
 ];
 const LOGIN_STOREFRONTS: &[Storefront] = &[Storefront::EpicGames, Storefront::Gog];
-
-#[derive(Clone, PartialEq)]
-pub struct RunnerOption {
-    id: Uuid,
-    label: String,
-}
-
-impl std::fmt::Display for RunnerOption {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.label)
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryTab {
@@ -93,19 +70,9 @@ pub enum DetailTab {
 pub struct State {
     primary_tab: PrimaryTab,
     detail_tab: DetailTab,
-    bottles: Option<Bottles>,
-    bottle_list: Vec<Bottle>,
-    bottle_states: Vec<Arc<BottleState>>,
+    bottles: crate::features::bottles::State,
     split_view_state: SplitViewState,
     snapshots: crate::features::snapshots::State,
-    bottle_name: String,
-    runners: Vec<RunnerOption>,
-    selected_runner: Option<RunnerOption>,
-    purpose: &'static str,
-    architecture: &'static str,
-    creation_log: String,
-    creation_log_expanded: bool,
-    creation_failed: bool,
     profile_manager: Option<ProfileManagerHandle>,
     profiles: Vec<UserProfile>,
     active_profile: Option<UserProfile>,
@@ -242,21 +209,6 @@ fn library_events(
 }
 
 #[derive(Clone)]
-struct BottleManagerHandle(BottleManager);
-
-impl std::hash::Hash for BottleManagerHandle {
-    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
-}
-
-fn bottle_events(
-    handle: &BottleManagerHandle,
-) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
-    let manager = handle.0.clone();
-
-    Box::pin(manager.watch().map(Message::BottleListChanged))
-}
-
-#[derive(Clone)]
 pub enum Message {
     PrimaryTabSelected(PrimaryTab),
     DetailTabSelected(DetailTab),
@@ -264,22 +216,11 @@ pub enum Message {
     Back,
     AddBottle,
     CancelBottle,
-    CreateBottle,
-    BottleCreationProgress(Progress),
-    BottleCreated(Result<Bottle, String>),
-    ToggleCreationLog,
-    BottleNameChanged(String),
-    RunnerSelected(RunnerOption),
-    PurposeSelected(&'static str),
-    ArchitectureSelected(&'static str),
     OpenMenu,
     TogglePower,
     Window(window_frame::Action),
     MoveFocus(bool),
-    BottlesLoaded(Result<Arc<Bottles>, String>),
-    BottleListChanged(Vec<Bottle>),
-    LaunchProgram(Uuid),
-    ProgramLaunched(Result<u32, String>),
+    Bottles(crate::features::bottles::Message),
     Settings(crate::features::settings::Message),
     Snapshots(crate::features::snapshots::Message),
     ProfileManagerLoaded(Result<Arc<ProfileManager>, String>),
@@ -321,19 +262,9 @@ impl State {
         Self {
             primary_tab: PrimaryTab::Bottles,
             detail_tab: DetailTab::Programs,
-            bottles: None,
-            bottle_list: Vec::new(),
-            bottle_states: Vec::new(),
+            bottles: crate::features::bottles::State::new(),
             split_view_state: SplitViewState::None,
             snapshots: crate::features::snapshots::State::new(),
-            bottle_name: "Gaming paradise".into(),
-            runners: Vec::new(),
-            selected_runner: None,
-            purpose: PURPOSES[0],
-            architecture: ARCHITECTURES[0],
-            creation_log: String::new(),
-            creation_log_expanded: false,
-            creation_failed: false,
             profile_manager: None,
             profiles: Vec::new(),
             active_profile: None,
@@ -383,15 +314,7 @@ impl State {
     }
 
     pub fn new() -> (Self, Task<Message>) {
-        let bottles_boot = Task::perform(
-            async {
-                Bottles::open(CoreConfig::default())
-                    .await
-                    .map(Arc::new)
-                    .map_err(|err| err.to_string())
-            },
-            Message::BottlesLoaded,
-        );
+        let bottles_boot = crate::features::bottles::State::boot().map(Message::Bottles);
 
         (
             Self::empty(),
@@ -401,26 +324,9 @@ impl State {
 
     pub fn new_with_bottles(bottles: Bottles) -> (Self, Task<Message>) {
         let mut state = Self::empty();
-        state.apply_bottles(bottles);
+        state.bottles = crate::features::bottles::State::new_with_bottles(bottles);
 
         (state, Self::profile_manager_boot())
-    }
-
-    fn apply_bottles(&mut self, bottles: Bottles) {
-        self.bottle_list = bottles.bottles().list();
-        self.runners = bottles
-            .addons()
-            .components()
-            .iter()
-            .filter(|entry| entry.slot() == Slot::Runner)
-            .map(|entry| RunnerOption {
-                id: entry.id(),
-                label: format!("{} {}", entry.name(), entry.version()),
-            })
-            .collect();
-        self.selected_runner = self.runners.first().cloned();
-        self.bottles = Some(bottles);
-        self.refresh_bottle_states();
     }
 
     pub fn theme(&self) -> Theme {
@@ -449,56 +355,9 @@ impl State {
             Message::Back => self.split_view_state = SplitViewState::None,
             Message::AddBottle => {
                 self.split_view_state = SplitViewState::NewBottle;
-                self.creation_log.clear();
-                self.creation_failed = false;
+                self.bottles.reset_creation();
             }
             Message::CancelBottle => self.split_view_state = SplitViewState::None,
-            Message::CreateBottle => {
-                if let (Some(bottles), Some(runner)) = (&self.bottles, self.selected_runner.clone())
-                {
-                    let name = self.bottle_name.clone();
-                    let manager = bottles.bottles().clone();
-                    let operation = manager.create(name, Storage::Standard, runner.id);
-                    let progress = operation.progress();
-
-                    self.creation_log.clear();
-                    self.creation_failed = false;
-                    self.creation_log_expanded = true;
-
-                    let progress_task = Task::stream(progress).map(Message::BottleCreationProgress);
-                    let result_task = Task::perform(
-                        async move { operation.await.map_err(|err| err.to_string()) },
-                        Message::BottleCreated,
-                    );
-
-                    return Task::batch([progress_task, result_task]);
-                }
-            }
-            Message::BottleCreationProgress(progress) => {
-                if !self.creation_log.is_empty() {
-                    self.creation_log.push('\n');
-                }
-                self.creation_log.push_str(&progress_log_line(&progress));
-            }
-            Message::BottleCreated(Ok(_)) => self.split_view_state = SplitViewState::None,
-            Message::BottleCreated(Err(err)) => {
-                self.creation_failed = true;
-
-                if !self.creation_log.is_empty() {
-                    self.creation_log.push('\n');
-                }
-                self.creation_log
-                    .push_str(&format!("{} Failed: {err}", timestamp()));
-
-                eprintln!("failed to create bottle: {err}");
-            }
-            Message::ToggleCreationLog => {
-                self.creation_log_expanded = !self.creation_log_expanded;
-            }
-            Message::BottleNameChanged(name) => self.bottle_name = name,
-            Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
-            Message::PurposeSelected(purpose) => self.purpose = purpose,
-            Message::ArchitectureSelected(architecture) => self.architecture = architecture,
             Message::Window(action) => return action.task(),
             Message::MoveFocus(previous) => {
                 return if previous {
@@ -507,28 +366,29 @@ impl State {
                     iced::widget::operation::focus_next()
                 };
             }
-            Message::BottlesLoaded(Ok(bottles)) => {
-                if let Ok(bottles) = Arc::try_unwrap(bottles) {
-                    self.apply_bottles(bottles);
+            Message::Bottles(message) => {
+                let close_panel = matches!(
+                    &message,
+                    crate::features::bottles::Message::BottleCreated(Ok(_))
+                );
+
+                let task = if let crate::features::bottles::Message::LaunchProgram(id) = message {
+                    self.selected_bottle_handle()
+                        .map(|bottle| self.bottles.launch_program(bottle, id))
+                        .unwrap_or_else(Task::none)
+                } else {
+                    self.bottles.update(message)
+                };
+
+                if close_panel {
+                    self.split_view_state = SplitViewState::None;
                 }
-            }
-            Message::BottlesLoaded(Err(err)) => eprintln!("failed to open Bottles: {err}"),
-            Message::BottleListChanged(list) => {
-                self.bottle_list = list;
-                self.refresh_bottle_states();
+
+                return task.map(Message::Bottles);
             }
             Message::Snapshots(message) => {
                 return self.snapshots.update(message).map(Message::Snapshots);
             }
-            Message::LaunchProgram(id) => {
-                if let Some(bottle) = self.selected_bottle_handle() {
-                    return Task::perform(
-                        async move { bottle.run(id).await.map_err(|err| err.to_string()) },
-                        Message::ProgramLaunched,
-                    );
-                }
-            }
-            Message::ProgramLaunched(Err(err)) => eprintln!("failed to launch program: {err}"),
             Message::Settings(message) => {
                 let is_wrapper_updated_ok =
                     matches!(message, crate::features::settings::Message::WrapperUpdated(Ok(())));
@@ -536,14 +396,8 @@ impl State {
                     SplitViewState::Bottle(id) => Some(id),
                     _ => None,
                 };
-                let bottle = selected_id.and_then(|id| {
-                    self.bottle_list
-                        .iter()
-                        .find(|bottle| bottle.state().is_ok_and(|state| state.id() == id))
-                        .cloned()
-                });
-                let bottle_state = selected_id
-                    .and_then(|id| self.bottle_states.iter().find(|state| state.id() == id));
+                let bottle = selected_id.and_then(|id| self.bottles.bottle_handle(id));
+                let bottle_state = selected_id.and_then(|id| self.bottles.bottle_state(id));
                 let ctx = crate::features::settings::Context {
                     bottle,
                     bottle_state,
@@ -551,7 +405,7 @@ impl State {
                 let task = self.settings.update(message, &ctx).map(Message::Settings);
 
                 if is_wrapper_updated_ok {
-                    self.refresh_bottle_states();
+                    self.bottles.refresh_states();
                 }
 
                 return task;
@@ -902,21 +756,10 @@ impl State {
                 self.library_state = LibraryState::Failed(err.clone());
                 eprintln!("failed to watch library: {err}");
             }
-            Message::OpenMenu
-            | Message::TogglePower
-            | Message::ProgramLaunched(Ok(_))
-            | Message::Noop => {}
+            Message::OpenMenu | Message::TogglePower | Message::Noop => {}
         }
 
         Task::none()
-    }
-
-    fn refresh_bottle_states(&mut self) {
-        self.bottle_states = self
-            .bottle_list
-            .iter()
-            .filter_map(|bottle| bottle.state().ok())
-            .collect();
     }
 
     fn selected_bottle_handle(&self) -> Option<Bottle> {
@@ -924,10 +767,7 @@ impl State {
             return None;
         };
 
-        self.bottle_list
-            .iter()
-            .find(|bottle| bottle.state().is_ok_and(|state| state.id() == id))
-            .cloned()
+        self.bottles.bottle_handle(id)
     }
 
     fn selected_bottle_state(&self) -> Option<&Arc<BottleState>> {
@@ -935,7 +775,7 @@ impl State {
             return None;
         };
 
-        self.bottle_states.iter().find(|state| state.id() == id)
+        self.bottles.bottle_state(id)
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -951,9 +791,11 @@ impl State {
 
         let mut subscriptions = vec![keys];
 
-        if let Some(bottles) = &self.bottles {
-            let handle = BottleManagerHandle(bottles.bottles().clone());
-            subscriptions.push(Subscription::run_with(handle, bottle_events));
+        if let Some(handle) = self.bottles.bottle_manager_handle() {
+            subscriptions.push(
+                Subscription::run_with(handle, crate::features::bottles::bottle_events)
+                    .map(Message::Bottles),
+            );
         }
 
         if let Some(handle) = self.profile_manager.clone() {
@@ -1028,25 +870,7 @@ impl State {
             .middle(tabs)
             .end(self.profile_switcher());
         let content: Element<'_, Message> = match self.primary_tab {
-            PrimaryTab::Bottles => {
-                let columns =
-                    usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
-                let rows = self.bottle_states.iter().fold(
-                    RowGroup::new().columns(columns),
-                    |rows, state| {
-                        rows.add(
-                            ActionRow::new(
-                                state.name(),
-                                ActionRowState::Ready(Message::BottleSelected(state.id())),
-                            )
-                            .description(state.runner().name())
-                            .icon(Icon::Bottles),
-                        )
-                    },
-                );
-
-                container(rows).max_width(1150).into()
-            }
+            PrimaryTab::Bottles => self.bottles.rows_view(width, mode, Message::BottleSelected),
             PrimaryTab::Library => self.library_view(width, mode),
         };
 
@@ -1226,53 +1050,14 @@ impl State {
             .end(header_button(
                 "Create bottle",
                 Icon::Checkmark,
-                Message::CreateBottle,
+                Message::Bottles(crate::features::bottles::Message::CreateBottle),
             ));
-        let content = column![
-            TextRow::new("Bottle Name", &self.bottle_name)
-                .icon(Icon::Person)
-                .on_input(Message::BottleNameChanged),
-            SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
-                .icon(Icon::Run)
-                .on_selected(Message::RunnerSelected),
-            SelectorRow::new("Purpose", &PURPOSES, Some(&self.purpose))
-                .on_selected(Message::PurposeSelected),
-            SelectorRow::new("Architecture", &ARCHITECTURES, Some(&self.architecture),)
-                .icon(Icon::Chip)
-                .on_selected(Message::ArchitectureSelected),
-            PickerRow::new("Use Recipe")
-                .description("Choose the location")
-                .on_press(Message::Noop),
-        ]
-        .spacing(12);
+        let content = self.bottles.creation_view().map(Message::Bottles);
 
-        let mut page = column![header, scroll_panel(content)]
+        column![header, scroll_panel(content)]
             .width(Fill)
-            .height(Fill);
-
-        if !self.creation_log.is_empty() {
-            let state = if self.creation_failed {
-                StatusState::Failed
-            } else {
-                StatusState::Starting
-            };
-
-            page = page.push(
-                StatusBar::new(
-                    self.architecture,
-                    self.selected_runner
-                        .as_ref()
-                        .map(|runner| runner.label.as_str())
-                        .unwrap_or_default(),
-                    state,
-                )
-                .log(&self.creation_log)
-                .expanded(self.creation_log_expanded)
-                .on_toggle(Message::ToggleCreationLog),
-            );
-        }
-
-        page.into()
+            .height(Fill)
+            .into()
     }
 
     fn detail_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
@@ -1322,7 +1107,13 @@ impl State {
             bottle_state: self.selected_bottle_state(),
         };
         let content = match self.detail_tab {
-            DetailTab::Programs => self.program_grid(width),
+            DetailTab::Programs => {
+                if let SplitViewState::Bottle(id) = self.split_view_state {
+                    self.bottles.program_grid(id, width).map(Message::Bottles)
+                } else {
+                    column![].into()
+                }
+            }
             DetailTab::Settings => self.settings.view(&settings_ctx).map(Message::Settings),
             DetailTab::Snapshots => self.snapshots.view(width).map(Message::Snapshots),
         };
@@ -1392,32 +1183,6 @@ impl State {
         container(rows).max_width(1150).into()
     }
 
-    fn program_grid(&self, width: f32) -> Element<'_, Message> {
-        let programs = if let SplitViewState::Bottle(bottle_id) = self.split_view_state {
-            self.bottle_states
-                .iter()
-                .find(|state| state.id() == bottle_id)
-                .map(|state| state.programs())
-                .unwrap_or_default()
-        } else {
-            &[]
-        };
-
-        if width >= CONTENT_GRID_BREAKPOINT {
-            Column::with_children(
-                programs
-                    .chunks(2)
-                    .map(|chunk| row(chunk.iter().map(program_card)).spacing(12).into()),
-            )
-            .spacing(12)
-            .into()
-        } else {
-            Column::with_children(programs.iter().map(program_card))
-                .spacing(12)
-                .into()
-        }
-    }
-
     fn profile_switcher(&self) -> Element<'_, Message> {
         let label = self
             .active_profile
@@ -1475,32 +1240,6 @@ fn storefront_icon(storefront: Storefront) -> Icon {
     }
 }
 
-fn timestamp() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default();
-
-    format!(
-        "{:02}:{:02}:{:02}",
-        (seconds / 3600) % 24,
-        (seconds / 60) % 60,
-        seconds % 60
-    )
-}
-
-fn progress_log_line(progress: &Progress) -> String {
-    match progress.transfer.as_ref().and_then(|_| progress.fraction()) {
-        Some(fraction) => format!(
-            "{} {} ({:.0}%)",
-            timestamp(),
-            progress.stage,
-            fraction * 100.0
-        ),
-        None => format!("{} {}", timestamp(), progress.stage),
-    }
-}
-
 fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
     if let Some(existing) = profiles
         .iter_mut()
@@ -1551,14 +1290,6 @@ fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Messag
         .icon_size(16.0)
         .kind(ButtonKind::Transparent)
         .on_press(message)
-}
-
-fn program_card(program: &bottles_core::Program) -> Element<'_, Message> {
-    ArtworkCard::new(&program.name, &program.executable)
-        .secondary(CardAction::new("Settings", Icon::Gear).on_press(Message::Noop))
-        .primary(CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram(program.id)))
-        .banner(sample_image(program.id))
-        .into()
 }
 
 fn login_dialog(login: &LoginChallenge) -> Element<'_, Message> {
@@ -1790,19 +1521,4 @@ fn auth_state_label(state: i32) -> &'static str {
         AuthState::Inactive => "Signed out",
         AuthState::Unspecified => "Unknown",
     }
-}
-
-fn sample_image(id: Uuid) -> image::Handle {
-    let seed = id.as_bytes()[0] % 16;
-    let first = [45 + seed * 5, 50 + seed * 3, 65 + seed * 4];
-    let second = [first[2], first[0] + 20, first[1] + 10];
-
-    image::Handle::from_rgba(
-        2,
-        2,
-        vec![
-            first[0], first[1], first[2], 255, second[0], second[1], second[2], 255, second[0],
-            second[1], second[2], 255, first[0], first[1], first[2], 255,
-        ],
-    )
 }
