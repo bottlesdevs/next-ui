@@ -22,12 +22,12 @@ use iced::{
     widget::{center, column, container, mouse_area, opaque, scrollable, stack, svg, text},
 };
 use next_proto::bottles::{
+    accounts::v1::{LinkAccountRequest, accounts_client::AccountsClient},
     common::v1::{AuthState, Storefront},
-    profiles::v1::{
-        LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient, profile_event,
-    },
+    plugin::v1::{BeginLoginRequest, login_challenge, plugin_client::PluginClient},
+    profiles::v1::{GetProfileRequest, UserProfile, profile_client::ProfileClient, profile_event},
     registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
-    store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
+    steam::v1::SteamLink,
 };
 use next_ui::{
     widgets::{
@@ -790,9 +790,9 @@ fn upsert_profile(profiles: &mut Vec<UserProfile>, profile: UserProfile) {
 /// Resolves `storefront` to its owning plugin via the registry, dials it,
 /// and starts an interactive login. Returns the challenge id (needed to
 /// complete the login later) and the URL the user needs to open — this
-/// mirrors `next-server`'s own `store_client_for` + `BeginLogin` dance
-/// (`crates/next-server/src/profile.rs`), since that resolution isn't
-/// something `next-server`'s `Profile` service proxies for callers.
+/// mirrors `next-server`'s own `plugin_client_for` + `BeginLogin` dance
+/// (`crates/next-server/src/accounts.rs`), since that resolution isn't
+/// something `next-server`'s `Accounts` service proxies for callers.
 async fn begin_login(
     profile_id: String,
     storefront: Storefront,
@@ -810,10 +810,10 @@ async fn begin_login(
     let endpoint = resolved
         .endpoint
         .ok_or_else(|| format!("no {} plugin is running", storefront_label(storefront)))?;
-    let mut store = StoreClient::connect(endpoint)
+    let mut plugin = PluginClient::connect(endpoint)
         .await
         .map_err(|err| err.to_string())?;
-    let challenge = store
+    let challenge = plugin
         .begin_login(BeginLoginRequest {
             profile_id,
             storefront: storefront as i32,
@@ -836,7 +836,7 @@ async fn begin_login(
 }
 
 /// Completes the login started by [`begin_login`] against `next-server`'s
-/// `Profile` service, which resolves the same plugin again to exchange
+/// `Accounts` service, which resolves the same plugin again to exchange
 /// `user_input` and persists the resulting linked account.
 async fn complete_login(
     profile_id: String,
@@ -844,17 +844,26 @@ async fn complete_login(
     storefront: Storefront,
     user_input: String,
 ) -> Result<UserProfile, String> {
-    let mut client = ProfileClient::connect(SERVER_ENDPOINT)
+    let mut accounts = AccountsClient::connect(SERVER_ENDPOINT)
         .await
         .map_err(|err| format!("next-server unavailable: {err}"))?;
 
-    client
+    accounts
         .link_account(LinkAccountRequest {
-            profile_id,
+            profile_id: profile_id.clone(),
             challenge_id,
             storefront: storefront as i32,
             user_input,
         })
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let mut profiles = ProfileClient::connect(SERVER_ENDPOINT)
+        .await
+        .map_err(|err| format!("next-server unavailable: {err}"))?;
+
+    profiles
+        .get_profile(GetProfileRequest { profile_id })
         .await
         .map(|response| response.into_inner())
         .map_err(|err| err.to_string())

@@ -8,10 +8,12 @@
 //! profile manager itself is owned by `features::profiles`.
 
 use next_proto::bottles::{
+    accounts::v1::{LinkAccountRequest, accounts_client::AccountsClient},
     common::v1::{AuthState, Storefront},
-    profiles::v1::{LinkAccountRequest, SteamLink, UserProfile, profile_client::ProfileClient},
+    plugin::v1::{BeginLoginRequest, login_challenge, plugin_client::PluginClient},
+    profiles::v1::UserProfile,
     registry::v1::{ResolvePluginRequest, registry_client::RegistryClient},
-    store::v1::{BeginLoginRequest, login_challenge, store_client::StoreClient},
+    steam::v1::SteamLink,
 };
 
 use crate::{
@@ -549,10 +551,10 @@ async fn begin_login(
     let endpoint = resolved
         .endpoint
         .ok_or_else(|| format!("no {} plugin is running", storefront_label(storefront)))?;
-    let mut store = StoreClient::connect(endpoint)
+    let mut plugin = PluginClient::connect(endpoint)
         .await
         .map_err(|err| err.to_string())?;
-    let challenge = store
+    let challenge = plugin
         .begin_login(BeginLoginRequest {
             profile_id,
             storefront: storefront as i32,
@@ -580,17 +582,28 @@ async fn complete_login(
     storefront: Storefront,
     user_input: String,
 ) -> Result<UserProfile, String> {
-    let mut client = ProfileClient::connect(SERVER_ENDPOINT)
+    let mut accounts = AccountsClient::connect(SERVER_ENDPOINT)
         .await
         .map_err(|err| format!("next-server unavailable: {err}"))?;
 
-    client
+    accounts
         .link_account(LinkAccountRequest {
-            profile_id,
+            profile_id: profile_id.clone(),
             challenge_id,
             storefront: storefront as i32,
             user_input,
         })
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let mut profiles = next_proto::bottles::profiles::v1::profile_client::ProfileClient::connect(
+        SERVER_ENDPOINT,
+    )
+    .await
+    .map_err(|err| format!("next-server unavailable: {err}"))?;
+
+    profiles
+        .get_profile(next_proto::bottles::profiles::v1::GetProfileRequest { profile_id })
         .await
         .map(|response| response.into_inner())
         .map_err(|err| err.to_string())
