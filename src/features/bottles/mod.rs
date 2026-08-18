@@ -257,7 +257,12 @@ impl State {
 
     pub fn launch_program(&self, bottle: Bottle, program_id: Uuid) -> Task<Message> {
         Task::perform(
-            async move { bottle.run(program_id).await.map_err(|err| err.to_string()) },
+            async move {
+                bottle
+                    .launch_program(program_id)
+                    .await
+                    .map_err(|err| err.to_string())
+            },
             Message::ProgramLaunched,
         )
     }
@@ -334,19 +339,19 @@ impl State {
             .bottle_states
             .iter()
             .find(|state| state.id() == id)
-            .map(|state| state.programs())
+            .map(|state| state.programs().collect::<Vec<_>>())
             .unwrap_or_default();
 
         if width >= CONTENT_GRID_BREAKPOINT {
             Column::with_children(
                 programs
                     .chunks(2)
-                    .map(|chunk| row(chunk.iter().map(program_card)).spacing(12).into()),
+                    .map(|chunk| row(chunk.iter().copied().map(program_card)).spacing(12).into()),
             )
             .spacing(12)
             .into()
         } else {
-            Column::with_children(programs.iter().map(program_card))
+            Column::with_children(programs.iter().copied().map(program_card))
                 .spacing(12)
                 .into()
         }
@@ -354,10 +359,12 @@ impl State {
 }
 
 fn program_card(program: &bottles_core::Program) -> Element<'_, Message> {
-    ArtworkCard::new(&program.name, &program.executable)
+    ArtworkCard::new(program.name(), program.executable())
         .secondary(CardAction::new("Settings", Icon::Gear).on_press(Message::Noop))
-        .primary(CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram(program.id)))
-        .banner(sample_image(program.id))
+        .primary(
+            CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram(program.id())),
+        )
+        .banner(sample_image(program.id()))
         .into()
 }
 
