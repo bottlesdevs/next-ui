@@ -15,14 +15,14 @@
 
 use std::sync::Arc;
 
-use bottles_core::profile::ProfileManager;
+use bottles_core::{accounts::AccountManager, profile::ProfileManager, steam::SteamManager};
 use iced::{
     Background, ContentFit, Element, Fill, Subscription, Task, Theme,
     futures::StreamExt as _,
     widget::{center, column, container, mouse_area, opaque, scrollable, stack, svg, text},
 };
 use next_proto::bottles::{
-    accounts::v1::{LinkAccountRequest, accounts_client::AccountsClient},
+    accounts::v1::{LinkProfileRequest, accounts_client::AccountsClient},
     common::v1::{AuthState, Storefront},
     plugin::v1::{BeginLoginRequest, login_challenge, plugin_client::PluginClient},
     profiles::v1::{GetProfileRequest, UserProfile, profile_client::ProfileClient, profile_event},
@@ -73,11 +73,25 @@ fn main() -> iced::Result {
 }
 
 #[derive(Clone)]
-struct ManagerHandle(Arc<ProfileManager>);
+struct ManagerHandle {
+    profile: Arc<ProfileManager>,
+    accounts: Arc<AccountManager>,
+    steam: Arc<SteamManager>,
+}
 
 impl std::hash::Hash for ManagerHandle {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (Arc::as_ptr(&self.0) as usize).hash(state);
+        (Arc::as_ptr(&self.profile) as usize).hash(state);
+    }
+}
+
+impl ManagerHandle {
+    fn new(profile: Arc<ProfileManager>) -> Self {
+        Self {
+            accounts: Arc::new(AccountManager::new((*profile).clone())),
+            steam: Arc::new(SteamManager::new((*profile).clone())),
+            profile,
+        }
     }
 }
 
@@ -173,7 +187,7 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ManagerLoaded(Ok(manager)) => {
-                self.manager = Some(ManagerHandle(manager.clone()));
+                self.manager = Some(ManagerHandle::new(manager.clone()));
 
                 return Task::perform(
                     async move {
@@ -185,7 +199,7 @@ impl App {
                                 .await
                                 .map_err(|err| err.to_string())?;
                             manager
-                                .apply_activation(&profile.id, Default::default())
+                                .activate(&profile.id)
                                 .await
                                 .map_err(|err| err.to_string())?;
                             Ok(manager.list().await)
@@ -271,8 +285,8 @@ impl App {
                     return Task::perform(
                         async move {
                             handle
-                                .0
-                                .apply_activation(&id, Default::default())
+                                .profile
+                                .activate(&id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -287,13 +301,13 @@ impl App {
                     return Task::perform(
                         async move {
                             let profile = handle
-                                .0
+                                .profile
                                 .create("New profile".into(), "person".into())
                                 .await
                                 .map_err(|err| err.to_string())?;
                             handle
-                                .0
-                                .apply_activation(&profile.id, Default::default())
+                                .profile
+                                .activate(&profile.id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -308,7 +322,7 @@ impl App {
                     return Task::perform(
                         async move {
                             handle
-                                .0
+                                .profile
                                 .rename(&active.id, name)
                                 .await
                                 .map_err(|err| err.to_string())
@@ -320,7 +334,7 @@ impl App {
             Message::DeleteProfile(id) => {
                 if let Some(handle) = self.manager.clone() {
                     return Task::perform(
-                        async move { handle.0.delete(&id).await.map_err(|err| err.to_string()) },
+                        async move { handle.profile.delete(&id).await.map_err(|err| err.to_string()) },
                         Message::ProfileDeleted,
                     );
                 }
@@ -332,11 +346,13 @@ impl App {
             Message::ProfileDeleted(Ok(())) => {}
             Message::UnlinkAccount(storefront) => {
                 if let (Some(handle), Some(active)) = (self.manager.clone(), self.active.clone()) {
+                    let storefront = Storefront::try_from(storefront).unwrap_or_default();
+
                     return Task::perform(
                         async move {
                             handle
-                                .0
-                                .unlink_account(&active.id, storefront)
+                                .accounts
+                                .unlink_profile(&active.id, storefront)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -406,8 +422,13 @@ impl App {
                     return Task::perform(
                         async move {
                             handle
-                                .0
-                                .unlink_steam(&active.id)
+                                .steam
+                                .unlink_account(&active.id)
+                                .await
+                                .map_err(|err| err.to_string())?;
+                            handle
+                                .profile
+                                .get(&active.id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -422,14 +443,19 @@ impl App {
                     return Task::perform(
                         async move {
                             handle
-                                .0
-                                .link_steam(
+                                .steam
+                                .link_account(
                                     &active.id,
                                     SteamLink {
                                         steam_id64,
                                         account_name,
                                     },
                                 )
+                                .await
+                                .map_err(|err| err.to_string())?;
+                            handle
+                                .profile
+                                .get(&active.id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -714,7 +740,7 @@ fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Mes
 fn profile_events(
     handle: &ManagerHandle,
 ) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
-    let manager = handle.0.clone();
+    let manager = handle.profile.clone();
 
     Box::pin(
         manager
@@ -849,7 +875,7 @@ async fn complete_login(
         .map_err(|err| format!("next-server unavailable: {err}"))?;
 
     accounts
-        .link_account(LinkAccountRequest {
+        .link_profile(LinkProfileRequest {
             profile_id: profile_id.clone(),
             challenge_id,
             storefront: storefront as i32,

@@ -7,8 +7,9 @@
 //! `ProfileManagerHandle` to perform account/Steam mutations, since the
 //! profile manager itself is owned by `features::profiles`.
 
+use bottles_core::steam::SteamUser;
 use next_proto::bottles::{
-    accounts::v1::{LinkAccountRequest, accounts_client::AccountsClient},
+    accounts::v1::{LinkProfileRequest, accounts_client::AccountsClient},
     common::v1::{AuthState, Storefront},
     plugin::v1::{BeginLoginRequest, login_challenge, plugin_client::PluginClient},
     profiles::v1::UserProfile,
@@ -17,6 +18,9 @@ use next_proto::bottles::{
 };
 
 use crate::{
+    features::profiles::ProfileManagerHandle,
+    icons::Icon,
+    theme,
     widgets::{
         button::{Button, ButtonKind},
         info_row::InfoRow,
@@ -28,9 +32,6 @@ use crate::{
         text_row::TextRow,
         title::Title,
     },
-    features::profiles::ProfileManagerHandle,
-    icons::Icon,
-    theme,
 };
 
 const SERVER_ENDPOINT: &str = "http://127.0.0.1:50052";
@@ -79,7 +80,7 @@ struct LoginChallenge {
 pub enum Message {
     ToggleLink,
     ToggleSteam,
-    SteamCandidatesDetected(Vec<bottles_core::steam::SteamUser>),
+    SteamCandidatesDetected(Vec<SteamUser>),
     Dismiss,
     UnlinkAccount(i32),
     BeginLogin(Storefront),
@@ -97,7 +98,7 @@ pub enum Message {
 
 pub struct State {
     link_popover: LinkPopover,
-    steam_candidates: Vec<bottles_core::steam::SteamUser>,
+    steam_candidates: Vec<SteamUser>,
     login_modal: Option<LoginChallenge>,
 }
 
@@ -154,11 +155,13 @@ impl State {
                 if let (Some(handle), Some(active)) =
                     (ctx.profile_manager.clone(), ctx.active_profile.cloned())
                 {
+                    let storefront = Storefront::try_from(storefront).unwrap_or_default();
+
                     return iced::Task::perform(
                         async move {
                             handle
-                                .manager()
-                                .unlink_account(&active.id, storefront)
+                                .accounts()
+                                .unlink_profile(&active.id, storefront)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -232,8 +235,13 @@ impl State {
                     return iced::Task::perform(
                         async move {
                             handle
+                                .steam()
+                                .unlink_account(&active.id)
+                                .await
+                                .map_err(|err| err.to_string())?;
+                            handle
                                 .manager()
-                                .unlink_steam(&active.id)
+                                .get(&active.id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -250,14 +258,19 @@ impl State {
                     return iced::Task::perform(
                         async move {
                             handle
-                                .manager()
-                                .link_steam(
+                                .steam()
+                                .link_account(
                                     &active.id,
                                     SteamLink {
                                         steam_id64,
                                         account_name,
                                     },
                                 )
+                                .await
+                                .map_err(|err| err.to_string())?;
+                            handle
+                                .manager()
+                                .get(&active.id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
@@ -310,9 +323,10 @@ impl State {
         let link_trigger = PickerRow::new("Link a storefront account")
             .description("Choose the account to connect")
             .on_press(Message::ToggleLink);
-        let mut link_popover = Popover::new(link_trigger, self.link_popover == LinkPopover::Storefront)
-            .on_dismiss(Message::Dismiss)
-            .footer("Not listed, install manually", Message::Noop);
+        let mut link_popover =
+            Popover::new(link_trigger, self.link_popover == LinkPopover::Storefront)
+                .on_dismiss(Message::Dismiss)
+                .footer("Not listed, install manually", Message::Noop);
 
         for storefront in STOREFRONTS {
             if active
@@ -587,7 +601,7 @@ async fn complete_login(
         .map_err(|err| format!("next-server unavailable: {err}"))?;
 
     accounts
-        .link_account(LinkAccountRequest {
+        .link_profile(LinkProfileRequest {
             profile_id: profile_id.clone(),
             challenge_id,
             storefront: storefront as i32,
@@ -596,11 +610,10 @@ async fn complete_login(
         .await
         .map_err(|err| err.to_string())?;
 
-    let mut profiles = next_proto::bottles::profiles::v1::profile_client::ProfileClient::connect(
-        SERVER_ENDPOINT,
-    )
-    .await
-    .map_err(|err| format!("next-server unavailable: {err}"))?;
+    let mut profiles =
+        next_proto::bottles::profiles::v1::profile_client::ProfileClient::connect(SERVER_ENDPOINT)
+            .await
+            .map_err(|err| format!("next-server unavailable: {err}"))?;
 
     profiles
         .get_profile(next_proto::bottles::profiles::v1::GetProfileRequest { profile_id })

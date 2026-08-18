@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use bottles_core::profile::ProfileManager;
+use bottles_core::{accounts::AccountManager, profile::ProfileManager, steam::SteamManager};
 use iced::{
     Element, Task,
     futures::StreamExt as _,
@@ -31,27 +31,47 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct ProfileManagerHandle(pub(crate) Arc<ProfileManager>);
+pub struct ProfileManagerHandle {
+    profile: Arc<ProfileManager>,
+    accounts: Arc<AccountManager>,
+    steam: Arc<SteamManager>,
+}
 
 impl std::hash::Hash for ProfileManagerHandle {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (Arc::as_ptr(&self.0) as usize).hash(state);
+        (Arc::as_ptr(&self.profile) as usize).hash(state);
     }
 }
 
 impl ProfileManagerHandle {
+    fn new(profile: Arc<ProfileManager>) -> Self {
+        Self {
+            accounts: Arc::new(AccountManager::new((*profile).clone())),
+            steam: Arc::new(SteamManager::new((*profile).clone())),
+            profile,
+        }
+    }
+
     /// Exposes the underlying manager for other features (namely
     /// `features::accounts`) that need to issue mutations but don't own
     /// the manager themselves.
     pub fn manager(&self) -> &Arc<ProfileManager> {
-        &self.0
+        &self.profile
+    }
+
+    pub fn accounts(&self) -> &Arc<AccountManager> {
+        &self.accounts
+    }
+
+    pub fn steam(&self) -> &Arc<SteamManager> {
+        &self.steam
     }
 }
 
 pub fn profile_events(
     handle: &ProfileManagerHandle,
 ) -> std::pin::Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
-    let manager = handle.0.clone();
+    let manager = handle.profile.clone();
 
     Box::pin(
         manager
@@ -153,7 +173,7 @@ impl State {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ProfileManagerLoaded(Ok(manager)) => {
-                self.profile_manager = Some(ProfileManagerHandle(manager.clone()));
+                self.profile_manager = Some(ProfileManagerHandle::new(manager.clone()));
                 let list_manager = manager.clone();
 
                 let activate = Task::perform(
@@ -220,7 +240,7 @@ impl State {
                         return Task::perform(
                             async move {
                                 handle
-                                    .0
+                                    .profile
                                     .activate(&fallback.id)
                                     .await
                                     .map_err(|err| err.to_string())
@@ -237,7 +257,7 @@ impl State {
             Message::ActivateProfile(id) => {
                 if let Some(handle) = self.profile_manager.clone() {
                     return Task::perform(
-                        async move { handle.0.activate(&id).await.map_err(|err| err.to_string()) },
+                        async move { handle.profile.activate(&id).await.map_err(|err| err.to_string()) },
                         Message::ProfileUpdated,
                     );
                 }
@@ -266,12 +286,12 @@ impl State {
                     return Task::perform(
                         async move {
                             let profile = handle
-                                .0
+                                .profile
                                 .create(name, "person".into())
                                 .await
                                 .map_err(|err| err.to_string())?;
                             handle
-                                .0
+                                .profile
                                 .activate(&profile.id)
                                 .await
                                 .map_err(|err| err.to_string())
@@ -297,7 +317,7 @@ impl State {
                     return Task::perform(
                         async move {
                             handle
-                                .0
+                                .profile
                                 .rename(&active.id, name)
                                 .await
                                 .map_err(|err| err.to_string())
@@ -309,7 +329,7 @@ impl State {
             Message::DeleteProfile(id) => {
                 if let Some(handle) = self.profile_manager.clone() {
                     return Task::perform(
-                        async move { handle.0.delete(&id).await.map_err(|err| err.to_string()) },
+                        async move { handle.profile.delete(&id).await.map_err(|err| err.to_string()) },
                         Message::ProfileDeleted,
                     );
                 }
