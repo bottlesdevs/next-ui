@@ -131,7 +131,7 @@ impl State {
     pub fn boot() -> Task<Message> {
         Task::perform(
             async {
-                ProfileManager::new()
+                ProfileManager::open()
                     .await
                     .map(Arc::new)
                     .map_err(|err| err.to_string())

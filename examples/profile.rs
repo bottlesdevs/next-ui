@@ -161,7 +161,7 @@ impl App {
         };
         let boot = Task::perform(
             async {
-                ProfileManager::new()
+                ProfileManager::open()
                     .await
                     .map(Arc::new)
                     .map_err(|err| err.to_string())
