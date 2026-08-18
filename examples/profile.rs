@@ -30,6 +30,8 @@ use next_proto::bottles::{
     steam::v1::SteamLink,
 };
 use next_ui::{
+    icons::Icon,
+    theme,
     widgets::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
@@ -42,8 +44,6 @@ use next_ui::{
         title::Title,
         window_frame,
     },
-    icons::Icon,
-    theme,
 };
 
 const STOREFRONTS: &[Storefront] = &[
@@ -147,7 +147,7 @@ impl App {
         };
         let boot = Task::perform(
             async {
-                ProfileManager::load()
+                ProfileManager::new()
                     .await
                     .map(Arc::new)
                     .map_err(|err| err.to_string())
@@ -718,7 +718,7 @@ fn profile_events(
 
     Box::pin(
         manager
-            .watch()
+            .watch_active_profile()
             .filter_map(|event| async move { event.event.map(Message::ProfileEvent) }),
     )
 }

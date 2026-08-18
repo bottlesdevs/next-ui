@@ -21,13 +21,13 @@ use iced::{
 use next_proto::bottles::profiles::v1::{UserProfile, profile_event};
 
 use crate::{
+    icons::Icon,
     widgets::{
         button::{Button, ButtonKind},
         popover::{Popover, PopoverItem},
         text_row::TextRow,
         title::Title,
     },
-    icons::Icon,
 };
 
 #[derive(Clone)]
@@ -55,7 +55,7 @@ pub fn profile_events(
 
     Box::pin(
         manager
-            .watch()
+            .watch_active_profile()
             .filter_map(|event| async move { event.event.map(Message::ProfileEvent) }),
     )
 }
@@ -111,7 +111,7 @@ impl State {
     pub fn boot() -> Task<Message> {
         Task::perform(
             async {
-                ProfileManager::load()
+                ProfileManager::new()
                     .await
                     .map(Arc::new)
                     .map_err(|err| err.to_string())
@@ -172,7 +172,7 @@ impl State {
                         };
 
                         manager
-                            .apply_activation(&profile.id, Default::default())
+                            .activate(&profile.id)
                             .await
                             .map_err(|err| err.to_string())
                     },
@@ -221,7 +221,7 @@ impl State {
                             async move {
                                 handle
                                     .0
-                                    .apply_activation(&fallback.id, Default::default())
+                                    .activate(&fallback.id)
                                     .await
                                     .map_err(|err| err.to_string())
                             },
@@ -237,13 +237,7 @@ impl State {
             Message::ActivateProfile(id) => {
                 if let Some(handle) = self.profile_manager.clone() {
                     return Task::perform(
-                        async move {
-                            handle
-                                .0
-                                .apply_activation(&id, Default::default())
-                                .await
-                                .map_err(|err| err.to_string())
-                        },
+                        async move { handle.0.activate(&id).await.map_err(|err| err.to_string()) },
                         Message::ProfileUpdated,
                     );
                 }
@@ -278,7 +272,7 @@ impl State {
                                 .map_err(|err| err.to_string())?;
                             handle
                                 .0
-                                .apply_activation(&profile.id, Default::default())
+                                .activate(&profile.id)
                                 .await
                                 .map_err(|err| err.to_string())
                         },
