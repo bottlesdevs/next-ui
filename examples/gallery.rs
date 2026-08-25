@@ -129,11 +129,11 @@ impl Gallery {
 
     fn view(&self) -> Element<'_, Message> {
         let headings = column![
-            text("Heading 1").h1(),
-            text("Heading 2").h2(),
+            text("Heading 1").size(72),
+            text("Heading 2").size(64),
             text("Heading 3").h3(),
             text("Heading 4").h4(),
-            text("Heading 5").h5(),
+            text("Heading 5").size(40),
         ]
         .spacing(6);
 
