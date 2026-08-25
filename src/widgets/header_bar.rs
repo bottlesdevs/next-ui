@@ -8,8 +8,8 @@ use crate::{icons::Icon, theme};
 use super::{
     button::{Button, ButtonKind},
     spacing,
-    window_frame::Action,
 };
+use crate::ui::chrome::Action;
 
 const HEIGHT: f32 = 64.0;
 
@@ -64,7 +64,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
         } = header;
 
         if show_window_controls {
-            let close = window_control(on_action(Action::Close));
+            let close = window_control(on_action(Action::RequestClose));
 
             if cfg!(target_os = "macos") {
                 start.insert(0, close);
