@@ -1,0 +1,882 @@
+//! The complete Classic experience: routes, dialogs, read models, and workflows.
+//!
+//! A future Next experience is a sibling of this module and cannot access these
+//! private workflow modules.
+
+use std::sync::Arc;
+
+mod accounts;
+mod bottles;
+mod library;
+mod profiles;
+mod settings;
+#[cfg(feature = "fvs")]
+mod snapshots;
+
+use crate::{
+    Experience,
+    icons::Icon,
+    theme,
+    ui::chrome,
+    widgets::{
+        action_row::{ActionRow, State as ActionRowState},
+        button::{Button, ButtonKind},
+        header_bar::HeaderBar,
+        row_group::RowGroup,
+        split_view::{PaneMode, PaneSide, SplitView},
+        tabs::{Tab, Tabs},
+        text_row::TextRow,
+        title::Title,
+    },
+};
+use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
+use iced::{
+    Background, Element, Fill, Padding, Subscription, Task, Theme,
+    keyboard::{self, key},
+    theme::Mode as ThemeMode,
+    widget::{center, column, container, mouse_area, opaque, scrollable, stack},
+};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrimaryTab {
+    Bottles,
+    Library,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailTab {
+    Programs,
+    Settings,
+    #[cfg(feature = "fvs")]
+    Snapshots,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Route {
+    Bottles,
+    Bottle { id: Uuid, tab: DetailTab },
+    NewBottle,
+    Library,
+    Profiles { return_to: PrimaryTab },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dialog {
+    NewProfile,
+    AccountLogin,
+}
+
+struct ReadModel {
+    bottles: Vec<Bottle>,
+    bottle_states: Vec<Arc<BottleState>>,
+    profiles: Arc<ProfilesConfig>,
+}
+
+impl ReadModel {
+    fn new(bottle_manager: &BottleManager, profiles: &Profiles) -> Self {
+        let bottles = bottle_manager.list();
+        let bottle_states = bottles
+            .iter()
+            .filter_map(|bottle| bottle.state().ok())
+            .collect();
+
+        Self {
+            bottles,
+            bottle_states,
+            profiles: profiles.snapshot(),
+        }
+    }
+
+    fn set_bottles(&mut self, bottles: Vec<Bottle>) -> bool {
+        if self.bottles.len() == bottles.len()
+            && self
+                .bottles
+                .iter()
+                .zip(&bottles)
+                .all(|(current, next)| current.id() == next.id())
+        {
+            return false;
+        }
+        self.bottle_states = bottles
+            .iter()
+            .filter_map(|bottle| bottle.state().ok())
+            .collect();
+        self.bottles = bottles;
+        true
+    }
+
+    fn set_bottle_state(&mut self, state: Arc<BottleState>) -> bool {
+        if let Some(current) = self
+            .bottle_states
+            .iter_mut()
+            .find(|current| current.id() == state.id())
+        {
+            if current.as_ref() == state.as_ref() {
+                return false;
+            }
+            *current = state;
+        } else {
+            self.bottle_states.push(state);
+        }
+        true
+    }
+
+    fn bottle(&self, id: Uuid) -> Option<Bottle> {
+        self.bottles
+            .iter()
+            .find(|bottle| bottle.id() == id)
+            .cloned()
+    }
+
+    fn bottle_state(&self, id: Uuid) -> Option<&Arc<BottleState>> {
+        self.bottle_states.iter().find(|state| state.id() == id)
+    }
+}
+
+pub struct State {
+    route: Route,
+    dialog: Option<Dialog>,
+    read_model: ReadModel,
+    bottles: bottles::State,
+    #[cfg(feature = "fvs")]
+    snapshots: snapshots::State,
+    profiles: profiles::State,
+    library: library::State,
+    accounts: accounts::State,
+    settings: settings::State,
+    system_theme: ThemeMode,
+    draining: bool,
+}
+
+#[derive(Clone)]
+pub enum Message {
+    PrimaryTabSelected(PrimaryTab),
+    DetailTabSelected(DetailTab),
+    BottleSelected(Uuid),
+    Back,
+    AddBottle,
+    CancelBottle,
+    OpenMenu,
+    TogglePower,
+    #[allow(dead_code)] // Constructed when the disabled Next settings row is enabled.
+    RequestExperience(Experience),
+    Window(chrome::Action),
+    MoveFocus(bool),
+    Bottles(bottles::Message),
+    Settings(settings::Message),
+    #[cfg(feature = "fvs")]
+    Snapshots(snapshots::Message),
+    Library(library::Message),
+    Profiles(profiles::Message),
+    Accounts(accounts::Message),
+    BottleListChanged(Vec<Bottle>),
+    BottleStateChanged(Arc<BottleState>),
+    ProfilesChanged(Arc<ProfilesConfig>),
+    SystemThemeChanged(ThemeMode),
+}
+
+impl Message {
+    fn allowed_while_draining(&self) -> bool {
+        match self {
+            Self::Bottles(
+                bottles::Message::BottleCreation(_) | bottles::Message::ProgramLaunched(_),
+            )
+            | Self::Library(
+                library::Message::Entry { .. }
+                | library::Message::Loaded(_)
+                | library::Message::Launched(_),
+            )
+            | Self::Profiles(
+                profiles::Message::ProfileUpdated { .. } | profiles::Message::ProfileDeleted { .. },
+            )
+            | Self::Accounts(accounts::Message::ProfileUpdated(_))
+            | Self::BottleListChanged(_)
+            | Self::BottleStateChanged(_)
+            | Self::ProfilesChanged(_)
+            | Self::SystemThemeChanged(_) => true,
+            #[cfg(target_os = "linux")]
+            Self::Settings(settings::Message::WrapperUpdated { .. }) => true,
+            #[cfg(feature = "fvs")]
+            Self::Snapshots(snapshots::Message::Loaded { .. }) => true,
+            _ => false,
+        }
+    }
+}
+
+impl State {
+    pub fn new(core: &Bottles) -> (Self, Task<Message>) {
+        let bottle_manager = core.bottles().clone();
+        let profiles_manager = core.profiles().clone();
+        let read_model = ReadModel::new(&bottle_manager, &profiles_manager);
+        let profiles = profiles::State::new(profiles_manager, read_model.profiles.selected());
+        let mut library = library::State::new(core.library().clone());
+        let library_boot = library.reload().map(Message::Library);
+
+        let state = Self {
+            route: Route::Bottles,
+            dialog: None,
+            read_model,
+            bottles: bottles::State::new(bottle_manager, core.addons()),
+            #[cfg(feature = "fvs")]
+            snapshots: snapshots::State::new(),
+            profiles,
+            library,
+            accounts: accounts::State::new(),
+            settings: settings::State::new(),
+            system_theme: ThemeMode::default(),
+            draining: false,
+        };
+        let theme_boot = iced::system::theme().map(Message::SystemThemeChanged);
+
+        (state, Task::batch([library_boot, theme_boot]))
+    }
+
+    fn reload_library(&mut self) -> Task<Message> {
+        if self.draining {
+            return Task::none();
+        }
+        self.library.reload().map(Message::Library)
+    }
+
+    fn primary_tab(&self) -> PrimaryTab {
+        match self.route {
+            Route::Library
+            | Route::Profiles {
+                return_to: PrimaryTab::Library,
+            } => PrimaryTab::Library,
+            _ => PrimaryTab::Bottles,
+        }
+    }
+
+    pub fn theme(&self) -> Theme {
+        theme::BottlesTheme::for_mode(self.system_theme).theme
+    }
+
+    pub fn experience(&self) -> Experience {
+        Experience::Classic
+    }
+
+    pub fn has_active_operations(&self) -> bool {
+        let active = self.bottles.has_active_operation()
+            || self.profiles.has_active_operation()
+            || self.accounts.has_active_operation()
+            || self.settings.has_active_operation()
+            || self.library.has_active_operation();
+        #[cfg(feature = "fvs")]
+        let active = active || self.snapshots.has_active_operation();
+        active
+    }
+
+    pub fn cancel_active_operations(&mut self) {
+        self.draining = true;
+        self.bottles.cancel_creation();
+        self.accounts.close_login();
+        self.library.cancel_active_operations();
+        #[cfg(feature = "fvs")]
+        self.snapshots.cancel_active_operations();
+    }
+
+    pub fn resume_after_failed_switch(&mut self) -> Task<Message> {
+        self.draining = false;
+        let library = self.reload_library();
+        #[cfg(feature = "fvs")]
+        if let Some(bottle) = self.selected_bottle_handle() {
+            let snapshots = self.snapshots.load(bottle).map(Message::Snapshots);
+            return Task::batch([library, snapshots]);
+        }
+        library
+    }
+
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        if self.draining && !message.allowed_while_draining() {
+            return Task::none();
+        }
+        match message {
+            Message::PrimaryTabSelected(tab) => {
+                self.route = match tab {
+                    PrimaryTab::Bottles => Route::Bottles,
+                    PrimaryTab::Library => Route::Library,
+                };
+                if tab == PrimaryTab::Library {
+                    return self.reload_library();
+                }
+            }
+            Message::DetailTabSelected(tab) => {
+                if let Route::Bottle { id, .. } = self.route {
+                    self.route = Route::Bottle { id, tab };
+                }
+            }
+            Message::BottleSelected(id) => {
+                self.route = Route::Bottle {
+                    id,
+                    tab: DetailTab::Programs,
+                };
+                #[cfg(feature = "fvs")]
+                self.snapshots.clear();
+
+                #[cfg(feature = "fvs")]
+                if let Some(bottle) = self.selected_bottle_handle() {
+                    return self.snapshots.load(bottle).map(Message::Snapshots);
+                }
+            }
+            Message::Back => {
+                self.dialog = None;
+                self.accounts.close_login();
+                self.route = match self.route {
+                    Route::Profiles { return_to } => match return_to {
+                        PrimaryTab::Bottles => Route::Bottles,
+                        PrimaryTab::Library => Route::Library,
+                    },
+                    _ => Route::Bottles,
+                };
+            }
+            Message::AddBottle => {
+                self.route = Route::NewBottle;
+                self.bottles.reset_creation();
+            }
+            Message::CancelBottle => {
+                self.bottles.cancel_creation();
+                self.route = Route::Bottles;
+            }
+            Message::Window(action) => return action.task().unwrap_or_else(Task::none),
+            Message::MoveFocus(previous) => {
+                return if previous {
+                    iced::widget::operation::focus_previous()
+                } else {
+                    iced::widget::operation::focus_next()
+                };
+            }
+            Message::Bottles(message) => {
+                let (task, output) = self.bottles.update(message);
+                let task = task.map(Message::Bottles);
+                return match output {
+                    Some(bottles::Output::Created) => {
+                        if self.route == Route::NewBottle {
+                            self.route = Route::Bottles;
+                        }
+                        task
+                    }
+                    None => task,
+                };
+            }
+            #[cfg(feature = "fvs")]
+            Message::Snapshots(message) => {
+                return self.snapshots.update(message).map(Message::Snapshots);
+            }
+            Message::Settings(message) => {
+                let selected_id = match self.route {
+                    Route::Bottle { id, .. } => Some(id),
+                    _ => None,
+                };
+                #[cfg(target_os = "linux")]
+                let bottle = selected_id.and_then(|id| self.read_model.bottle(id));
+                let bottle_state = selected_id.and_then(|id| self.read_model.bottle_state(id));
+                let ctx = settings::Context {
+                    #[cfg(target_os = "linux")]
+                    bottle,
+                    bottle_state,
+                };
+                return self.settings.update(message, &ctx).map(Message::Settings);
+            }
+            Message::Profiles(message) => {
+                let (task, output) = self.profiles.update(message);
+                let task = task.map(Message::Profiles);
+                return match output {
+                    Some(profiles::Output::ToggleSettings) => {
+                        self.route = if let Route::Profiles { return_to } = self.route {
+                            match return_to {
+                                PrimaryTab::Bottles => Route::Bottles,
+                                PrimaryTab::Library => Route::Library,
+                            }
+                        } else {
+                            Route::Profiles {
+                                return_to: self.primary_tab(),
+                            }
+                        };
+                        task
+                    }
+                    Some(profiles::Output::OpenDialog) => {
+                        self.accounts.close_login();
+                        self.dialog = Some(Dialog::NewProfile);
+                        task
+                    }
+                    Some(profiles::Output::CloseDialog) => {
+                        self.dialog = None;
+                        task
+                    }
+                    None => task,
+                };
+            }
+            Message::Accounts(message) => {
+                let ctx = accounts::Context {
+                    active_profile: self.read_model.profiles.selected(),
+                    profiles: self.profiles.manager(),
+                };
+                let (task, output) = self.accounts.update(message, &ctx);
+                let task = task.map(Message::Accounts);
+                return match output {
+                    Some(accounts::Output::OpenDialog) => {
+                        let cancel_new_profile = self
+                            .profiles
+                            .update(profiles::Message::CancelNewProfile)
+                            .0
+                            .map(Message::Profiles);
+                        self.dialog = Some(Dialog::AccountLogin);
+                        Task::batch([task, cancel_new_profile])
+                    }
+                    Some(accounts::Output::CloseDialog) => {
+                        self.dialog = None;
+                        task
+                    }
+                    None => task,
+                };
+            }
+            Message::Library(message) => {
+                let (task, output) = self.library.update(message);
+                return if matches!(output, Some(library::Output::Reload)) {
+                    Task::batch([task.map(Message::Library), self.reload_library()])
+                } else {
+                    task.map(Message::Library)
+                };
+            }
+            Message::BottleListChanged(bottles) => {
+                return if self.read_model.set_bottles(bottles) {
+                    self.reload_library()
+                } else {
+                    Task::none()
+                };
+            }
+            Message::BottleStateChanged(state) => {
+                return if self.read_model.set_bottle_state(state) {
+                    self.reload_library()
+                } else {
+                    Task::none()
+                };
+            }
+            Message::ProfilesChanged(snapshot) => {
+                if self.read_model.profiles == snapshot {
+                    return Task::none();
+                }
+                let selected_changed = {
+                    let current = self.read_model.profiles.selected();
+                    let next = snapshot.selected();
+                    current.id() != next.id() || current.name() != next.name()
+                };
+                if selected_changed {
+                    self.profiles.sync_selected(snapshot.selected());
+                }
+                self.read_model.profiles = snapshot;
+                return self.reload_library();
+            }
+            Message::SystemThemeChanged(mode) => self.system_theme = mode,
+            Message::OpenMenu | Message::TogglePower | Message::RequestExperience(_) => {}
+        }
+
+        Task::none()
+    }
+
+    fn selected_bottle_handle(&self) -> Option<Bottle> {
+        let Route::Bottle { id, .. } = self.route else {
+            return None;
+        };
+
+        self.read_model.bottle(id)
+    }
+
+    fn selected_bottle_state(&self) -> Option<&Arc<BottleState>> {
+        let Route::Bottle { id, .. } = self.route else {
+            return None;
+        };
+
+        self.read_model.bottle_state(id)
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        let keys = keyboard::listen().filter_map(|event| match event {
+            keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(key::Named::Tab),
+                modifiers,
+                repeat: false,
+                ..
+            } => Some(Message::MoveFocus(modifiers.shift())),
+            _ => None,
+        });
+
+        let theme_changes = iced::system::theme_changes().map(Message::SystemThemeChanged);
+
+        let mut subscriptions = vec![keys, theme_changes];
+
+        subscriptions.push(
+            Subscription::run_with(self.bottles.manager().clone(), bottles::bottle_events)
+                .map(Message::BottleListChanged),
+        );
+
+        for bottle in &self.read_model.bottles {
+            subscriptions.push(
+                Subscription::run_with(bottle.clone(), bottles::bottle_state_events)
+                    .map(Message::BottleStateChanged),
+            );
+        }
+
+        subscriptions.push(
+            Subscription::run_with(self.profiles.manager().clone(), profiles::profile_events)
+                .map(Message::ProfilesChanged),
+        );
+
+        Subscription::batch(subscriptions)
+    }
+
+    pub fn view(&self) -> Element<'_, Message> {
+        let split = SplitView::new(
+            |_, _| {
+                SplitView::new(
+                    |width, mode| self.primary_page(width, mode),
+                    |width, mode| self.detail_page(width, mode),
+                )
+                .show_detail(matches!(self.route, Route::Bottle { .. }))
+                .into()
+            },
+            |width, mode| {
+                if matches!(self.route, Route::Profiles { .. }) {
+                    self.profile_settings_page(width, mode)
+                } else {
+                    self.new_bottle_page(width, mode)
+                }
+            },
+        )
+        .side(match self.route {
+            Route::Bottle { .. } | Route::NewBottle => PaneSide::Start,
+            Route::Profiles { .. } => PaneSide::End,
+            Route::Bottles | Route::Library => PaneSide::Start,
+        })
+        .show_detail(matches!(
+            self.route,
+            Route::NewBottle | Route::Profiles { .. }
+        ))
+        .block_master();
+
+        let content = container(split)
+            .width(Fill)
+            .height(Fill)
+            .padding(Padding::ZERO.horizontal(12).bottom(12));
+
+        chrome::WindowFrame::new(content, Message::Window).into()
+    }
+
+    fn primary_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
+        let tabs = Tabs::new(
+            [
+                Tab::new(PrimaryTab::Bottles, "Bottles"),
+                Tab::new(PrimaryTab::Library, "Library"),
+            ],
+            Some(self.primary_tab()),
+            Message::PrimaryTabSelected,
+        );
+        let header = HeaderBar::new(Message::Window)
+            .show_window_controls(if cfg!(target_os = "macos") {
+                mode == PaneMode::Split
+                    || !matches!(self.route, Route::Bottle { .. } | Route::NewBottle)
+            } else {
+                matches!(self.route, Route::Bottles | Route::Library)
+            })
+            .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
+            .middle(tabs)
+            .end(
+                self.profiles
+                    .view_switcher(&self.read_model.profiles)
+                    .map(Message::Profiles),
+            );
+        let content: Element<'_, Message> = match self.primary_tab() {
+            PrimaryTab::Bottles => self.bottles.rows_view(
+                &self.read_model.bottle_states,
+                width,
+                mode,
+                Message::BottleSelected,
+            ),
+            PrimaryTab::Library => self.library.view(width, mode).map(Message::Library),
+        };
+
+        column![header, scroll_panel(content)]
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
+    fn profile_settings_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
+        let header = HeaderBar::new(Message::Window)
+            .show_window_controls(mode == PaneMode::Single || !cfg!(target_os = "macos"))
+            .start(header_button("Cancel", Icon::Arrow, Message::Back))
+            .middle(
+                container(
+                    Title::new("Profile Settings")
+                        .subtitle("Manage your profiles and linked accounts."),
+                )
+                .padding(iced::padding::bottom(12)),
+            )
+            .end(header_button(
+                "New profile",
+                Icon::Plus,
+                Message::Profiles(profiles::Message::ToggleNewProfile),
+            ));
+
+        let content: Element<'_, Message> = {
+            let active = self.read_model.profiles.selected();
+            let accounts_ctx = accounts::Context {
+                active_profile: active,
+                profiles: self.profiles.manager(),
+            };
+            let links = self
+                .accounts
+                .view_links(&accounts_ctx)
+                .map(Message::Accounts);
+
+            column![
+                RowGroup::new()
+                    .title("Experience")
+                    .add(
+                        ActionRow::new("Classic", ActionRowState::Disabled)
+                            .description("Current experience")
+                            .icon(Icon::Checkmark),
+                    )
+                    .add(
+                        ActionRow::new("Next", ActionRowState::Disabled)
+                            .description("Not available yet")
+                            .icon(Icon::Wand),
+                    ),
+                RowGroup::new()
+                    .title("Profile")
+                    .add(
+                        TextRow::new("Profile name", self.profiles.name_draft())
+                            .icon(Icon::Person)
+                            .on_input(|name| {
+                                Message::Profiles(profiles::Message::NameChanged(name))
+                            })
+                            .on_submit(Message::Profiles(profiles::Message::RenameSubmit,)),
+                    )
+                    .add(accounts::action_button_row(
+                        Icon::Cross,
+                        "Delete profile",
+                        "Removes this profile and its linked accounts from this device",
+                        "Delete",
+                        Message::Profiles(profiles::Message::DeleteProfile(active.id(),)),
+                    )),
+                links,
+            ]
+            .spacing(18)
+            .into()
+        };
+        let content: Element<'_, Message> = if let Some(error) = self.profiles.last_error() {
+            column![
+                crate::widgets::info_card::InfoCard::new(
+                    crate::widgets::info_card::Kind::Error,
+                    "Could not update profile",
+                    error,
+                ),
+                content,
+            ]
+            .spacing(18)
+            .into()
+        } else {
+            content
+        };
+
+        let page: Element<'_, Message> = column![header, scroll_panel(content)]
+            .width(Fill)
+            .height(Fill)
+            .into();
+
+        if self.dialog == Some(Dialog::AccountLogin)
+            && let Some(login) = self.accounts.login_dialog()
+        {
+            return modal(
+                page,
+                login.map(Message::Accounts),
+                Message::Accounts(accounts::Message::CancelLogin),
+            );
+        }
+
+        if self.dialog == Some(Dialog::NewProfile)
+            && let Some(draft) = self.profiles.new_profile_draft()
+        {
+            return modal(
+                page,
+                profiles::new_profile_dialog(draft).map(Message::Profiles),
+                Message::Profiles(profiles::Message::CancelNewProfile),
+            );
+        }
+
+        page
+    }
+
+    fn new_bottle_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
+        let header = HeaderBar::new(Message::Window)
+            .show_window_controls(mode == PaneMode::Single || !cfg!(target_os = "macos"))
+            .start(header_button(
+                "Cancel bottle creation",
+                Icon::Arrow,
+                Message::CancelBottle,
+            ))
+            .middle(
+                container(Title::new("New Bottle").subtitle("Creating a new bottle."))
+                    .padding(iced::padding::bottom(12)),
+            )
+            .end(header_button(
+                "Create bottle",
+                Icon::Checkmark,
+                Message::Bottles(bottles::Message::CreateBottle),
+            ));
+        let content = self.bottles.creation_view().map(Message::Bottles);
+
+        column![header, scroll_panel(content)]
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
+    fn detail_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
+        #[cfg(feature = "fvs")]
+        let detail_tabs = [
+            Tab::new(DetailTab::Programs, "Programs"),
+            Tab::new(DetailTab::Settings, "Settings"),
+            Tab::new(DetailTab::Snapshots, "Snapshots"),
+        ];
+        #[cfg(not(feature = "fvs"))]
+        let detail_tabs = [
+            Tab::new(DetailTab::Programs, "Programs"),
+            Tab::new(DetailTab::Settings, "Settings"),
+        ];
+        let tabs = Tabs::new(
+            detail_tabs,
+            Some(match self.route {
+                Route::Bottle { tab, .. } => tab,
+                _ => DetailTab::Programs,
+            }),
+            Message::DetailTabSelected,
+        );
+        let mut header =
+            HeaderBar::new(Message::Window).show_window_controls(if cfg!(target_os = "macos") {
+                matches!(self.route, Route::Bottle { .. } | Route::NewBottle)
+                    && mode == PaneMode::Single
+            } else {
+                matches!(self.route, Route::Bottle { .. })
+            });
+
+        if mode == PaneMode::Single {
+            header = header.start(
+                Button::icon_only("Back to bottles", Icon::Arrow)
+                    .diameter(32.0)
+                    .icon_size(16.0)
+                    .kind(ButtonKind::Transparent)
+                    .on_press(Message::Back),
+            );
+        }
+
+        let header = header
+            .start(header_button(
+                "More actions",
+                Icon::EllipsisVertical,
+                Message::OpenMenu,
+            ))
+            .start(header_button(
+                "Toggle power",
+                Icon::Power,
+                Message::TogglePower,
+            ))
+            .middle(tabs);
+        let settings_ctx = settings::Context {
+            #[cfg(target_os = "linux")]
+            bottle: self.selected_bottle_handle(),
+            bottle_state: self.selected_bottle_state(),
+        };
+        let detail_tab = match self.route {
+            Route::Bottle { tab, .. } => tab,
+            _ => DetailTab::Programs,
+        };
+        let content = match detail_tab {
+            DetailTab::Programs => {
+                if let (Some(bottle), Some(state)) =
+                    (self.selected_bottle_handle(), self.selected_bottle_state())
+                {
+                    self.bottles
+                        .program_grid(bottle, state, width)
+                        .map(Message::Bottles)
+                } else {
+                    column![].into()
+                }
+            }
+            DetailTab::Settings => self.settings.view(&settings_ctx).map(Message::Settings),
+            #[cfg(feature = "fvs")]
+            DetailTab::Snapshots => self.snapshots.view(width).map(Message::Snapshots),
+        };
+
+        column![header, scroll_panel(content)]
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+}
+
+fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    let content = container(content).width(Fill).padding(24).center_x(Fill);
+
+    container(
+        scrollable(content)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(4)
+                    .scroller_width(4)
+                    .margin(12),
+            ))
+            .style(theme::scrollbar)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(Fill)
+    .height(Fill)
+    .style(theme::panel)
+    .clip(true)
+    .into()
+}
+
+fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Message> {
+    Button::icon_only(label, icon)
+        .diameter(32.0)
+        .icon_size(16.0)
+        .kind(ButtonKind::Transparent)
+        .on_press(message)
+}
+
+fn modal<'a>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_dismiss: Message,
+) -> Element<'a, Message> {
+    stack![
+        base.into(),
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| container::Style {
+                background: Some(Background::Color(theme::SCRIM)),
+                ..container::Style::default()
+            }))
+            .on_press(on_dismiss)
+        ),
+    ]
+    .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draining_accepts_task_messages_but_rejects_new_actions() {
+        assert!(Message::Library(library::Message::Loaded(1)).allowed_while_draining());
+        assert!(Message::SystemThemeChanged(ThemeMode::Dark).allowed_while_draining());
+        assert!(
+            !Message::Library(library::Message::QueryChanged("new search".into()))
+                .allowed_while_draining()
+        );
+        assert!(!Message::AddBottle.allowed_while_draining());
+    }
+}
