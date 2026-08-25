@@ -13,19 +13,18 @@ exclude = [""]
 
 [dependencies]
 async-trait.workspace = true
-iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "tokio", "linux-theme-detection"] }
-tokio-util = { workspace = true, features = ["rt"] }
 bottles-core.workspace = true
+iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "tokio", "linux-theme-detection"] }
 next-config.workspace = true
-next-proto.workspace = true
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
 uuid.workspace = true
 directories.workspace = true
 serde.workspace = true
-futures-lite.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 url.workspace = true
 
 [dev-dependencies]
+futures-lite.workspace = true
 serde_json.workspace = true
 
 [features]
