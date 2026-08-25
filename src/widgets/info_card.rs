@@ -1,7 +1,7 @@
 use iced::{
     Background, Border, Center, Element, Theme,
     theme::palette::Pair,
-    widget::{column, container, row, text},
+    widget::{column, container, row, text, text::Fragment, text::IntoFragment},
 };
 
 use crate::{icons::Icon, theme};
@@ -19,13 +19,17 @@ pub enum Kind {
 
 pub struct InfoCard<'a> {
     kind: Kind,
-    title: &'a str,
-    body: &'a str,
+    title: Fragment<'a>,
+    body: Fragment<'a>,
 }
 
 impl<'a> InfoCard<'a> {
-    pub fn new(kind: Kind, title: &'a str, body: &'a str) -> Self {
-        Self { kind, title, body }
+    pub fn new(kind: Kind, title: impl IntoFragment<'a>, body: impl IntoFragment<'a>) -> Self {
+        Self {
+            kind,
+            title: title.into_fragment(),
+            body: body.into_fragment(),
+        }
     }
 }
 
