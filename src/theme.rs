@@ -23,7 +23,6 @@ pub const ROW_HOVER_STRONG: Color = Color::from_rgb8(96, 85, 89);
 pub const SURFACE_SELECTED: Color = Color::from_rgb8(89, 78, 82);
 
 pub const MUTED: Color = Color::from_rgb8(166, 147, 154);
-pub const SUBTLE: Color = Color::from_rgb8(210, 189, 197);
 pub const TEXT: Color = Color::from_rgb8(250, 236, 241);
 pub const ACCENT: Color = Color::from_rgb8(250, 230, 237);
 pub const ACCENT_MUTED: Color = Color::from_rgb8(199, 172, 182);
@@ -49,12 +48,9 @@ pub const ROW_HOVER_STRONG_LIGHT: Color = Color::from_rgb8(206, 190, 195);
 pub const SURFACE_SELECTED_LIGHT: Color = Color::from_rgb8(216, 201, 206);
 
 pub const MUTED_LIGHT: Color = Color::from_rgb8(135, 116, 122);
-pub const SUBTLE_LIGHT: Color = Color::from_rgb8(94, 78, 84);
 pub const TEXT_LIGHT: Color = Color::from_rgb8(36, 28, 31);
 pub const ACCENT_LIGHT: Color = Color::from_rgb8(168, 76, 104);
 pub const ACCENT_MUTED_LIGHT: Color = Color::from_rgb8(196, 150, 164);
-
-pub const SCRIM_LIGHT: Color = Color::from_rgba8(58, 50, 53, 120.0 / 255.0);
 
 pub fn theme() -> Theme {
     let palette = Palette {
@@ -157,14 +153,12 @@ pub fn light_theme() -> Theme {
 }
 
 /// Colors we need that don't fit anywhere in iced's built-in [`Extended`]
-/// palette shape — window chrome, hint panels, the scrollbar thumb, a
-/// stronger row-hover accent. `Extended` can't be extended with new
-/// fields (it's a fixed struct baked into `Theme::Custom`), so this wraps
-/// the inner [`Theme`] instead: iced still only ever sees plain `Theme`
-/// values (returned by [`BottlesTheme::theme`], handed to
-/// `.theme(...)`/widget style closures as usual), while call sites that
-/// need one of these extra colors go through `BottlesTheme` instead of a
-/// bespoke per-field helper function.
+/// palette shape — window chrome, hint panels, the scrollbar thumb, and a
+/// stronger row-hover accent.
+/// `Extended` can't be extended with new fields (it's a fixed struct baked
+/// into `Theme::Custom`), so this wraps the inner [`Theme`] instead: iced
+/// still only ever sees plain `Theme` values, while call sites that need one
+/// of these extra colors go through `BottlesTheme`.
 #[derive(Debug, Clone)]
 pub struct BottlesTheme {
     pub theme: Theme,
