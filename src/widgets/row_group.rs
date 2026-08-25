@@ -706,7 +706,7 @@ fn toggle_open(open: &mut Vec<usize>, target: usize, footprints: &[Footprint]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Footprint, toggle_open};
+    use super::{Footprint, RowGroup, toggle_open};
 
     #[test]
     fn opening_evicts_only_overlapping_expansions() {
@@ -726,5 +726,12 @@ mod tests {
 
         toggle_open(&mut open, 2, &footprints);
         assert!(open.is_empty());
+    }
+
+    #[test]
+    fn column_count_is_never_zero() {
+        let group = RowGroup::<'static, ()>::new().columns(0);
+
+        assert_eq!(group.columns, 1);
     }
 }

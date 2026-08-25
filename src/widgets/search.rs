@@ -542,6 +542,26 @@ fn preserve_highlight(
         .or((!new_keys.is_empty()).then_some(0))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::preserve_highlight;
+
+    #[test]
+    fn preserves_highlight_across_result_changes() {
+        let old = ["a", "b", "c"].map(String::from);
+
+        assert_eq!(
+            preserve_highlight(&old, Some(1), &["c", "a", "b"].map(String::from),),
+            Some(2)
+        );
+        assert_eq!(
+            preserve_highlight(&old, Some(1), &["a", "c"].map(String::from)),
+            Some(0)
+        );
+        assert_eq!(preserve_highlight(&old, Some(1), &[]), None);
+    }
+}
+
 struct Anchored<'a, 'b, Message>
 where
     'b: 'a,
