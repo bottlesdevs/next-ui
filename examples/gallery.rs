@@ -8,9 +8,9 @@ use next_ui::widgets::{
     action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
     info_row, picker_row, row_group, search, selector_row, status_bar, switcher_row, tabs,
-    text_row, title, window_frame,
+    text_row, title,
 };
-use next_ui::{icons::Icon, theme};
+use next_ui::{icons::Icon, theme, ui::chrome};
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const EMPTY_OPTIONS: &[&str] = &[];
@@ -76,7 +76,7 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    Window(window_frame::Action),
+    Window(chrome::Action),
     StatusToggled,
     Previous,
     Next,
@@ -95,7 +95,8 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::Window(action) => return action.task(),
+            Message::Window(chrome::Action::RequestClose) => return iced::exit(),
+            Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => {
                 self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
@@ -456,7 +457,7 @@ impl Gallery {
         .width(Fill)
         .height(Fill);
 
-        window_frame::WindowFrame::new(column![header, gallery], Message::Window).into()
+        chrome::WindowFrame::new(column![header, gallery], Message::Window).into()
     }
 
     fn search_state(&self) -> search::SearchState<'_, Message> {
