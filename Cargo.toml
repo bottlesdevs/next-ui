@@ -29,4 +29,6 @@ url.workspace = true
 serde_json.workspace = true
 
 [features]
+default = ["fvs"]
 debug = ["iced/hot"]
+fvs = ["bottles-core/fvs"]
