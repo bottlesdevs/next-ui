@@ -342,9 +342,9 @@ impl App {
                 ..
             } => {
                 if saving.is_some() {
-                    status_view("Finishing setup", "Saving your choice.", false)
+                    onboarding_status_view("Finishing setup", "Saving your choice.")
                 } else if let Some(error) = notice {
-                    notice_view("Setup could not be saved", error.to_string())
+                    onboarding_notice_view("Setup could not be saved", error.to_string())
                 } else {
                     state.view().map(AppMessage::Onboarding)
                 }
@@ -652,6 +652,35 @@ fn status_view<'a>(
     }
 
     root_view(status)
+}
+
+fn onboarding_status_view<'a>(
+    title: impl iced::widget::text::IntoFragment<'a>,
+    description: impl iced::widget::text::IntoFragment<'a>,
+) -> Element<'a, AppMessage> {
+    use iced::widget::{column, text};
+
+    onboarding::frame(
+        column![text(title).size(32), text(description)].spacing(12),
+        AppMessage::Window,
+    )
+}
+
+fn onboarding_notice_view<'a>(
+    title: impl iced::widget::text::IntoFragment<'a>,
+    description: impl iced::widget::text::IntoFragment<'a>,
+) -> Element<'a, AppMessage> {
+    use iced::widget::{button, column, text};
+
+    onboarding::frame(
+        column![
+            text(title).size(32),
+            text(description),
+            button("Continue").on_press(AppMessage::DismissNotice),
+        ]
+        .spacing(12),
+        AppMessage::Window,
+    )
 }
 
 fn workspace_view(workspace: &Workspace) -> Element<'_, AppMessage> {

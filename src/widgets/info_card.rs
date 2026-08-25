@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, Element, Length, Theme,
+    Background, Border, Center, Element, Theme,
     theme::palette::Pair,
     widget::{column, container, row, text, text::Fragment, text::IntoFragment},
 };
@@ -21,7 +21,6 @@ pub struct InfoCard<'a> {
     kind: Kind,
     title: Fragment<'a>,
     body: Fragment<'a>,
-    height: Length,
 }
 
 impl<'a> InfoCard<'a> {
@@ -30,24 +29,13 @@ impl<'a> InfoCard<'a> {
             kind,
             title: title.into_fragment(),
             body: body.into_fragment(),
-            height: Length::Shrink,
         }
-    }
-
-    pub fn height(mut self, height: impl Into<Length>) -> Self {
-        self.height = height.into();
-        self
     }
 }
 
 impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
     fn from(card: InfoCard<'a>) -> Self {
-        let InfoCard {
-            kind,
-            title,
-            body,
-            height,
-        } = card;
+        let InfoCard { kind, title, body } = card;
 
         Card::new(
             column![
@@ -59,7 +47,6 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
             .spacing(spacing::SM),
         )
         .padding(spacing::LG)
-        .height(height)
         .style(move |theme| {
             let colors = colors(theme, kind);
 

@@ -1,5 +1,5 @@
 use iced::{
-    ContentFit, Element, Fill, Length, Padding, Theme,
+    ContentFit, Element, Fill, Padding, Theme,
     widget::{Space, column, container, image, stack, text},
 };
 
@@ -10,7 +10,6 @@ pub(crate) const BANNER_HEIGHT: f32 = 180.0;
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
     padding: Padding,
-    height: Length,
     style: container::StyleFn<'a, Theme>,
 }
 
@@ -19,18 +18,12 @@ impl<'a, Message> Card<'a, Message> {
         Self {
             content: content.into(),
             padding: Padding::ZERO,
-            height: Length::Shrink,
             style: Box::new(style::surface),
         }
     }
 
     pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
-        self
-    }
-
-    pub fn height(mut self, height: impl Into<Length>) -> Self {
-        self.height = height.into();
         self
     }
 
@@ -45,7 +38,6 @@ impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
         container(card.content)
             .padding(card.padding)
             .width(Fill)
-            .height(card.height)
             .clip(true)
             .class(card.style)
             .into()

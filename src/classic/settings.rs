@@ -197,7 +197,7 @@ impl State {
 
 fn environment_row(description: String) -> ListRow<'static, Message> {
     let labels = column![
-        text("Environment variables").label(),
+        text("Environment variables").label().medium(),
         text(description).detail().muted(),
     ]
     .spacing(6);

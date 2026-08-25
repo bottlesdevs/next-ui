@@ -11,6 +11,7 @@ use crate::theme;
 
 const RESIZE_EDGE: f32 = 6.0;
 const RESIZE_CORNER: f32 = 12.0;
+const PANEL_INSET: [f32; 2] = [6.0, 8.0];
 
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
@@ -57,7 +58,7 @@ impl<'a, Message: Clone + 'a> From<WindowFrame<'a, Message>> for Element<'a, Mes
         let content: Element<'a, Message> = container(frame.content)
             .width(Fill)
             .height(Fill)
-            .padding(1)
+            .padding(PANEL_INSET)
             .style(|current_theme| theme::window(&theme::BottlesTheme::from(current_theme)))
             .clip(true)
             .into();

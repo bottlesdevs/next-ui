@@ -19,7 +19,6 @@ pub struct ListRow<'a, Message> {
     body: Element<'a, Message>,
     leading: Vec<Element<'a, Message>>,
     trailing: Vec<Element<'a, Message>>,
-    height: Length,
     enabled: bool,
     selected: bool,
     on_press: Option<Message>,
@@ -54,7 +53,6 @@ impl<'a, Message> ListRow<'a, Message> {
             body: body.into(),
             leading: Vec::new(),
             trailing: Vec::new(),
-            height: Length::Shrink,
             enabled: true,
             selected: false,
             on_press: None,
@@ -77,11 +75,6 @@ impl<'a, Message> ListRow<'a, Message> {
 
     pub fn prepend_trailing(mut self, control: impl Into<Element<'a, Message>>) -> Self {
         self.trailing.insert(0, control.into());
-        self
-    }
-
-    pub fn height(mut self, height: impl Into<Length>) -> Self {
-        self.height = height.into();
         self
     }
 
@@ -139,21 +132,18 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
         let header: Element<'a, Message> = match (base.on_press, base.on_activate) {
             (Some(message), _) => Pressable::new(header)
                 .width(Fill)
-                .height(base.height)
                 .padding([spacing::MD, spacing::LG])
                 .on_press(message)
                 .style(header_style)
                 .into(),
             (None, Some(activation)) => Pressable::new(header)
                 .width(Fill)
-                .height(base.height)
                 .padding([spacing::MD, spacing::LG])
                 .on_activate(activation)
                 .style(activation_header_style)
                 .into(),
             (None, None) => container(header)
                 .width(Fill)
-                .height(base.height)
                 .padding([spacing::MD, spacing::LG])
                 .align_y(Alignment::Center)
                 .into(),

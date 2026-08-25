@@ -177,7 +177,7 @@ impl BottlesTheme {
             window: WINDOW,
             window_border: WINDOW_BORDER,
             panel: PANEL,
-            hint: pair(HINT, WHITE),
+            hint: pair(HINT, TEXT),
             row_hover_strong: ROW_HOVER_STRONG,
             muted: MUTED,
         }
@@ -230,7 +230,7 @@ pub(crate) fn window(bottles_theme: &BottlesTheme) -> container::Style {
     container::Style {
         background: Some(Background::Color(bottles_theme.window)),
         border: Border::default()
-            .rounded(12)
+            .rounded(6)
             .color(bottles_theme.window_border)
             .width(1),
         ..container::Style::default()
@@ -249,7 +249,7 @@ pub fn panel(theme: &Theme) -> container::Style {
 
     container::Style {
         background: Some(Background::Color(bottles_theme.panel)),
-        border: Border::default().rounded(11),
+        border: Border::default().rounded(6),
         ..container::Style::default()
     }
 }

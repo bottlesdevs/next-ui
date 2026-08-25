@@ -400,7 +400,11 @@ pub fn action_button_row<'a, M: Clone + 'a>(
 ) -> ListRow<'a, M> {
     use iced::widget::{column, svg, text};
 
-    let labels = column![text(title).label(), text(description).detail().muted()].spacing(6);
+    let labels = column![
+        text(title).label().medium(),
+        text(description).detail().muted()
+    ]
+    .spacing(6);
 
     ListRow::new(labels)
         .leading(

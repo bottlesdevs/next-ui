@@ -3,16 +3,6 @@
 
 use std::sync::Arc;
 
-use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Error as CoreError};
-use iced::{
-    Background, Border, Element, Fill, Length, Subscription, Task, Theme,
-    alignment::{Horizontal, Vertical},
-    theme::Mode as ThemeMode,
-    widget::{button, center, column, container, row, text},
-};
-use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
-
 use crate::{
     Experience,
     icons::Icon,
@@ -21,13 +11,26 @@ use crate::{
     ui::chrome,
     widgets::{
         action_row::{ActionRow, State as RowState},
+        button::{Button, ButtonKind},
         header_bar::HeaderBar,
+        info_card::{InfoCard, Kind as InfoCardKind},
+        list_row::ListRow,
         row_group::RowGroup,
         text::TextExt as _,
     },
 };
+use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Error as CoreError};
+use iced::{
+    Element, Fill, Length, Subscription, Task, Theme,
+    alignment::{Horizontal, Vertical},
+    theme::Mode as ThemeMode,
+    widget::{center, column, container, row, text},
+};
+use tokio_util::sync::CancellationToken;
 
 const STEP_WIDTH: f32 = 900.0;
+const DOWNLOAD_WIDTH: f32 = 500.0;
+const EXPERIENCE_ROW_GAP: f32 = 8.0;
 
 const ONBOARDING_SLOTS: &[(Slot, &str)] =
     &[(Slot::WineBridge, "WineBridge"), (Slot::Runner, "Runner")];
@@ -68,7 +71,8 @@ enum Step {
 }
 
 struct DownloadItem {
-    id: Uuid,
+    slot: Slot,
+    id: Option<uuid::Uuid>,
     label: String,
     size_label: String,
     progress: f32,
@@ -76,11 +80,22 @@ struct DownloadItem {
 }
 
 enum DownloadState {
+    Pending,
     Running(CancellationToken),
     Succeeded,
     Cancelled,
     Unavailable,
     Failed(Arc<CoreError>),
+}
+
+enum SetupPhase {
+    Idle,
+    Preparing(CancellationToken),
+    Ready,
+    Downloading,
+    Cancelling,
+    Failed,
+    Complete,
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -101,7 +116,7 @@ pub struct State {
     addons: Addons,
     downloads: Vec<DownloadItem>,
     download_generation: u64,
-    catalog_refresh: Option<CancellationToken>,
+    setup_phase: SetupPhase,
     catalog_error: Option<Arc<CoreError>>,
     system_theme: ThemeMode,
 }
@@ -112,8 +127,10 @@ pub enum Message {
     ApplyExperience,
     NextTutorialStep,
     CatalogRefresh(OperationEvent<u64, ()>),
-    Download(OperationEvent<(u64, Uuid), Arc<IndexEntry<Component>>>),
+    StartDownloads,
+    Download(OperationEvent<(u64, Slot), Arc<IndexEntry<Component>>>),
     CancelDownloads,
+    Retry,
     Finished(Experience),
     Window(chrome::Action),
     SystemThemeChanged(ThemeMode),
@@ -127,7 +144,7 @@ impl State {
             addons,
             downloads: Vec::new(),
             download_generation: 0,
-            catalog_refresh: None,
+            setup_phase: SetupPhase::Idle,
             catalog_error: None,
             system_theme: ThemeMode::default(),
         };
@@ -145,7 +162,7 @@ impl State {
     }
 
     pub fn cancel_active_operations(&self) {
-        if let Some(cancellation) = &self.catalog_refresh {
+        if let SetupPhase::Preparing(cancellation) = &self.setup_phase {
             cancellation.cancel();
         }
         request_download_cancellation(&self.downloads);
@@ -158,14 +175,16 @@ impl State {
                     self.experience = experience;
                 }
             }
-            Message::ApplyExperience => self.step = Step::Tutorial(0),
+            Message::ApplyExperience => {
+                self.step = Step::Tutorial(0);
+                return self.start_preparation();
+            }
             Message::NextTutorialStep => {
                 if let Step::Tutorial(index) = self.step {
                     if index + 1 < TUTORIAL_STEPS.len() {
                         self.step = Step::Tutorial(index + 1);
                     } else {
                         self.step = Step::Downloads;
-                        return self.start_setup();
                     }
                 }
             }
@@ -175,25 +194,20 @@ impl State {
                     return Task::none();
                 }
 
-                self.catalog_refresh = None;
-                match outcome {
-                    Outcome::Succeeded(()) => {}
-                    Outcome::Cancelled => return Task::none(),
-                    Outcome::Failed(error) => self.catalog_error = Some(error),
-                }
-                return self.start_downloads();
+                self.catalog_error = match outcome {
+                    Outcome::Succeeded(()) => None,
+                    Outcome::Cancelled => None,
+                    Outcome::Failed(error) => Some(error),
+                };
+                self.prepare_downloads();
             }
+            Message::StartDownloads => return self.start_downloads(),
             Message::Download(OperationEvent::Progress { key, progress }) => {
                 if let Some(item) =
                     current_download_mut(&mut self.downloads, self.download_generation, key)
                     && matches!(&item.state, DownloadState::Running(_))
                 {
-                    if let Some(fraction) = progress.fraction() {
-                        item.progress = fraction;
-                    }
-                    if let Some(total) = progress.transfer.and_then(|transfer| transfer.total) {
-                        item.size_label = format_bytes(total);
-                    }
+                    update_download_progress(item, &progress);
                 }
             }
             Message::Download(OperationEvent::Finished { key, outcome }) => {
@@ -208,13 +222,25 @@ impl State {
                         Outcome::Cancelled => DownloadState::Cancelled,
                         Outcome::Failed(error) => DownloadState::Failed(error),
                     };
+
+                    self.finish_download_batch();
                 }
             }
             Message::CancelDownloads => {
-                self.cancel_active_operations();
-                self.download_generation = self.download_generation.wrapping_add(1);
-                self.catalog_refresh = None;
-                self.step = Step::Welcome;
+                if matches!(self.setup_phase, SetupPhase::Downloading) {
+                    request_download_cancellation(&self.downloads);
+                    self.setup_phase = SetupPhase::Cancelling;
+                }
+            }
+            Message::Retry => {
+                if self
+                    .downloads
+                    .iter()
+                    .any(|item| matches!(item.state, DownloadState::Unavailable))
+                {
+                    return self.start_preparation();
+                }
+                return self.start_downloads();
             }
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::Finished(_) => {}
@@ -224,7 +250,7 @@ impl State {
         Task::none()
     }
 
-    fn start_setup(&mut self) -> Task<Message> {
+    fn start_preparation(&mut self) -> Task<Message> {
         self.cancel_active_operations();
         self.download_generation = self.download_generation.wrapping_add(1);
         let generation = self.download_generation;
@@ -232,145 +258,178 @@ impl State {
         self.catalog_error = None;
 
         let (cancellation, task) = operation::run(self.addons.refresh(), generation);
-        self.catalog_refresh = Some(cancellation);
+        self.setup_phase = SetupPhase::Preparing(cancellation);
 
         task.map(Message::CatalogRefresh)
     }
 
+    fn prepare_downloads(&mut self) {
+        let installed = self.addons.components();
+        let catalog = self.addons.component_entries();
+
+        self.downloads = build_download_items(&installed, &catalog);
+
+        if downloads_complete(&self.downloads) {
+            self.setup_phase = SetupPhase::Complete;
+            self.catalog_error = None;
+        } else if self
+            .downloads
+            .iter()
+            .all(|item| !matches!(item.state, DownloadState::Unavailable))
+        {
+            self.setup_phase = SetupPhase::Ready;
+            self.catalog_error = None;
+        } else {
+            self.setup_phase = SetupPhase::Failed;
+        }
+    }
+
     fn start_downloads(&mut self) -> Task<Message> {
+        if !matches!(self.setup_phase, SetupPhase::Ready | SetupPhase::Failed) {
+            return Task::none();
+        }
+
+        self.download_generation = self.download_generation.wrapping_add(1);
         let generation = self.download_generation;
         let addons = self.addons.clone();
-        let installed = addons.components();
-        let catalog = addons.component_entries();
         let mut tasks = Vec::new();
 
-        self.downloads.clear();
-
-        for (slot, slot_label) in ONBOARDING_SLOTS {
-            if let Some(entry) = installed.iter().find(|entry| entry.slot() == *slot) {
-                self.downloads.push(DownloadItem {
-                    id: entry.id(),
-                    label: format!("{} {}", entry.name(), entry.version()),
-                    size_label: (*slot_label).to_string(),
-                    progress: 1.0,
-                    state: DownloadState::Succeeded,
-                });
+        for item in &mut self.downloads {
+            if matches!(item.state, DownloadState::Succeeded) {
                 continue;
             }
 
-            let Some(entry) = supported_component(&catalog, *slot) else {
-                self.downloads.push(DownloadItem {
-                    id: Uuid::new_v4(),
-                    label: (*slot_label).to_string(),
-                    size_label: "Unavailable".into(),
-                    progress: 0.0,
-                    state: DownloadState::Unavailable,
-                });
+            let Some(id) = item.id else {
                 continue;
             };
-            let id = entry.id();
-            let (cancellation, task) = operation::run(addons.fetch_component(id), (generation, id));
-            tasks.push(task.map(Message::Download));
 
-            self.downloads.push(DownloadItem {
-                id,
-                label: format!("{} {}", entry.name(), entry.version()),
-                size_label: (*slot_label).to_string(),
-                progress: 0.0,
-                state: DownloadState::Running(cancellation),
-            });
+            item.progress = 0.0;
+            item.size_label = "Ready to download".into();
+            let (cancellation, task) =
+                operation::run(addons.fetch_component(id), (generation, item.slot));
+            tasks.push(task.map(Message::Download));
+            item.state = DownloadState::Running(cancellation);
         }
 
-        Task::batch(tasks)
+        if tasks.is_empty() {
+            self.setup_phase = if downloads_complete(&self.downloads) {
+                SetupPhase::Complete
+            } else {
+                SetupPhase::Failed
+            };
+            Task::none()
+        } else {
+            self.catalog_error = None;
+            self.setup_phase = SetupPhase::Downloading;
+            Task::batch(tasks)
+        }
+    }
+
+    fn finish_download_batch(&mut self) {
+        settle_download_batch(&mut self.setup_phase, &mut self.downloads);
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let header = HeaderBar::new(Message::Window).show_window_controls(true);
         let content = match &self.step {
             Step::Welcome => self.welcome_view(),
             Step::Tutorial(index) => tutorial_view(*index),
             Step::Downloads => self.downloads_view(),
         };
 
-        chrome::WindowFrame::new(
-            column![
-                header,
-                container(content).width(Fill).height(Fill).padding(32)
-            ]
-            .width(Fill)
-            .height(Fill),
-            Message::Window,
-        )
-        .into()
+        frame(content, Message::Window)
     }
 
     fn welcome_view(&self) -> Element<'_, Message> {
-        let header = column![
-            text("Welcome").h3(),
-            text("Choose the experience, you can change this later.")
-                .body()
-                .muted(),
-        ]
-        .align_x(Horizontal::Center)
-        .spacing(8);
+        let header = onboarding_title(
+            "Welcome",
+            "Choose the experience, you can change this later.",
+        );
 
         let experiences = column![
             self.experience_button(Experience::Next),
             self.experience_button(Experience::Classic),
         ]
-        .spacing(12)
+        .spacing(EXPERIENCE_ROW_GAP)
         .width(Length::FillPortion(1));
 
-        let selector = row![experiences, self.selected_experience_view()]
-            .spacing(20)
-            .width(Fill);
+        let details = container(self.selected_experience_view())
+            .width(Length::FillPortion(1))
+            .height(Fill)
+            .clip(true)
+            .style(|theme: &Theme| {
+                let colors = theme::BottlesTheme::from(theme).hint;
+
+                container::Style {
+                    background: Some(iced::Background::Color(colors.color)),
+                    border: iced::Border::default().rounded(6),
+                    ..container::Style::default()
+                }
+            });
+        let selector = row![experiences, details]
+            .spacing(8)
+            .width(Fill)
+            .height(Length::Shrink);
 
         center(
-            column![header, selector, self.apply_button()]
-                .spacing(48)
-                .width(STEP_WIDTH)
-                .align_x(Horizontal::Center),
+            column![
+                column![header, selector]
+                    .spacing(72)
+                    .width(Fill)
+                    .align_x(Horizontal::Center),
+                self.apply_button()
+            ]
+            .spacing(96)
+            .width(STEP_WIDTH)
+            .align_x(Horizontal::Center),
         )
         .into()
     }
 
     fn downloads_view(&self) -> Element<'_, Message> {
-        let header = column![
-            text("Almost Done").h4(),
-            text("Bottles need to download the following small resources to be ready.")
-                .body()
-                .muted(),
-        ]
-        .align_x(Horizontal::Center)
-        .spacing(8);
+        let header = onboarding_title(
+            "Almost Done",
+            "Bottles need to download the following small resources to be ready.",
+        );
 
         let mut group = RowGroup::new();
         let mut failures = column![].spacing(8);
         let mut has_failures = false;
 
-        if self.catalog_refresh.is_some() {
+        if matches!(self.setup_phase, SetupPhase::Preparing(_)) {
             group = group.add(
                 ActionRow::new("Resource catalog", RowState::Progress(0.0))
-                    .description("Refreshing"),
+                    .description("Preparing"),
             );
         }
 
         for item in &self.downloads {
-            let state = match &item.state {
-                DownloadState::Running(_) => RowState::Progress(item.progress),
-                DownloadState::Succeeded => RowState::Progress(1.0),
-                DownloadState::Cancelled
-                | DownloadState::Unavailable
-                | DownloadState::Failed(_) => RowState::Disabled,
-            };
             let description = match &item.state {
+                DownloadState::Pending => &item.size_label,
                 DownloadState::Cancelled => "Cancelled",
                 DownloadState::Unavailable => "Unavailable",
                 DownloadState::Failed(_) => "Failed",
                 DownloadState::Running(_) | DownloadState::Succeeded => &item.size_label,
             };
 
-            group = group.add(ActionRow::new(&item.label, state).description(description));
+            group = match &item.state {
+                DownloadState::Running(_) => group.add(
+                    ActionRow::new(&item.label, RowState::Progress(item.progress))
+                        .description(description),
+                ),
+                DownloadState::Succeeded => group.add(
+                    ActionRow::new(&item.label, RowState::Progress(1.0)).description(description),
+                ),
+                DownloadState::Pending
+                | DownloadState::Cancelled
+                | DownloadState::Unavailable
+                | DownloadState::Failed(_) => group.add(ListRow::new(
+                    column![
+                        text(&item.label).label().medium(),
+                        text(description).detail().muted()
+                    ]
+                    .spacing(6),
+                )),
+            };
 
             if let DownloadState::Failed(error) = &item.state {
                 has_failures = true;
@@ -407,98 +466,103 @@ impl State {
             );
         }
 
-        let cancel = pill_button("Cancel").on_press(Message::CancelDownloads);
-        let done = pill_button("Get Started").on_press_maybe(
-            downloads_complete(&self.downloads).then_some(Message::Finished(self.experience)),
-        );
+        let action: Element<'_, Message> = match &self.setup_phase {
+            SetupPhase::Idle | SetupPhase::Preparing(_) => onboarding_button("Preparing…").into(),
+            SetupPhase::Ready => onboarding_button_with_icon("Download")
+                .on_press(Message::StartDownloads)
+                .into(),
+            SetupPhase::Downloading => onboarding_button("Cancel")
+                .on_press(Message::CancelDownloads)
+                .into(),
+            SetupPhase::Cancelling => onboarding_button("Cancelling…").into(),
+            SetupPhase::Failed => onboarding_button_with_icon("Retry")
+                .on_press(Message::Retry)
+                .into(),
+            SetupPhase::Complete => onboarding_button_with_icon("Get Started")
+                .on_press(Message::Finished(self.experience))
+                .into(),
+        };
 
-        let mut content = column![header, container(group).width(Fill)]
-            .spacing(40)
-            .width(STEP_WIDTH)
+        let mut resources = column![container(group).width(DOWNLOAD_WIDTH).center_x(Fill)]
+            .spacing(24)
             .align_x(Horizontal::Center);
         if has_failures {
-            content = content.push(container(failures).width(Fill));
+            resources = resources.push(container(failures).width(DOWNLOAD_WIDTH));
         }
-        content = content.push(row![cancel, done].spacing(12));
 
-        center(content).into()
+        center(
+            column![
+                column![header, resources]
+                    .spacing(72)
+                    .width(Fill)
+                    .align_x(Horizontal::Center),
+                action,
+            ]
+            .spacing(96)
+            .width(STEP_WIDTH)
+            .align_x(Horizontal::Center),
+        )
+        .into()
     }
 
     fn apply_button(&self) -> Element<'_, Message> {
-        pill_button_with_icon("Apply Experience")
+        onboarding_button_with_icon("Apply Experience")
             .on_press(Message::ApplyExperience)
             .into()
     }
 
     fn experience_button(&self, experience: Experience) -> Element<'_, Message> {
         let selected = experience == self.experience;
-        let mut title_row = row![text(experience_label(experience)).supporting()]
-            .spacing(10)
-            .align_y(Vertical::Center);
-
-        if experience == Experience::Next {
-            title_row = title_row.push(text("(coming later)").detail().muted());
-        }
-
-        let content = column![
-            title_row,
-            text(experience_caption(experience)).body().muted()
-        ]
-        .spacing(6);
-
-        let button = button(
-            row![
-                content,
-                iced::widget::Space::new().width(Fill),
-                Icon::Arrow.rotated(std::f32::consts::PI)
-            ]
-            .align_y(Vertical::Center),
-        )
-        .style(move |theme: &Theme, _status| {
-            let background = if selected {
-                theme.extended_palette().background.stronger
-            } else {
-                theme.extended_palette().background.weak
-            };
-
-            button::Style {
-                background: Some(Background::Color(background.color)),
-                text_color: theme.palette().text,
-                border: Border::default().rounded(12),
-                ..button::Style::default()
-            }
-        });
-        let button = if experience_available(experience) {
-            button.on_press(Message::SelectExperience(experience))
+        let state = if experience_available(experience) {
+            RowState::Ready(Message::SelectExperience(experience))
         } else {
-            button
+            RowState::Disabled
         };
 
-        button.padding(18).width(Fill).into()
+        ListRow::from(
+            ActionRow::new(experience_option_label(experience), state)
+                .description(experience_caption(experience)),
+        )
+        .selected(selected)
+        .into()
     }
 
     fn selected_experience_view(&self) -> Element<'_, Message> {
-        let title = row![
-            Icon::Wand.view(),
-            text(experience_label(self.experience)).supporting()
-        ]
-        .spacing(10)
-        .align_y(Vertical::Center);
         let (first, second) = experience_detail(self.experience);
-        let description = column![text(first).body(), text(second).body()].spacing(16);
 
-        container(column![title, description].spacing(16))
-            .width(Fill)
-            .padding(20)
-            .style(|theme: &Theme| container::Style {
-                background: Some(Background::Color(
-                    theme.extended_palette().background.weakest.color,
-                )),
-                border: Border::default().rounded(12),
-                ..container::Style::default()
-            })
-            .into()
+        InfoCard::new(
+            InfoCardKind::Hint,
+            experience_label(self.experience),
+            format!("{first}\n\n{second}"),
+        )
+        .into()
     }
+}
+
+pub(crate) fn frame<'a, Message: Clone + 'a>(
+    content: impl Into<Element<'a, Message>>,
+    on_action: fn(chrome::Action) -> Message,
+) -> Element<'a, Message> {
+    let header = HeaderBar::new(on_action)
+        .show_window_controls(true)
+        .transparent(true);
+    let panel = container(
+        column![
+            header,
+            container(center(content))
+                .width(Fill)
+                .height(Fill)
+                .padding(32)
+        ]
+        .width(Fill)
+        .height(Fill),
+    )
+    .width(Fill)
+    .height(Fill)
+    .style(theme::panel)
+    .clip(true);
+
+    chrome::WindowFrame::new(panel, on_action).into()
 }
 
 fn experience_available(experience: Experience) -> bool {
@@ -512,15 +576,94 @@ fn downloads_complete(downloads: &[DownloadItem]) -> bool {
             .all(|item| matches!(&item.state, DownloadState::Succeeded))
 }
 
+fn build_download_items(
+    installed: &[Arc<IndexEntry<Component>>],
+    catalog: &[CatalogEntry<Component>],
+) -> Vec<DownloadItem> {
+    ONBOARDING_SLOTS
+        .iter()
+        .map(|(slot, slot_label)| {
+            if let Some(entry) = installed.iter().find(|entry| entry.slot() == *slot) {
+                return DownloadItem {
+                    slot: *slot,
+                    id: Some(entry.id()),
+                    label: format!("{} {}", entry.name(), entry.version()),
+                    size_label: "Installed".into(),
+                    progress: 1.0,
+                    state: DownloadState::Succeeded,
+                };
+            }
+
+            let Some(entry) = supported_component(catalog, *slot) else {
+                return DownloadItem {
+                    slot: *slot,
+                    id: None,
+                    label: (*slot_label).to_string(),
+                    size_label: "Unavailable".into(),
+                    progress: 0.0,
+                    state: DownloadState::Unavailable,
+                };
+            };
+
+            DownloadItem {
+                slot: *slot,
+                id: Some(entry.id()),
+                label: format!("{} {}", entry.name(), entry.version()),
+                size_label: "Ready to download".into(),
+                progress: 0.0,
+                state: DownloadState::Pending,
+            }
+        })
+        .collect()
+}
+
 fn current_download_mut(
     downloads: &mut [DownloadItem],
     current_generation: u64,
-    (generation, id): (u64, Uuid),
+    (generation, slot): (u64, Slot),
 ) -> Option<&mut DownloadItem> {
     if generation != current_generation {
         return None;
     }
-    downloads.iter_mut().find(|item| item.id == id)
+    downloads.iter_mut().find(|item| item.slot == slot)
+}
+
+fn update_download_progress(item: &mut DownloadItem, progress: &bottles_core::Progress) {
+    if let Some(fraction) = progress.fraction() {
+        item.progress = fraction;
+    }
+    if let Some(total) = progress.transfer.and_then(|transfer| transfer.total) {
+        item.size_label = format_bytes(total);
+    }
+}
+
+fn settle_download_batch(phase: &mut SetupPhase, downloads: &mut [DownloadItem]) {
+    if downloads
+        .iter()
+        .any(|item| matches!(item.state, DownloadState::Running(_)))
+    {
+        return;
+    }
+
+    if matches!(phase, SetupPhase::Cancelling) {
+        for item in &mut *downloads {
+            if matches!(item.state, DownloadState::Cancelled) {
+                item.state = DownloadState::Pending;
+                item.size_label = "Ready to download".into();
+            }
+        }
+    }
+
+    *phase = if downloads_complete(downloads) {
+        SetupPhase::Complete
+    } else if downloads
+        .iter()
+        .any(|item| matches!(item.state, DownloadState::Failed(_)))
+    {
+        SetupPhase::Failed
+    } else {
+        SetupPhase::Ready
+    };
 }
 
 fn request_download_cancellation(downloads: &[DownloadItem]) {
@@ -547,6 +690,13 @@ fn experience_label(experience: Experience) -> &'static str {
     }
 }
 
+fn experience_option_label(experience: Experience) -> &'static str {
+    match experience {
+        Experience::Next => "Next Mode (coming later)",
+        Experience::Classic => "Classic Mode",
+    }
+}
+
 fn experience_caption(experience: Experience) -> &'static str {
     match experience {
         Experience::Next => "The easiest way to use Bottles.",
@@ -558,13 +708,31 @@ fn experience_detail(experience: Experience) -> (&'static str, &'static str) {
     match experience {
         Experience::Next => (
             "The software and games you install will be managed by Bottles using a single environment.",
-            "This experience is not available yet.",
+            "This is the most convenient way if you are a beginner.",
         ),
         Experience::Classic => (
             "The software and games you install will be managed by Bottles in multiple environments.",
             "This gives advanced users the ability to fine-tune their experience.",
         ),
     }
+}
+
+fn onboarding_title<'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Message> {
+    column![
+        text(title)
+            .size(32)
+            .font(iced::Font {
+                weight: iced::font::Weight::Bold,
+                ..iced::Font::DEFAULT
+            })
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().primary),
+            }),
+        text(subtitle).size(16).medium().muted(),
+    ]
+    .align_x(Horizontal::Center)
+    .spacing(6)
+    .into()
 }
 
 fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
@@ -574,67 +742,83 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
         .width(160)
         .height(160)
         .content_fit(iced::ContentFit::Contain);
-    let text_block = column![text(step.title).h4(), text(body).body().muted()]
-        .spacing(20)
-        .width(Fill);
-    let next = pill_button_with_icon("Next").on_press(Message::NextTutorialStep);
+    let text_block = column![
+        text(step.title)
+            .size(32)
+            .font(iced::Font {
+                weight: iced::font::Weight::Bold,
+                ..iced::Font::DEFAULT
+            })
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().primary),
+            }),
+        text(body).body().muted()
+    ]
+    .spacing(20)
+    .width(Fill);
+    let next = onboarding_button_with_icon("Next").on_press(Message::NextTutorialStep);
 
     center(
         column![
             row![icon, text_block].spacing(48).align_y(Vertical::Center),
             container(next).center_x(Fill),
         ]
-        .spacing(64)
+        .spacing(96)
         .width(STEP_WIDTH),
     )
     .into()
 }
 
-fn pill_button<'a>(label: &'a str) -> iced::widget::Button<'a, Message> {
-    button(text(label).label())
-        .style(|theme: &Theme, _status| button::Style {
-            background: Some(Background::Color(
-                theme.extended_palette().background.strongest.color,
-            )),
-            text_color: theme.palette().text,
-            border: Border::default().rounded(12),
-            ..button::Style::default()
-        })
-        .padding([16, 24])
+fn onboarding_button<'a>(label: &'a str) -> Button<'a, Message> {
+    Button::new(text(label).label()).kind(ButtonKind::Primary)
 }
 
-fn pill_button_with_icon<'a>(label: &'a str) -> iced::widget::Button<'a, Message> {
-    button(
-        row![
-            text(label).label(),
-            Icon::Arrow.rotated(std::f32::consts::PI)
-        ]
-        .spacing(10)
-        .align_y(Vertical::Center),
-    )
-    .style(|theme: &Theme, _status| button::Style {
-        background: Some(Background::Color(
-            theme.extended_palette().background.strongest.color,
-        )),
-        text_color: theme.palette().text,
-        border: Border::default().rounded(12),
-        ..button::Style::default()
-    })
-    .padding([16, 24])
+fn onboarding_button_with_icon<'a>(label: &'a str) -> Button<'a, Message> {
+    onboarding_button(label)
+        .trailing_icon(Icon::Arrow)
+        .icon_rotation(std::f32::consts::PI)
+        .icon_size(18.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
-    fn download(progress: f32, state: DownloadState) -> DownloadItem {
+    fn download(slot: Slot, state: DownloadState) -> DownloadItem {
         DownloadItem {
-            id: Uuid::nil(),
+            slot,
+            id: Some(Uuid::nil()),
             label: String::new(),
             size_label: String::new(),
-            progress,
+            progress: 0.0,
             state,
         }
+    }
+
+    fn entry(
+        id: &str,
+        name: &str,
+        slot: Slot,
+        platform: Option<(&str, &str)>,
+    ) -> CatalogEntry<Component> {
+        let mut artifact = serde_json::json!({
+            "url": "https://example.com/addon.tar.xz",
+            "file_name": "addon.tar.xz",
+            "checksum": { "algorithm": "sha256", "value": "00" },
+        });
+        if let Some((os, arch)) = platform {
+            artifact["platform"] = serde_json::json!({ "os": os, "arch": arch });
+        }
+
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "name": name,
+            "version": "1.0.0",
+            "artifacts": [artifact],
+            "slot": slot.as_str(),
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -645,26 +829,6 @@ mod tests {
 
     #[test]
     fn component_selection_skips_unsupported_entries() {
-        fn entry(id: &str, platform: Option<(&str, &str)>) -> CatalogEntry<Component> {
-            let mut artifact = serde_json::json!({
-                "url": "https://example.com/addon.tar.xz",
-                "file_name": "addon.tar.xz",
-                "checksum": { "algorithm": "sha256", "value": "00" },
-            });
-            if let Some((os, arch)) = platform {
-                artifact["platform"] = serde_json::json!({ "os": os, "arch": arch });
-            }
-
-            serde_json::from_value(serde_json::json!({
-                "id": id,
-                "name": "WineBridge",
-                "version": "1.0.0",
-                "artifacts": [artifact],
-                "slot": "winebridge",
-            }))
-            .unwrap()
-        }
-
         let other_os = if cfg!(target_os = "linux") {
             "mac-os"
         } else {
@@ -672,9 +836,16 @@ mod tests {
         };
         let unsupported = entry(
             "77e90211-9091-47a9-bb00-0da6c2360981",
+            "WineBridge",
+            Slot::WineBridge,
             Some((other_os, "x86_64")),
         );
-        let universal = entry("d87fd8b8-8230-4e64-a66f-8b0e1c70c694", None);
+        let universal = entry(
+            "d87fd8b8-8230-4e64-a66f-8b0e1c70c694",
+            "WineBridge",
+            Slot::WineBridge,
+            None,
+        );
         let entries = [unsupported.clone(), universal.clone()];
 
         assert_eq!(
@@ -685,48 +856,152 @@ mod tests {
     }
 
     #[test]
-    fn setup_must_finish_successfully_before_continuing() {
+    fn prepared_catalog_entries_are_pending_not_running() {
+        let catalog = [
+            entry(
+                "d87fd8b8-8230-4e64-a66f-8b0e1c70c694",
+                "WineBridge",
+                Slot::WineBridge,
+                None,
+            ),
+            entry(
+                "77e90211-9091-47a9-bb00-0da6c2360981",
+                "Runner",
+                Slot::Runner,
+                None,
+            ),
+        ];
+
+        let downloads = build_download_items(&[], &catalog);
+
+        assert_eq!(downloads.len(), ONBOARDING_SLOTS.len());
+        for (item, (slot, _)) in downloads.iter().zip(ONBOARDING_SLOTS) {
+            assert_eq!(item.slot, *slot);
+            assert!(item.id.is_some());
+            assert_eq!(item.progress, 0.0);
+            assert_eq!(item.size_label, "Ready to download");
+            assert!(matches!(item.state, DownloadState::Pending));
+        }
+        assert!(
+            downloads
+                .iter()
+                .all(|item| !matches!(item.state, DownloadState::Running(_)))
+        );
+    }
+
+    #[test]
+    fn setup_completes_only_when_every_required_download_succeeds() {
         assert!(!downloads_complete(&[download(
-            0.9,
+            Slot::WineBridge,
             DownloadState::Running(CancellationToken::new()),
         )]));
         assert!(!downloads_complete(&[download(
-            1.0,
+            Slot::WineBridge,
             DownloadState::Cancelled,
         )]));
         assert!(!downloads_complete(&[download(
-            0.0,
+            Slot::WineBridge,
             DownloadState::Unavailable,
         )]));
-        let succeeded = (0..ONBOARDING_SLOTS.len())
-            .map(|_| download(1.0, DownloadState::Succeeded))
+        let succeeded = ONBOARDING_SLOTS
+            .iter()
+            .map(|(slot, _)| download(*slot, DownloadState::Succeeded))
             .collect::<Vec<_>>();
+
         assert!(downloads_complete(&succeeded));
     }
 
     #[test]
-    fn stale_download_keys_are_ignored() {
-        let id = Uuid::new_v4();
-        let mut downloads = vec![DownloadItem {
-            id,
-            label: String::new(),
-            size_label: String::new(),
-            progress: 0.0,
-            state: DownloadState::Running(CancellationToken::new()),
-        }];
+    fn download_keys_match_generation_and_slot() {
+        let mut downloads = vec![
+            download(
+                Slot::WineBridge,
+                DownloadState::Running(CancellationToken::new()),
+            ),
+            download(
+                Slot::Runner,
+                DownloadState::Running(CancellationToken::new()),
+            ),
+        ];
 
-        assert!(current_download_mut(&mut downloads, 2, (1, id)).is_none());
-        assert!(current_download_mut(&mut downloads, 2, (2, id)).is_some());
+        assert!(
+            current_download_mut(&mut downloads, 2, (1, Slot::Runner)).is_none(),
+            "a stale generation must not update any slot"
+        );
+        assert_eq!(
+            current_download_mut(&mut downloads, 2, (2, Slot::Runner)).map(|item| item.slot),
+            Some(Slot::Runner)
+        );
+        assert!(current_download_mut(&mut downloads, 2, (2, Slot::Dxvk)).is_none());
     }
 
     #[test]
-    fn cancellation_is_requested_without_discarding_the_running_state() {
+    fn cancellation_is_requested_without_discarding_the_running_token() {
         let cancellation = CancellationToken::new();
-        let downloads = [download(0.5, DownloadState::Running(cancellation.clone()))];
+        let downloads = [download(
+            Slot::WineBridge,
+            DownloadState::Running(cancellation.clone()),
+        )];
 
         request_download_cancellation(&downloads);
 
         assert!(cancellation.is_cancelled());
-        assert!(matches!(&downloads[0].state, DownloadState::Running(_)));
+        let DownloadState::Running(retained) = &downloads[0].state else {
+            panic!("cancellation must retain the running state until its terminal event");
+        };
+        assert!(retained.is_cancelled());
+    }
+
+    #[test]
+    fn cancelling_waits_for_every_terminal_event_then_restores_pending_rows() {
+        let mut phase = SetupPhase::Cancelling;
+        let mut downloads = vec![
+            download(
+                Slot::WineBridge,
+                DownloadState::Running(CancellationToken::new()),
+            ),
+            download(Slot::Runner, DownloadState::Cancelled),
+        ];
+
+        settle_download_batch(&mut phase, &mut downloads);
+        assert!(matches!(phase, SetupPhase::Cancelling));
+        assert!(matches!(downloads[1].state, DownloadState::Cancelled));
+
+        downloads[0].state = DownloadState::Succeeded;
+        settle_download_batch(&mut phase, &mut downloads);
+
+        assert!(matches!(phase, SetupPhase::Ready));
+        assert!(matches!(downloads[0].state, DownloadState::Succeeded));
+        assert!(matches!(downloads[1].state, DownloadState::Pending));
+        assert_eq!(downloads[1].size_label, "Ready to download");
+    }
+
+    #[test]
+    fn byte_sizes_use_binary_units() {
+        assert_eq!(format_bytes(0), "0 KB");
+        assert_eq!(format_bytes(1024), "1 KB");
+        assert_eq!(format_bytes(10 * 1024), "10 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
+        assert_eq!(format_bytes(3 * 1024 * 1024 / 2), "1.5 MB");
+    }
+
+    #[test]
+    fn download_progress_uses_the_reported_http_total() {
+        let mut item = download(Slot::WineBridge, DownloadState::Pending);
+        item.size_label = "Ready to download".into();
+        let progress = bottles_core::Progress {
+            stage: bottles_core::Stage::Downloading {
+                file: "winebridge.tar.xz".into(),
+            },
+            transfer: Some(bottles_core::Transfer {
+                current: 2 * 1024 * 1024,
+                total: Some(4 * 1024 * 1024),
+            }),
+        };
+
+        update_download_progress(&mut item, &progress);
+
+        assert_eq!(item.progress, 0.5);
+        assert_eq!(item.size_label, "4.0 MB");
     }
 }
