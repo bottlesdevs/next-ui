@@ -32,4 +32,3 @@ pub mod tabs;
 pub mod text;
 pub mod text_row;
 pub mod title;
-pub mod window_frame;
