@@ -98,10 +98,8 @@ impl Gallery {
             Message::Window(chrome::Action::RequestClose) => return iced::exit(),
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
-            Message::Previous => {
-                self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
-            }
-            Message::Next => self.value = (self.value + 1) % DLSS_LEVELS.len(),
+            Message::Previous => self.value = self.value.saturating_sub(1),
+            Message::Next => self.value = (self.value + 1).min(DLSS_LEVELS.len() - 1),
             Message::MoveFocus(previous) => {
                 return if previous {
                     iced::widget::operation::focus_previous()
@@ -281,8 +279,8 @@ impl Gallery {
                 .on_toggle(Message::Switched)
                 .description("Description"),
             cycle_row::CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
-                .on_previous(Message::Previous)
-                .on_next(Message::Next),
+                .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
             picker_row::PickerRow::new("Title")
                 .description("Choose the location")
                 .on_press(Message::Noop),
@@ -298,8 +296,8 @@ impl Gallery {
             )
             .add(
                 cycle_row::CycleRow::new("Sharpening", "5")
-                    .on_previous(Message::Previous)
-                    .on_next(Message::Next),
+                    .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                    .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
             )
             .content_enabled(self.switched_on),
         ]
@@ -336,8 +334,10 @@ impl Gallery {
                 )
                 .add(
                     cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
-                        .on_previous(Message::Previous)
-                        .on_next(Message::Next),
+                        .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                        .on_next_maybe(
+                            (self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),
+                        ),
                 )
                 .content_enabled(self.group_switched_on),
             );
