@@ -19,7 +19,9 @@ pub struct ListRow<'a, Message> {
     body: Element<'a, Message>,
     leading: Vec<Element<'a, Message>>,
     trailing: Vec<Element<'a, Message>>,
+    height: Length,
     enabled: bool,
+    selected: bool,
     on_press: Option<Message>,
     on_activate: Option<SharedFlag>,
     raised_when: Option<SharedFlag>,
@@ -38,9 +40,12 @@ pub(crate) fn labels<'a, Message: 'a>(
     title: &'a str,
     description: &'a str,
 ) -> Element<'a, Message> {
-    column![text(title).label(), text(description).detail().muted(),]
-        .spacing(spacing::XS)
-        .into()
+    column![
+        text(title).label().medium(),
+        text(description).detail().muted(),
+    ]
+    .spacing(spacing::XS)
+    .into()
 }
 
 impl<'a, Message> ListRow<'a, Message> {
@@ -49,7 +54,9 @@ impl<'a, Message> ListRow<'a, Message> {
             body: body.into(),
             leading: Vec::new(),
             trailing: Vec::new(),
+            height: Length::Shrink,
             enabled: true,
+            selected: false,
             on_press: None,
             on_activate: None,
             raised_when: None,
@@ -73,8 +80,18 @@ impl<'a, Message> ListRow<'a, Message> {
         self
     }
 
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = height.into();
+        self
+    }
+
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
         self
     }
 
@@ -122,18 +139,21 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
         let header: Element<'a, Message> = match (base.on_press, base.on_activate) {
             (Some(message), _) => Pressable::new(header)
                 .width(Fill)
+                .height(base.height)
                 .padding([spacing::MD, spacing::LG])
                 .on_press(message)
                 .style(header_style)
                 .into(),
             (None, Some(activation)) => Pressable::new(header)
                 .width(Fill)
+                .height(base.height)
                 .padding([spacing::MD, spacing::LG])
                 .on_activate(activation)
                 .style(activation_header_style)
                 .into(),
             (None, None) => container(header)
                 .width(Fill)
+                .height(base.height)
                 .padding([spacing::MD, spacing::LG])
                 .align_y(Alignment::Center)
                 .into(),
@@ -141,6 +161,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
 
         Surface::new(container(header).width(Fill).clip(true))
             .raised_when(base.raised_when)
+            .selected(base.selected)
             .hover_tone(base.hover_tone)
             .enabled(base.enabled)
             .focus_content_on_press(base.focus_content_on_press)
@@ -154,7 +175,7 @@ fn header_style(theme: &Theme, status: PressableStatus) -> button::Style {
             theme.extended_palette().background.stronger.color,
         )),
         text_color: theme.palette().text,
-        border: Border::default().rounded(8),
+        border: Border::default().rounded(6),
         ..button::Style::default()
     }
 }
@@ -166,6 +187,7 @@ fn activation_header_style(theme: &Theme, _status: PressableStatus) -> button::S
 struct Surface<'a, Message> {
     content: Element<'a, Message>,
     raised_when: Option<SharedFlag>,
+    selected: bool,
     hover_tone: HoverTone,
     enabled: bool,
     focus_content_on_press: bool,
@@ -176,6 +198,7 @@ impl<'a, Message> Surface<'a, Message> {
         Self {
             content: content.into(),
             raised_when: None,
+            selected: false,
             hover_tone: HoverTone::Default,
             enabled: true,
             focus_content_on_press: false,
@@ -184,6 +207,11 @@ impl<'a, Message> Surface<'a, Message> {
 
     fn raised_when(mut self, raised: Option<SharedFlag>) -> Self {
         self.raised_when = raised;
+        self
+    }
+
+    fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
         self
     }
 
@@ -356,12 +384,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
-                border: Border::default().rounded(8),
+                border: Border::default().rounded(6),
                 shadow: Shadow::default(),
                 snap: true,
             },
             Background::Color(surface_color(
                 theme,
+                self.selected,
                 self.raised_when.as_ref().is_some_and(SharedFlag::get) || state.focused,
                 hovered,
                 self.hover_tone,
@@ -382,7 +411,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
             renderer.fill_quad(
                 renderer::Quad {
                     bounds,
-                    border: Border::default().rounded(8),
+                    border: Border::default().rounded(6),
                     shadow: Shadow::default(),
                     snap: true,
                 },
@@ -443,9 +472,17 @@ impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {
     }
 }
 
-fn surface_color(theme: &Theme, raised: bool, hovered: bool, hover_tone: HoverTone) -> iced::Color {
+fn surface_color(
+    theme: &Theme,
+    selected: bool,
+    raised: bool,
+    hovered: bool,
+    hover_tone: HoverTone,
+) -> iced::Color {
     if hovered && hover_tone == HoverTone::Strong {
         crate::theme::BottlesTheme::from(theme).row_hover_strong
+    } else if selected {
+        theme.extended_palette().background.neutral.color
     } else if raised || hovered {
         theme.extended_palette().background.neutral.color
     } else {

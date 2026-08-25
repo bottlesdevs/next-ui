@@ -65,7 +65,7 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
             .on_press_maybe(cycle.next);
 
         let labels = column![
-            text(cycle.title).label(),
+            text(cycle.title).label().medium(),
             text(cycle.value).detail().muted(),
         ]
         .width(Fill)

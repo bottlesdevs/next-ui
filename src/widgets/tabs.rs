@@ -264,7 +264,7 @@ fn tab_style(theme: &Theme, status: Status, selected: bool) -> button::Style {
         } else {
             theme.extended_palette().secondary.weak.text
         },
-        border: Border::default().rounded(4),
+        border: Border::default().rounded(6),
         ..button::Style::default()
     }
 }

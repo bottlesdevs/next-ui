@@ -558,7 +558,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         renderer.fill_quad(
             renderer::Quad {
                 bounds: layout.bounds(),
-                border: Border::default().rounded(12),
+                border: Border::default().rounded(6),
                 shadow: Shadow::default(),
                 snap: true,
             },
@@ -630,7 +630,7 @@ fn row_style(theme: &Theme, status: Status) -> button::Style {
         } else {
             theme.extended_palette().secondary.weak.text
         },
-        border: Border::default().rounded(10),
+        border: Border::default().rounded(6),
         ..button::Style::default()
     }
 }
@@ -645,7 +645,7 @@ fn footer_style(theme: &Theme, status: Status) -> button::Style {
     button::Style {
         background: Some(Background::Color(colors.color)),
         text_color: theme.extended_palette().secondary.weak.text,
-        border: Border::default().rounded(iced::border::bottom(12)),
+        border: Border::default().rounded(iced::border::bottom(6)),
         ..button::Style::default()
     }
 }
@@ -656,7 +656,7 @@ fn tooltip_style(theme: &Theme) -> container::Style {
             theme.extended_palette().background.strongest.color,
         )),
         text_color: Some(theme.palette().text),
-        border: Border::default().rounded(8),
+        border: Border::default().rounded(6),
         ..container::Style::default()
     }
 }

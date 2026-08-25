@@ -1,4 +1,4 @@
-use iced::widget::Text;
+use iced::{Font, font::Weight, widget::Text};
 
 use super::style;
 
@@ -11,6 +11,7 @@ pub trait TextExt: Sized {
     fn body(self) -> Self;
     fn label(self) -> Self;
     fn detail(self) -> Self;
+    fn medium(self) -> Self;
     fn muted(self) -> Self;
 }
 
@@ -45,6 +46,13 @@ impl<'a> TextExt for Text<'a> {
 
     fn detail(self) -> Self {
         self.size(16)
+    }
+
+    fn medium(self) -> Self {
+        self.font(Font {
+            weight: Weight::Medium,
+            ..Font::DEFAULT
+        })
     }
 
     fn muted(self) -> Self {

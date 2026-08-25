@@ -64,7 +64,7 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         description = description.push(text(action.description).detail().muted());
 
-        let labels = column![text(action.title).label(), description].spacing(spacing::XS);
+        let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
         let trailing: Element<'a, Message> = match &action.state {
             State::Progress(progress) => ProgressRing::new(*progress).into(),
             State::Ready(_) | State::Disabled => Icon::Arrow.rotated(std::f32::consts::PI),
@@ -73,7 +73,8 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         match action.state {
             State::Ready(message) => row.on_press(message),
-            State::Disabled | State::Progress(_) => row.enabled(false),
+            State::Disabled => row.enabled(false),
+            State::Progress(_) => row,
         }
     }
 }

@@ -15,7 +15,7 @@ use super::{
     text::TextExt as _,
 };
 
-const RADIUS: f32 = 8.0;
+const RADIUS: f32 = 6.0;
 
 pub struct RowGroup<'a, Message> {
     title: Option<&'a str>,
@@ -118,7 +118,7 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
             let mut heading = column![].spacing(spacing::XS);
 
             if let Some(title) = group.title {
-                heading = heading.push(text(title).subtitle());
+                heading = heading.push(text(title).subtitle().medium());
             }
 
             if let Some(description) = group.description {

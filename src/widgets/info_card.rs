@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, Element, Theme,
+    Background, Border, Center, Element, Length, Theme,
     theme::palette::Pair,
     widget::{column, container, row, text, text::Fragment, text::IntoFragment},
 };
@@ -21,6 +21,7 @@ pub struct InfoCard<'a> {
     kind: Kind,
     title: Fragment<'a>,
     body: Fragment<'a>,
+    height: Length,
 }
 
 impl<'a> InfoCard<'a> {
@@ -29,31 +30,43 @@ impl<'a> InfoCard<'a> {
             kind,
             title: title.into_fragment(),
             body: body.into_fragment(),
+            height: Length::Shrink,
         }
+    }
+
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = height.into();
+        self
     }
 }
 
 impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
     fn from(card: InfoCard<'a>) -> Self {
-        let InfoCard { kind, title, body } = card;
+        let InfoCard {
+            kind,
+            title,
+            body,
+            height,
+        } = card;
 
         Card::new(
             column![
-                row![icon(kind), text(title).title(),]
+                row![icon(kind), text(title).size(17).medium(),]
                     .spacing(spacing::SM)
                     .align_y(Center),
-                text(body).body(),
+                text(body).size(14),
             ]
-            .spacing(spacing::MD),
+            .spacing(spacing::SM),
         )
         .padding(spacing::LG)
+        .height(height)
         .style(move |theme| {
             let colors = colors(theme, kind);
 
             container::Style {
                 text_color: Some(colors.text),
                 background: Some(Background::Color(colors.color)),
-                border: Border::default().rounded(8),
+                border: Border::default().rounded(6),
                 ..container::Style::default()
             }
         })

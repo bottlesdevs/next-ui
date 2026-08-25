@@ -18,6 +18,7 @@ pub struct HeaderBar<'a, Message> {
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
     show_window_controls: bool,
+    transparent: bool,
     on_action: Box<dyn Fn(Action) -> Message + 'a>,
 }
 
@@ -28,6 +29,7 @@ impl<'a, Message> HeaderBar<'a, Message> {
             middle: Vec::new(),
             end: Vec::new(),
             show_window_controls: true,
+            transparent: false,
             on_action: Box::new(on_action),
         }
     }
@@ -51,6 +53,11 @@ impl<'a, Message> HeaderBar<'a, Message> {
         self.show_window_controls = show_window_controls;
         self
     }
+
+    pub fn transparent(mut self, transparent: bool) -> Self {
+        self.transparent = transparent;
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
@@ -60,6 +67,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             middle,
             mut end,
             show_window_controls,
+            transparent,
             on_action,
         } = header;
 
@@ -89,15 +97,15 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
         .height(Fill)
         .align_y(Center);
 
-        mouse_area(
-            container(content)
-                .width(Fill)
-                .height(HEIGHT)
-                .padding([0.0, spacing::SM])
-                .style(style),
-        )
-        .on_press(on_action(Action::Drag))
-        .into()
+        let mut content = container(content)
+            .width(Fill)
+            .height(HEIGHT)
+            .padding([0.0, spacing::SM]);
+        if !transparent {
+            content = content.style(style);
+        }
+
+        mouse_area(content).on_press(on_action(Action::Drag)).into()
     }
 }
 
@@ -121,7 +129,7 @@ fn style(current_theme: &Theme) -> container::Style {
 
     container::Style {
         background: Some(Background::Color(bottles_theme.window)),
-        border: Border::default().rounded(iced::border::top(11)),
+        border: Border::default().rounded(iced::border::top(6)),
         ..container::Style::default()
     }
 }

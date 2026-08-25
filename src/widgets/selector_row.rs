@@ -146,7 +146,7 @@ fn header<'a, Message: 'a>(
 
     container(
         row![
-            column![text(title).label(), value_row]
+            column![text(title).label().medium(), value_row]
                 .width(Fill)
                 .spacing(spacing::XS),
             Space::new().width(20).height(20),
@@ -537,7 +537,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
-                border: Border::default().rounded(8),
+                border: Border::default().rounded(6),
                 shadow: Shadow::default(),
                 snap: true,
             },
@@ -608,7 +608,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             renderer.fill_quad(
                                 renderer::Quad {
                                     bounds: option_layout.bounds(),
-                                    border: Border::default().rounded(8),
+                                    border: Border::default().rounded(6),
                                     shadow: Shadow::default(),
                                     snap: true,
                                 },
@@ -642,7 +642,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             renderer.fill_quad(
                 renderer::Quad {
                     bounds,
-                    border: Border::default().rounded(8),
+                    border: Border::default().rounded(6),
                     shadow: Shadow::default(),
                     snap: true,
                 },

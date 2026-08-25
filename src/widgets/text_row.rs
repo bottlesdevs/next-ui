@@ -101,7 +101,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
 
         value = value.push(input);
 
-        let mut labels = column![text(text_row.title).label(), value]
+        let mut labels = column![text(text_row.title).label().medium(), value]
             .width(Fill)
             .spacing(spacing::XS);
 

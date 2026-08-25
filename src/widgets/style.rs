@@ -18,7 +18,7 @@ fn surface_style(colors: Pair) -> container::Style {
     container::Style::default()
         .color(colors.text)
         .background(colors.color)
-        .border(Border::default().rounded(8))
+        .border(Border::default().rounded(6))
 }
 
 pub(crate) fn action(theme: &Theme, status: Status) -> button::Style {
@@ -33,7 +33,7 @@ pub(crate) fn action(theme: &Theme, status: Status) -> button::Style {
     button::Style {
         background: background.map(Background::Color),
         text_color: theme.palette().text,
-        border: Border::default().rounded(8),
+        border: Border::default().rounded(6),
         ..button::Style::default()
     }
 }

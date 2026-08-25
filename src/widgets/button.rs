@@ -141,7 +141,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .center(Fill)
             .into()
         } else {
-            let mut row = Row::new().spacing(spacing::XS).align_y(Center);
+            let mut row = Row::new()
+                .spacing(if button.kind == ButtonKind::Primary {
+                    16.0
+                } else {
+                    spacing::XS
+                })
+                .align_y(Center);
 
             if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
                 row = row.push(icon_element(
@@ -175,14 +181,18 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
         pressable = match shape {
-            Shape::Rectangular | Shape::Pill => pressable.padding([
-                if kind == ButtonKind::Surface {
-                    spacing::XS
-                } else {
-                    spacing::SM
-                },
-                spacing::MD,
-            ]),
+            Shape::Rectangular | Shape::Pill => pressable.padding(if kind == ButtonKind::Primary {
+                [spacing::MD, spacing::XG]
+            } else {
+                [
+                    if kind == ButtonKind::Surface {
+                        spacing::XS
+                    } else {
+                        spacing::SM
+                    },
+                    spacing::MD,
+                ]
+            }),
             Shape::IconOnly => pressable
                 .width(Length::Fixed(button.diameter))
                 .height(Length::Fixed(button.diameter)),
@@ -219,6 +229,8 @@ fn icon_element<'a, Message: 'a>(
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if disabled {
                 theme.extended_palette().secondary.weak.text
+            } else if kind == ButtonKind::Primary {
+                theme.extended_palette().primary.base.color
             } else {
                 colors(theme, Status::Active, kind).text
             }),
@@ -250,8 +262,8 @@ fn appearance(
         },
         text_color: colors.text,
         border: Border::default().rounded(match (shape, kind) {
-            (Shape::IconOnly, ButtonKind::Transparent) | (Shape::Rectangular, _) => 8,
-            (Shape::Pill | Shape::IconOnly, _) => 999,
+            (Shape::Rectangular, _) | (Shape::IconOnly, ButtonKind::Transparent) => 6.0,
+            (Shape::Pill | Shape::IconOnly, _) => 999.0,
         }),
         ..iced::widget::button::Style::default()
     }
@@ -269,9 +281,9 @@ fn colors(theme: &Theme, status: Status, kind: ButtonKind) -> Pair {
 
     match kind {
         ButtonKind::Primary => match status {
-            Status::Hovered | Status::Focused => palette.primary.strong,
-            Status::Pressed => palette.primary.weak,
-            _ => palette.primary.base,
+            Status::Hovered | Status::Focused => palette.background.strongest,
+            Status::Pressed => palette.background.weakest,
+            _ => crate::theme::BottlesTheme::from(theme).hint,
         },
         ButtonKind::Secondary => match status {
             Status::Hovered | Status::Focused => palette.secondary.strong,
