@@ -93,7 +93,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
             .secure(text_row.secure)
             .on_input_maybe(text_row.on_input)
             .on_submit_maybe(text_row.on_submit)
-            .style(move |theme, status| input_style(theme, status, error));
+            .style(move |theme, _| input_style(theme, editable, error));
 
         if let Some(id) = text_row.id {
             input = input.id(id);
@@ -123,7 +123,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
     }
 }
 
-fn input_style(theme: &Theme, status: text_input::Status, error: bool) -> text_input::Style {
+fn input_style(theme: &Theme, editable: bool, error: bool) -> text_input::Style {
     let muted = theme.extended_palette().secondary.base.text;
 
     text_input::Style {
@@ -135,10 +135,10 @@ fn input_style(theme: &Theme, status: text_input::Status, error: bool) -> text_i
         }),
         icon: muted,
         placeholder: muted,
-        value: if matches!(status, text_input::Status::Disabled) {
-            muted
-        } else {
+        value: if editable {
             theme.palette().text
+        } else {
+            muted
         },
         selection: theme.palette().primary,
     }
