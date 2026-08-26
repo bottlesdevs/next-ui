@@ -1,22 +1,26 @@
 use std::{cell::Cell, rc::Rc};
 
 use iced::{
-    Alignment, Background, Border, Color, Element, Event, Fill, Length, Point, Rectangle, Shadow,
-    Size, Theme, Vector,
+    Alignment, Background, Border, Color, Element, Event, Fill, Length, Rectangle, Size, Theme,
+    Vector,
     advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, operation, tree},
+        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
+        widget::{Operation, Tree, tree},
     },
     keyboard::{self, key},
-    widget::{Id, button, column, container, row, scrollable, svg, text, text_input},
+    widget::{Id, column, container, row, scrollable, text, text_input},
 };
 
 use crate::icons::Icon;
 
 use super::{
+    anchored_panel::{
+        AnchoredPanel, PanelContent, footer as panel_footer, row_content,
+        row_style as panel_row_style,
+    },
     button::{Button, ButtonKind},
-    pressable::{Pressable, Status},
-    spacing,
+    control::{Control, descendant_is_focused},
+    reconcile_index, spacing,
     text::TextExt as _,
 };
 
@@ -134,13 +138,11 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         .width(Fill)
         .padding([spacing::SM, spacing::MD])
         .style(search_style);
-        let (panel_body, panel_footer, visible, keys, selections, highlight) =
-            panel(search.state, search.footer);
+        let (panel, visible, keys, selections, highlight) = panel(search.state, search.footer);
 
         Element::new(SearchWidget {
             input: input.into(),
-            panel_body,
-            panel_footer,
+            panel,
             visible,
             keys,
             selections,
@@ -155,8 +157,7 @@ fn panel<'a, Message: Clone + 'a>(
     state: SearchState<'a, Message>,
     footer: Option<(&'a str, Message)>,
 ) -> (
-    Element<'a, Message>,
-    Option<Element<'a, Message>>,
+    PanelContent<'a, Message>,
     bool,
     Vec<String>,
     Vec<Message>,
@@ -184,26 +185,12 @@ fn panel<'a, Message: Clone + 'a>(
         SearchState::Hidden => column![].into(),
     };
 
-    let footer = if visible {
-        footer.map(|(label, message)| {
-            Pressable::new(
-                row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
-                    .spacing(spacing::SM)
-                    .align_y(Alignment::Center),
-            )
-            .width(Fill)
-            .padding(spacing::MD)
-            .on_press(message)
-            .style(footer_style)
-            .into()
-        })
-    } else {
-        None
-    };
+    let footer = footer
+        .filter(|_| visible)
+        .map(|(label, message)| panel_footer(label, message));
 
     (
-        scrollable(body).width(Fill).into(),
-        footer,
+        PanelContent::new(scrollable(body).width(Fill), footer),
         visible,
         keys,
         selections,
@@ -216,26 +203,7 @@ fn result_row<'a, Message: Clone + 'a>(
     highlight: Rc<Cell<Option<usize>>>,
     index: usize,
 ) -> Element<'a, Message> {
-    let mut labels = column![text(result.title).label()].spacing(spacing::XS);
-
-    if let Some(subtitle) = result.subtitle {
-        labels = labels.push(text(subtitle).detail().muted());
-    }
-
-    let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
-
-    if let Some(icon) = result.icon {
-        content = content.push(
-            svg(icon.handle())
-                .width(20)
-                .height(20)
-                .content_fit(iced::ContentFit::Contain),
-        );
-    }
-
-    content = content
-        .push(labels)
-        .push(iced::widget::Space::new().width(Fill));
+    let mut content = row_content(result.title, result.subtitle, result.icon);
 
     if let Some((label, icon, message)) = result.action {
         content = content.push(
@@ -251,11 +219,14 @@ fn result_row<'a, Message: Clone + 'a>(
         );
     }
 
-    Pressable::new(content)
+    Control::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press(result.on_select)
-        .style(move |theme, status| result_style(theme, status, highlight.get() == Some(index)))
+        .style(move |theme, mut state| {
+            state.keyboard_highlighted = highlight.get() == Some(index);
+            panel_row_style(theme, state)
+        })
         .into()
 }
 
@@ -270,8 +241,7 @@ fn status_row<'a, Message: 'a>(label: &'a str, color: Option<Color>) -> Element<
 
 struct SearchWidget<'a, Message> {
     input: Element<'a, Message>,
-    panel_body: Element<'a, Message>,
-    panel_footer: Option<Element<'a, Message>>,
+    panel: PanelContent<'a, Message>,
     visible: bool,
     keys: Vec<String>,
     selections: Vec<Message>,
@@ -299,26 +269,15 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
     }
 
     fn children(&self) -> Vec<Tree> {
-        let mut children = vec![Tree::new(&self.input), Tree::new(&self.panel_body)];
-
-        if let Some(footer) = &self.panel_footer {
-            children.push(Tree::new(footer));
-        }
-
-        children
+        vec![Tree::new(&self.input), self.panel.tree()]
     }
 
     fn diff(&self, tree: &mut Tree) {
-        let mut children: Vec<&dyn Widget<Message, Theme, iced::Renderer>> =
-            vec![self.input.as_widget(), self.panel_body.as_widget()];
-
-        if let Some(footer) = &self.panel_footer {
-            children.push(footer.as_widget());
-        }
-
-        tree.diff_children(&children);
+        tree.children[0].diff(&self.input);
+        self.panel.diff(&mut tree.children[1]);
         let state = tree.state.downcast_mut::<SearchLocal>();
-        state.highlighted = preserve_highlight(&state.keys, state.highlighted, &self.keys);
+        state.highlighted = reconcile_index(&state.keys, state.highlighted, &self.keys)
+            .or((!self.keys.is_empty()).then_some(0));
         state.keys.clone_from(&self.keys);
         self.highlight.set(state.highlighted);
 
@@ -432,7 +391,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             viewport,
         );
 
-        let focused = has_focus(&mut self.input, &mut tree.children[0], layout, renderer);
+        let focused =
+            descendant_is_focused(&mut self.input, &mut tree.children[0], layout, renderer);
 
         if focused && !state.focused {
             state.dismissed = false;
@@ -494,268 +454,46 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             return None;
         }
 
-        self.highlight.set(state.highlighted);
         let bounds = layout.bounds();
-        let (_, panel_trees) = children.split_at_mut(1);
-        let (body_trees, footer_trees) = panel_trees.split_at_mut(1);
 
-        Some(overlay::Element::new(Box::new(Anchored {
-            position: bounds.position() + translation,
-            target_height: bounds.height,
-            width: bounds.width,
-            viewport: *viewport,
-            body: &mut self.panel_body,
-            body_tree: &mut body_trees[0],
-            footer: self.panel_footer.as_mut().zip(footer_trees.first_mut()),
-        })))
+        Some(overlay::Element::new(Box::new(AnchoredPanel::search(
+            bounds.position() + translation,
+            bounds.height,
+            bounds.width,
+            *viewport,
+            &mut self.panel,
+            &mut children[1],
+        ))))
     }
-}
-
-fn has_focus<Message>(
-    input: &mut Element<'_, Message>,
-    tree: &mut Tree,
-    layout: Layout<'_>,
-    renderer: &iced::Renderer,
-) -> bool {
-    let mut count = operation::focusable::count();
-    input.as_widget_mut().operate(
-        tree,
-        layout,
-        renderer,
-        &mut operation::black_box(&mut count),
-    );
-
-    matches!(
-        Operation::finish(&count),
-        operation::Outcome::Some(count) if count.focused.is_some()
-    )
-}
-
-fn preserve_highlight(
-    old_keys: &[String],
-    old_highlight: Option<usize>,
-    new_keys: &[String],
-) -> Option<usize> {
-    old_highlight
-        .and_then(|index| old_keys.get(index))
-        .and_then(|key| new_keys.iter().position(|candidate| candidate == key))
-        .or((!new_keys.is_empty()).then_some(0))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::preserve_highlight;
+    use super::reconcile_index;
 
     #[test]
     fn preserves_highlight_across_result_changes() {
         let old = ["a", "b", "c"].map(String::from);
+        let removed = ["a", "c"].map(String::from);
+        let empty: [String; 0] = [];
 
         assert_eq!(
-            preserve_highlight(&old, Some(1), &["c", "a", "b"].map(String::from),),
+            reconcile_index(&old, Some(1), &["c", "a", "b"].map(String::from),),
             Some(2)
         );
         assert_eq!(
-            preserve_highlight(&old, Some(1), &["a", "c"].map(String::from)),
+            reconcile_index(&old, Some(1), &removed).or((!removed.is_empty()).then_some(0)),
             Some(0)
         );
-        assert_eq!(preserve_highlight(&old, Some(1), &[]), None);
-    }
-}
-
-struct Anchored<'a, 'b, Message>
-where
-    'b: 'a,
-{
-    position: Point,
-    target_height: f32,
-    width: f32,
-    viewport: Rectangle,
-    body: &'a mut Element<'b, Message>,
-    body_tree: &'a mut Tree,
-    footer: Option<(&'a mut Element<'b, Message>, &'a mut Tree)>,
-}
-
-impl<Message> iced::advanced::Overlay<Message, Theme, iced::Renderer>
-    for Anchored<'_, '_, Message>
-{
-    fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let below = bounds.height - (self.position.y + self.target_height + spacing::XS);
-        let above = self.position.y - spacing::XS;
-        let max_height = below.max(above).max(0.0);
-        let limits = layout::Limits::new(
-            Size::new(self.width, 0.0),
-            Size::new(self.width, max_height),
+        assert_eq!(
+            reconcile_index(&old, Some(1), &empty).or((!empty.is_empty()).then_some(0)),
+            None
         );
-        let footer = self
-            .footer
-            .as_mut()
-            .map(|(footer, tree)| footer.as_widget_mut().layout(tree, renderer, &limits));
-        let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
-        let body_limits = layout::Limits::new(
-            Size::new(self.width, 0.0),
-            Size::new(self.width, (max_height - footer_height).max(0.0)),
-        );
-        let body = self
-            .body
-            .as_widget_mut()
-            .layout(self.body_tree, renderer, &body_limits);
-        let body_height = body.size().height;
-        let height = body_height + footer_height;
-        let mut children = vec![body];
-
-        if let Some(footer) = footer {
-            children.push(footer.move_to(Point::new(0.0, body_height)));
-        }
-
-        layout::Node::with_children(Size::new(self.width, height), children).move_to(
-            if below >= height || below >= above {
-                self.position + Vector::new(0.0, self.target_height + spacing::XS)
-            } else {
-                self.position - Vector::new(0.0, height + spacing::XS)
-            },
-        )
-    }
-
-    fn update(
-        &mut self,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-    ) {
-        let mut children = layout.children();
-        self.body.as_widget_mut().update(
-            self.body_tree,
-            event,
-            children.next().expect("search panel body layout"),
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            &self.viewport,
-        );
-
-        if let Some(((footer, tree), footer_layout)) = self.footer.as_mut().zip(children.next()) {
-            footer.as_widget_mut().update(
-                tree,
-                event,
-                footer_layout,
-                cursor,
-                renderer,
-                clipboard,
-                shell,
-                &self.viewport,
-            );
-        }
-    }
-
-    fn mouse_interaction(
-        &self,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        let mut children = layout.children();
-        let body = self.body.as_widget().mouse_interaction(
-            self.body_tree,
-            children.next().expect("search panel body layout"),
-            cursor,
-            &self.viewport,
-            renderer,
-        );
-
-        self.footer
-            .as_ref()
-            .zip(children.next())
-            .map_or(body, |((footer, tree), footer_layout)| {
-                body.max(footer.as_widget().mouse_interaction(
-                    tree,
-                    footer_layout,
-                    cursor,
-                    &self.viewport,
-                    renderer,
-                ))
-            })
-    }
-
-    fn draw(
-        &self,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-    ) {
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: layout.bounds(),
-                border: Border::default().rounded(6),
-                shadow: Shadow::default(),
-                snap: true,
-            },
-            Background::Color(theme.extended_palette().background.neutral.color),
-        );
-
-        let mut children = layout.children();
-        self.body.as_widget().draw(
-            self.body_tree,
-            renderer,
-            theme,
-            style,
-            children.next().expect("search panel body layout"),
-            cursor,
-            &self.viewport,
-        );
-
-        if let Some(((footer, tree), footer_layout)) = self.footer.as_ref().zip(children.next()) {
-            footer.as_widget().draw(
-                tree,
-                renderer,
-                theme,
-                style,
-                footer_layout,
-                cursor,
-                &self.viewport,
-            );
-        }
-    }
-
-    fn operate(
-        &mut self,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        operation.container(None, layout.bounds());
-        operation.traverse(&mut |operation| {
-            let mut children = layout.children();
-            self.body.as_widget_mut().operate(
-                self.body_tree,
-                children.next().expect("search panel body layout"),
-                renderer,
-                operation,
-            );
-
-            if let Some(((footer, tree), footer_layout)) = self.footer.as_mut().zip(children.next())
-            {
-                footer
-                    .as_widget_mut()
-                    .operate(tree, footer_layout, renderer, operation);
-            }
-        });
     }
 }
 
 fn search_style(theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(
-            theme.extended_palette().background.neutral.color,
-        )),
-        border: Border::default().rounded(6),
-        ..container::Style::default()
-    }
+    crate::theme::surface(theme.extended_palette().background.neutral)
 }
 
 fn input_style(theme: &Theme, _: text_input::Status) -> text_input::Style {
@@ -768,38 +506,5 @@ fn input_style(theme: &Theme, _: text_input::Status) -> text_input::Style {
         placeholder: colors.secondary.weak.text,
         value: theme.palette().text,
         selection: theme.palette().primary,
-    }
-}
-
-fn result_style(theme: &Theme, status: Status, keyboard_highlighted: bool) -> button::Style {
-    let highlighted = keyboard_highlighted
-        || matches!(status, Status::Hovered | Status::Pressed | Status::Focused);
-
-    button::Style {
-        background: highlighted.then_some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
-        text_color: if highlighted {
-            theme.palette().text
-        } else {
-            theme.extended_palette().secondary.weak.text
-        },
-        border: Border::default().rounded(6),
-        ..button::Style::default()
-    }
-}
-
-fn footer_style(theme: &Theme, status: Status) -> button::Style {
-    let colors = if matches!(status, Status::Hovered | Status::Pressed) {
-        theme.extended_palette().background.strongest
-    } else {
-        theme.extended_palette().background.stronger
-    };
-
-    button::Style {
-        background: Some(Background::Color(colors.color)),
-        text_color: theme.extended_palette().secondary.weak.text,
-        border: Border::default().rounded(iced::border::bottom(6)),
-        ..button::Style::default()
     }
 }

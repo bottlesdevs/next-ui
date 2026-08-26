@@ -1,3 +1,4 @@
+mod anchored_panel;
 mod control;
 mod pressable;
 mod style;
