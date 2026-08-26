@@ -7,7 +7,7 @@ use next_ui::widgets::text::TextExt as _;
 use next_ui::widgets::{
     action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
     info_card::{self, Kind},
-    info_row, picker_row, row_group, search, selector_row, status_bar, switcher_row, tabs,
+    info_row, picker_row, popover, row_group, search, selector_row, status_bar, switcher_row, tabs,
     text_row, title,
 };
 use next_ui::{icons::Icon, theme, ui::chrome};
@@ -49,6 +49,7 @@ struct Gallery {
     selected_tab: usize,
     switched_on: bool,
     group_switched_on: bool,
+    popover_open: bool,
     status_expanded: bool,
     value: usize,
 }
@@ -62,6 +63,7 @@ impl Default for Gallery {
             selected_tab: 0,
             switched_on: false,
             group_switched_on: false,
+            popover_open: false,
             status_expanded: false,
             value: 1,
         }
@@ -76,6 +78,7 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
+    PopoverToggled(bool),
     Window(chrome::Action),
     StatusToggled,
     Previous,
@@ -95,6 +98,7 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
+            Message::PopoverToggled(open) => self.popover_open = open,
             Message::Window(chrome::Action::RequestClose) => return iced::exit(),
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
@@ -247,6 +251,31 @@ impl Gallery {
         let selected = self
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
+        let popover = popover::Popover::new(
+            button::Button::new("Open popover")
+                .trailing_icon(Icon::DownCaret)
+                .on_press(Message::PopoverToggled(true)),
+            self.popover_open,
+        )
+        .add(
+            popover::PopoverItem::new("Current profile")
+                .subtitle("Selected")
+                .icon(Icon::Person)
+                .selected(true)
+                .on_select(Message::PopoverToggled(false)),
+        )
+        .add(
+            popover::PopoverItem::new("Available account")
+                .subtitle("Child action captures the row click")
+                .action("Link", Message::Noop),
+        )
+        .add(
+            popover::PopoverItem::new("Unavailable account")
+                .disabled_action("Taken")
+                .tooltip(text("Already linked to another profile")),
+        )
+        .footer("Manage profiles", Message::Noop)
+        .on_dismiss(Message::PopoverToggled(false));
         let fields = column![
             text_row::TextRow::new("Input Name", &self.text_rows[0])
                 .placeholder("Placeholder")
@@ -434,6 +463,7 @@ impl Gallery {
                     section("Cards", cards),
                     section("Tabs", tabs),
                     section("Search", search),
+                    section("Popover", popover),
                     section("Rows", fields),
                     section("Row group", row_group),
                     section("Overlap-aware expanders", multiple_expanders),
