@@ -6,7 +6,7 @@ use iced::{
 
 use crate::{icons::Icon, theme};
 
-use super::{button::Button, spacing, style, text::TextExt as _};
+use super::{button::Button, spacing, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusState {
@@ -133,7 +133,7 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         container(content)
             .width(Fill)
             .clip(true)
-            .style(style::panel)
+            .style(theme::panel)
             .into()
     }
 }

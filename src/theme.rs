@@ -245,13 +245,14 @@ pub fn application(theme: &Theme) -> ApplicationStyle {
 }
 
 pub fn panel(theme: &Theme) -> container::Style {
-    let bottles_theme = BottlesTheme::from(theme);
+    surface(theme.extended_palette().background.weaker)
+}
 
-    container::Style {
-        background: Some(Background::Color(bottles_theme.panel)),
-        border: Border::default().rounded(6),
-        ..container::Style::default()
-    }
+pub(crate) fn surface(colors: Pair) -> container::Style {
+    container::Style::default()
+        .color(colors.text)
+        .background(colors.color)
+        .border(Border::default().rounded(6))
 }
 
 pub fn scrollbar(theme: &Theme, status: scrollable::Status) -> scrollable::Style {

@@ -1,7 +1,7 @@
 use iced::{
-    Background, Border, Center, Element, Theme,
+    Center, Element, Theme,
     theme::palette::Pair,
-    widget::{column, container, row, text, text::Fragment, text::IntoFragment},
+    widget::{column, row, text, text::Fragment, text::IntoFragment},
 };
 
 use crate::{icons::Icon, theme};
@@ -47,16 +47,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
             .spacing(spacing::SM),
         )
         .padding(spacing::LG)
-        .style(move |theme| {
-            let colors = colors(theme, kind);
-
-            container::Style {
-                text_color: Some(colors.text),
-                background: Some(Background::Color(colors.color)),
-                border: Border::default().rounded(6),
-                ..container::Style::default()
-            }
-        })
+        .style(move |current_theme| theme::surface(colors(current_theme, kind)))
         .into()
     }
 }

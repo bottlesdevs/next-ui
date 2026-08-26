@@ -1,6 +1,7 @@
 mod control;
 mod pressable;
 mod style;
+mod surface;
 
 mod spacing {
     pub(crate) const XS: f32 = 6.0;

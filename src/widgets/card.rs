@@ -3,14 +3,18 @@ use iced::{
     widget::{Space, column, container, image, stack, text},
 };
 
-use super::{spacing, style, text::TextExt as _};
+use super::{
+    spacing,
+    surface::{Kind as SurfaceKind, Surface},
+    text::TextExt as _,
+};
 
 pub(crate) const BANNER_HEIGHT: f32 = 180.0;
 
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
     padding: Padding,
-    style: container::StyleFn<'a, Theme>,
+    style: Option<container::StyleFn<'a, Theme>>,
 }
 
 impl<'a, Message> Card<'a, Message> {
@@ -18,7 +22,7 @@ impl<'a, Message> Card<'a, Message> {
         Self {
             content: content.into(),
             padding: Padding::ZERO,
-            style: Box::new(style::surface),
+            style: None,
         }
     }
 
@@ -28,19 +32,22 @@ impl<'a, Message> Card<'a, Message> {
     }
 
     pub(crate) fn style(mut self, style: impl Fn(&Theme) -> container::Style + 'a) -> Self {
-        self.style = Box::new(style);
+        self.style = Some(Box::new(style));
         self
     }
 }
 
 impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
     fn from(card: Card<'a, Message>) -> Self {
-        container(card.content)
+        let content = container(card.content)
             .padding(card.padding)
             .width(Fill)
-            .clip(true)
-            .class(card.style)
-            .into()
+            .clip(true);
+
+        match card.style {
+            Some(style) => content.class(style).into(),
+            None => Surface::new(SurfaceKind::Card, content).into(),
+        }
     }
 }
 
