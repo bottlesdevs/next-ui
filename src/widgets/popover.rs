@@ -1,21 +1,22 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Length, Point, Rectangle, Shadow, Size,
-    Theme, Vector,
+    Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
     advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, tree},
+        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
+        widget::{Operation, Tree},
     },
-    keyboard::{self, key},
-    widget::{button, column, container, row, scrollable, svg, text, tooltip},
+    widget::{column, container, scrollable, svg, tooltip},
 };
 
 use crate::icons::Icon;
 
 use super::{
+    anchored_panel::{
+        AnchoredPanel, PanelContent, footer as panel_footer, row_content,
+        row_style as panel_row_style,
+    },
     button::{Button, ButtonKind},
-    pressable::{Pressable, Status},
+    control::Control,
     spacing,
-    text::TextExt as _,
 };
 
 /// A single row inside a [`Popover`]'s panel: either a plain navigable row, or one with a
@@ -143,23 +144,13 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
             container(rows).width(Fill).padding(spacing::MD).into()
         };
 
-        let footer = popover.footer.map(|(label, message)| {
-            Pressable::new(
-                row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
-                    .spacing(spacing::SM)
-                    .align_y(Alignment::Center),
-            )
-            .width(Fill)
-            .padding(spacing::MD)
-            .on_press(message)
-            .style(footer_style)
-            .into()
-        });
+        let footer = popover
+            .footer
+            .map(|(label, message)| panel_footer(label, message));
 
         Element::new(PopoverWidget {
             trigger: popover.trigger,
-            panel_body: scrollable(body).width(Fill).into(),
-            panel_footer: footer,
+            panel: PanelContent::new(scrollable(body).width(Fill), footer),
             open: popover.open,
             on_dismiss: popover.on_dismiss,
         })
@@ -167,26 +158,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
 }
 
 fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<'a, Message> {
-    let mut labels = column![text(item.title).label()].spacing(spacing::XS);
-
-    if let Some(subtitle) = item.subtitle {
-        labels = labels.push(text(subtitle).detail().muted());
-    }
-
-    let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
-
-    if let Some(icon) = item.icon {
-        content = content.push(
-            svg(icon.handle())
-                .width(20)
-                .height(20)
-                .content_fit(iced::ContentFit::Contain),
-        );
-    }
-
-    content = content
-        .push(labels)
-        .push(iced::widget::Space::new().width(Fill));
+    let mut content = row_content(item.title, item.subtitle, item.icon);
 
     if item.selected {
         content = content.push(
@@ -207,11 +179,12 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
         content = content.push(Button::new(label).kind(ButtonKind::Surface));
     }
 
-    let row: Element<'a, Message> = Pressable::new(content)
+    let row: Element<'a, Message> = Control::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press_maybe(item.on_select)
-        .style(row_style)
+        .selected(item.selected)
+        .style(panel_row_style)
         .into();
 
     match item.tooltip {
@@ -225,36 +198,24 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
 
 struct PopoverWidget<'a, Message> {
     trigger: Element<'a, Message>,
-    panel_body: Element<'a, Message>,
-    panel_footer: Option<Element<'a, Message>>,
+    panel: PanelContent<'a, Message>,
     open: bool,
     on_dismiss: Option<Message>,
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::stateless()
-    }
-
     fn children(&self) -> Vec<Tree> {
-        let mut children = vec![Tree::new(&self.trigger), Tree::new(&self.panel_body)];
-
-        if let Some(footer) = &self.panel_footer {
-            children.push(Tree::new(footer));
-        }
-
-        children
+        vec![Tree::new(&self.trigger), self.panel.tree()]
     }
 
     fn diff(&self, tree: &mut Tree) {
-        let mut children: Vec<&dyn Widget<Message, Theme, iced::Renderer>> =
-            vec![self.trigger.as_widget(), self.panel_body.as_widget()];
-
-        if let Some(footer) = &self.panel_footer {
-            children.push(footer.as_widget());
+        if tree.children.len() != 2 {
+            tree.children = self.children();
+            return;
         }
 
-        tree.diff_children(&children);
+        tree.children[0].diff(&self.trigger);
+        self.panel.diff(&mut tree.children[1]);
     }
 
     fn size(&self) -> Size<Length> {
@@ -359,304 +320,18 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
 
         let bounds = layout.bounds();
 
-        let (_, panel_trees) = tree.children.split_at_mut(1);
-        let (body_trees, footer_trees) = panel_trees.split_at_mut(1);
-
-        Some(overlay::Element::new(Box::new(PopoverOverlay {
-            position: bounds.position() + translation,
-            target_height: bounds.height,
-            width: bounds.width.max(240.0),
-            viewport: *viewport,
-            body: &mut self.panel_body,
-            body_tree: &mut body_trees[0],
-            footer: self.panel_footer.as_mut().zip(footer_trees.first_mut()),
-            on_dismiss: self.on_dismiss.clone(),
-        })))
-    }
-}
-
-struct PopoverOverlay<'a, 'b, Message>
-where
-    'b: 'a,
-{
-    position: Point,
-    target_height: f32,
-    width: f32,
-    viewport: Rectangle,
-    body: &'a mut Element<'b, Message>,
-    body_tree: &'a mut Tree,
-    footer: Option<(&'a mut Element<'b, Message>, &'a mut Tree)>,
-    on_dismiss: Option<Message>,
-}
-
-impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
-    for PopoverOverlay<'_, '_, Message>
-{
-    fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let gap = spacing::XS;
-        let viewport_padding = spacing::SM;
-
-        // Keep the popover away from the window edges.
-        let available_width = (bounds.width - viewport_padding * 2.0).max(0.0);
-
-        let width = self.width.min(available_width);
-
-        // Horizontal placement.
-        let x = self.position.x.clamp(
-            viewport_padding,
-            (bounds.width - width - viewport_padding).max(viewport_padding),
-        );
-
-        // Calculate available space above and below the trigger.
-        let below = bounds.height - (self.position.y + self.target_height + gap) - viewport_padding;
-
-        let above = self.position.y - gap - viewport_padding;
-
-        // If neither side can fit the whole popover, use whichever side has
-        // more space and let the scrollable body handle the constrained height.
-        let open_below = below >= above;
-
-        let max_height = below.max(above).max(0.0);
-
-        let limits = layout::Limits::new(Size::new(width, 0.0), Size::new(width, max_height));
-
-        let footer = self
-            .footer
-            .as_mut()
-            .map(|(footer, tree)| footer.as_widget_mut().layout(tree, renderer, &limits));
-
-        let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
-
-        let body_limits = layout::Limits::new(
-            Size::new(width, 0.0),
-            Size::new(width, (max_height - footer_height).max(0.0)),
-        );
-
-        let body = self
-            .body
-            .as_widget_mut()
-            .layout(self.body_tree, renderer, &body_limits);
-
-        let body_height = body.size().height;
-        let height = (body_height + footer_height).min(max_height);
-
-        let y = if open_below {
-            self.position.y + self.target_height + gap
-        } else {
-            self.position.y - height - gap
-        };
-
-        // Keep the popover away from the top/bottom window edges.
-        let y = y.clamp(
-            viewport_padding,
-            (bounds.height - height - viewport_padding).max(viewport_padding),
-        );
-
-        let mut children = vec![body];
-
-        if let Some(footer) = footer {
-            children.push(footer.move_to(Point::new(0.0, body_height)));
-        }
-
-        layout::Node::with_children(Size::new(width, height), children).move_to(Point::new(x, y))
-    }
-
-    fn update(
-        &mut self,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-    ) {
-        let dismiss = match event {
-            Event::Mouse(mouse::Event::ButtonPressed(_)) => {
-                !cursor.is_over(layout.bounds()) && cursor.position().is_some()
-            }
-            Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(key::Named::Escape),
-                ..
-            }) => true,
-            _ => false,
-        };
-
-        if dismiss {
-            if let Some(message) = self.on_dismiss.clone() {
-                shell.publish(message);
-                shell.capture_event();
-            }
-
-            return;
-        }
-
-        let mut children = layout.children();
-
-        self.body.as_widget_mut().update(
-            self.body_tree,
-            event,
-            children.next().expect("popover panel body layout"),
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            &self.viewport,
-        );
-
-        if let Some(((footer, tree), footer_layout)) = self.footer.as_mut().zip(children.next()) {
-            footer.as_widget_mut().update(
-                tree,
-                event,
-                footer_layout,
-                cursor,
-                renderer,
-                clipboard,
-                shell,
-                &self.viewport,
-            );
-        }
-    }
-
-    fn mouse_interaction(
-        &self,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        let mut children = layout.children();
-
-        let body = self.body.as_widget().mouse_interaction(
-            self.body_tree,
-            children.next().expect("popover panel body layout"),
-            cursor,
-            &self.viewport,
-            renderer,
-        );
-
-        self.footer
-            .as_ref()
-            .zip(children.next())
-            .map_or(body, |((footer, tree), footer_layout)| {
-                body.max(footer.as_widget().mouse_interaction(
-                    tree,
-                    footer_layout,
-                    cursor,
-                    &self.viewport,
-                    renderer,
-                ))
-            })
-    }
-
-    fn draw(
-        &self,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-    ) {
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: layout.bounds(),
-                border: Border::default().rounded(6),
-                shadow: Shadow::default(),
-                snap: true,
-            },
-            Background::Color(theme.extended_palette().background.neutral.color),
-        );
-
-        let mut children = layout.children();
-
-        self.body.as_widget().draw(
-            self.body_tree,
-            renderer,
-            theme,
-            style,
-            children.next().expect("popover panel body layout"),
-            cursor,
-            &self.viewport,
-        );
-
-        if let Some(((footer, tree), footer_layout)) = self.footer.as_ref().zip(children.next()) {
-            footer.as_widget().draw(
-                tree,
-                renderer,
-                theme,
-                style,
-                footer_layout,
-                cursor,
-                &self.viewport,
-            );
-        }
-    }
-
-    fn operate(
-        &mut self,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        operation.container(None, layout.bounds());
-
-        operation.traverse(&mut |operation| {
-            let mut children = layout.children();
-
-            self.body.as_widget_mut().operate(
-                self.body_tree,
-                children.next().expect("popover panel body layout"),
-                renderer,
-                operation,
-            );
-
-            if let Some(((footer, tree), footer_layout)) = self.footer.as_mut().zip(children.next())
-            {
-                footer
-                    .as_widget_mut()
-                    .operate(tree, footer_layout, renderer, operation);
-            }
-        });
-    }
-}
-
-fn row_style(theme: &Theme, status: Status) -> button::Style {
-    let highlighted = matches!(status, Status::Hovered | Status::Pressed | Status::Focused);
-
-    button::Style {
-        background: highlighted.then_some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
-        text_color: if highlighted {
-            theme.palette().text
-        } else {
-            theme.extended_palette().secondary.weak.text
-        },
-        border: Border::default().rounded(6),
-        ..button::Style::default()
-    }
-}
-
-fn footer_style(theme: &Theme, status: Status) -> button::Style {
-    let colors = if matches!(status, Status::Hovered | Status::Pressed) {
-        theme.extended_palette().background.strongest
-    } else {
-        theme.extended_palette().background.stronger
-    };
-
-    button::Style {
-        background: Some(Background::Color(colors.color)),
-        text_color: theme.extended_palette().secondary.weak.text,
-        border: Border::default().rounded(iced::border::bottom(6)),
-        ..button::Style::default()
+        Some(overlay::Element::new(Box::new(AnchoredPanel::popover(
+            bounds.position() + translation,
+            bounds.height,
+            bounds.width,
+            *viewport,
+            &mut self.panel,
+            &mut tree.children[1],
+            self.on_dismiss.clone(),
+        ))))
     }
 }
 
 fn tooltip_style(theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(
-            theme.extended_palette().background.strongest.color,
-        )),
-        text_color: Some(theme.palette().text),
-        border: Border::default().rounded(6),
-        ..container::Style::default()
-    }
+    crate::theme::surface(theme.extended_palette().background.strongest)
 }
