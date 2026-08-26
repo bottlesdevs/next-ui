@@ -7,12 +7,11 @@ use iced::{
     animation::{Animation, Easing},
     gradient,
     time::Instant,
-    touch,
     widget::responsive,
     window,
 };
 
-use super::spacing;
+use super::{control::event_cursor, spacing};
 use crate::theme::WINDOW;
 
 const BREAKPOINT: f32 = 900.0;
@@ -308,7 +307,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
             );
 
             if shell.is_event_captured()
-                || (index == 1 && pointer_is_over(event, cursor, child_layout.bounds()))
+                || (index == 1
+                    && matches!(event, Event::Mouse(_) | Event::Touch(_))
+                    && event_cursor(event, cursor).is_over(child_layout.bounds()))
             {
                 return;
             }
@@ -486,19 +487,6 @@ fn pane_is_active(index: usize, wide: bool, progress: f32) -> bool {
 
 fn pane_is_interactive(index: usize, wide: bool, progress: f32, master_blocked: bool) -> bool {
     pane_is_active(index, wide, progress) && (index != 0 || !master_blocked)
-}
-
-fn pointer_is_over(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
-    match event {
-        Event::Mouse(_) => cursor.is_over(bounds),
-        Event::Touch(
-            touch::Event::FingerPressed { position, .. }
-            | touch::Event::FingerMoved { position, .. }
-            | touch::Event::FingerLifted { position, .. }
-            | touch::Event::FingerLost { position, .. },
-        ) => bounds.contains(*position),
-        _ => false,
-    }
 }
 
 fn pane_bounds(size: Size, wide: bool, progress: f32, side: PaneSide) -> [Rectangle; 2] {

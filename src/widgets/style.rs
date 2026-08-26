@@ -4,7 +4,7 @@ use iced::{
     widget::{button, container, text},
 };
 
-use super::pressable::Status;
+use super::control::State;
 
 pub(crate) fn surface(theme: &Theme) -> container::Style {
     surface_style(theme.extended_palette().background.weak)
@@ -21,13 +21,13 @@ fn surface_style(colors: Pair) -> container::Style {
         .border(Border::default().rounded(6))
 }
 
-pub(crate) fn action(theme: &Theme, status: Status) -> button::Style {
-    let background = match status {
-        Status::Hovered | Status::Focused => {
-            Some(crate::theme::BottlesTheme::from(theme).row_hover_strong)
-        }
-        Status::Pressed => Some(theme.extended_palette().background.stronger.color),
-        _ => None,
+pub(crate) fn action(theme: &Theme, state: State) -> button::Style {
+    let background = if state.pressed {
+        Some(theme.extended_palette().background.stronger.color)
+    } else if state.hovered || state.focused {
+        Some(crate::theme::BottlesTheme::from(theme).row_hover_strong)
+    } else {
+        None
     };
 
     button::Style {
