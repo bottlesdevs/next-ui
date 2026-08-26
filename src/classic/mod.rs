@@ -31,7 +31,7 @@ use crate::{
 };
 use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
 use iced::{
-    Background, Element, Fill, Padding, Subscription, Task, Theme,
+    Background, Element, Fill, Subscription, Task, Theme,
     keyboard::{self, key},
     theme::Mode as ThemeMode,
     widget::{center, column, container, mouse_area, opaque, scrollable, stack},
@@ -556,10 +556,7 @@ impl State {
         ))
         .block_master();
 
-        let content = container(split)
-            .width(Fill)
-            .height(Fill)
-            .padding(Padding::ZERO.horizontal(12).bottom(12));
+        let content = container(split).width(Fill).height(Fill);
 
         chrome::WindowFrame::new(content, Message::Window).into()
     }
