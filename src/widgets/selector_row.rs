@@ -9,7 +9,7 @@ use iced::{
     keyboard::{self, key},
     time::Instant,
     touch,
-    widget::{Space, column, container, row, svg, text},
+    widget::{column, container, row, svg, text},
     window,
 };
 
@@ -17,7 +17,9 @@ use crate::icons::Icon;
 
 use super::{
     control::{Interaction, Outcome},
-    draw_caret, list_row, reconcile_index, spacing,
+    draw_caret,
+    list_row::{self, ListRow},
+    reconcile_index, spacing,
     text::TextExt as _,
 };
 
@@ -147,19 +149,13 @@ fn header<'a, Message: 'a>(
 
     value_row = value_row.push(text(value).size(list_row::BODY_SIZE).muted());
 
-    container(
-        row![
-            column![text(title).label().medium(), value_row]
-                .width(Fill)
-                .spacing(spacing::XS),
-            Space::new().width(20).height(20),
-        ]
-        .align_y(Alignment::Center)
-        .spacing(spacing::MD),
+    ListRow::new(
+        column![text(title).label().medium(), value_row]
+            .width(Fill)
+            .spacing(spacing::XS),
     )
-    .width(Fill)
-    .padding(list_row::STANDARD_PADDING)
-    .into()
+    .into_disclosure_content()
+    .element
 }
 
 struct Selector<'a, Message> {

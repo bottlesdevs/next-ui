@@ -269,30 +269,22 @@ impl State {
     }
 }
 
-pub fn new_profile_dialog(name: &str) -> Element<'_, Message> {
-    use crate::theme;
-
-    iced::widget::container(
-        column![
-            Title::new("New profile").subtitle("Give this profile a name."),
-            TextRow::new("Profile name", name)
-                .icon(Icon::Person)
-                .on_input(Message::NewProfileNameChanged)
-                .on_submit(Message::SubmitNewProfile),
-            row![
-                Button::new("Create")
-                    .kind(ButtonKind::Primary)
-                    .on_press(Message::SubmitNewProfile),
-                Button::new("Cancel")
-                    .kind(ButtonKind::Transparent)
-                    .on_press(Message::CancelNewProfile),
-            ]
-            .spacing(12),
+pub fn new_profile_dialog(name: &str) -> iced::widget::Column<'_, Message> {
+    column![
+        Title::new("New profile").subtitle("Give this profile a name."),
+        TextRow::new("Profile name", name)
+            .icon(Icon::Person)
+            .on_input(Message::NewProfileNameChanged)
+            .on_submit(Message::SubmitNewProfile),
+        row![
+            Button::new("Create")
+                .kind(ButtonKind::Primary)
+                .on_press(Message::SubmitNewProfile),
+            Button::new("Cancel")
+                .kind(ButtonKind::Transparent)
+                .on_press(Message::CancelNewProfile),
         ]
-        .spacing(18),
-    )
-    .width(420)
-    .padding(24)
-    .style(theme::panel)
-    .into()
+        .spacing(12),
+    ]
+    .spacing(18)
 }

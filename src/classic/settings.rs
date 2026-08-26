@@ -7,10 +7,7 @@ use std::sync::Arc;
 use bottles_core::BottleState;
 #[cfg(target_os = "linux")]
 use bottles_core::{Bottle, MangoHudConfig, error::Error as CoreError};
-use iced::{
-    Element,
-    widget::{column, container, svg, text},
-};
+use iced::{Element, widget::column};
 
 #[cfg(target_os = "linux")]
 use crate::widgets::info_card::{InfoCard, Kind};
@@ -18,11 +15,10 @@ use crate::{
     icons::Icon,
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
-        list_row::ListRow,
+        info_row::InfoRow,
         picker_row::PickerRow,
         row_group::RowGroup,
         switcher_row::SwitcherRow,
-        text::TextExt as _,
     },
 };
 
@@ -163,16 +159,15 @@ impl State {
         let content = column![bottle, graphics].spacing(12);
         #[cfg(target_os = "linux")]
         let content = if let Some(error) = &self.last_error {
-            content.push(InfoCard::new(
-                Kind::Error,
-                "Could not update bottle settings",
-                error,
-            ))
+            content.push(
+                InfoCard::new(Kind::Error, "Could not update bottle settings", error)
+                    .width(iced::Fill),
+            )
         } else {
             content
         };
 
-        container(content).max_width(1150).into()
+        content.into()
     }
 
     #[cfg(target_os = "linux")]
@@ -195,17 +190,8 @@ impl State {
     }
 }
 
-fn environment_row(description: String) -> ListRow<'static, Message> {
-    let labels = column![
-        text("Environment variables").label().medium(),
-        text(description).detail().muted(),
-    ]
-    .spacing(6);
-
-    ListRow::new(labels).leading(
-        svg(Icon::Gear.handle())
-            .width(24)
-            .height(24)
-            .content_fit(iced::ContentFit::Contain),
-    )
+fn environment_row(description: String) -> InfoRow<'static> {
+    InfoRow::new("Environment variables")
+        .description(description)
+        .icon(Icon::Gear)
 }

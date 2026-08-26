@@ -140,6 +140,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             card.banner,
             actions.into(),
         ))
+        .width(Fill)
         .into()
     }
 }

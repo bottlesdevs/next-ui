@@ -15,12 +15,19 @@ use super::{control::event_cursor, spacing};
 use crate::theme::WINDOW;
 
 const BREAKPOINT: f32 = 900.0;
-const SIDEBAR_MAX_WIDTH: f32 = 420.0;
+const COMPACT_MAX_WIDTH: f32 = 420.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneMode {
     Single,
     Split,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Pane {
+    #[default]
+    Master,
+    Detail,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -31,23 +38,25 @@ pub enum PaneSide {
 }
 
 pub struct SplitView<'a, Message> {
-    master: Box<dyn Fn(f32, PaneMode) -> Element<'a, Message> + 'a>,
-    detail: Box<dyn Fn(f32, PaneMode) -> Element<'a, Message> + 'a>,
+    master: Box<dyn Fn(PaneMode) -> Element<'a, Message> + 'a>,
+    detail: Box<dyn Fn(PaneMode) -> Element<'a, Message> + 'a>,
     show_detail: bool,
-    side: PaneSide,
+    detail_side: PaneSide,
+    compact: Pane,
     master_blocked: bool,
 }
 
 impl<'a, Message> SplitView<'a, Message> {
     pub fn new(
-        master: impl Fn(f32, PaneMode) -> Element<'a, Message> + 'a,
-        detail: impl Fn(f32, PaneMode) -> Element<'a, Message> + 'a,
+        master: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
+        detail: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
     ) -> Self {
         Self {
             master: Box::new(master),
             detail: Box::new(detail),
             show_detail: false,
-            side: PaneSide::End,
+            detail_side: PaneSide::End,
+            compact: Pane::Master,
             master_blocked: false,
         }
     }
@@ -57,8 +66,13 @@ impl<'a, Message> SplitView<'a, Message> {
         self
     }
 
-    pub fn side(mut self, side: PaneSide) -> Self {
-        self.side = side;
+    pub fn detail_side(mut self, side: PaneSide) -> Self {
+        self.detail_side = side;
+        self
+    }
+
+    pub fn compact(mut self, pane: Pane) -> Self {
+        self.compact = pane;
         self
     }
 
@@ -74,54 +88,34 @@ impl<'a, Message: 'a> From<SplitView<'a, Message>> for Element<'a, Message> {
             master,
             detail,
             show_detail,
-            side,
+            detail_side,
+            compact,
             master_blocked,
         } = split_view;
 
         responsive(move |size| {
             let wide = size.width >= BREAKPOINT;
-            let width = size.width;
-            let split_width = (width - spacing::SM).max(0.0);
-            let sidebar_width = split_width.min(SIDEBAR_MAX_WIDTH);
-            let content_width = split_width - sidebar_width;
             let master_mode = if wide && show_detail {
                 PaneMode::Split
             } else {
                 PaneMode::Single
             };
-            let master_width = if wide && show_detail {
-                match side {
-                    PaneSide::Start => content_width,
-                    PaneSide::End => sidebar_width,
-                }
-            } else {
-                width
-            };
-            let detail_width = if wide {
-                match side {
-                    PaneSide::Start => sidebar_width,
-                    PaneSide::End => content_width,
-                }
-            } else {
-                width
-            };
 
-            AnimatedSplit::new(
-                master(master_width, master_mode),
-                detail(
-                    detail_width,
-                    if wide {
+            Element::new(AnimatedSplit {
+                children: [
+                    master(master_mode),
+                    detail(if wide {
                         PaneMode::Split
                     } else {
                         PaneMode::Single
-                    },
-                ),
+                    }),
+                ],
                 show_detail,
                 wide,
-                side,
+                detail_side,
+                compact,
                 master_blocked,
-            )
-            .into()
+            })
         })
         .into()
     }
@@ -131,28 +125,12 @@ struct AnimatedSplit<'a, Message> {
     children: [Element<'a, Message>; 2],
     show_detail: bool,
     wide: bool,
-    side: PaneSide,
+    detail_side: PaneSide,
+    compact: Pane,
     master_blocked: bool,
 }
 
 impl<'a, Message> AnimatedSplit<'a, Message> {
-    fn new(
-        master: Element<'a, Message>,
-        detail: Element<'a, Message>,
-        show_detail: bool,
-        wide: bool,
-        side: PaneSide,
-        master_blocked: bool,
-    ) -> Self {
-        Self {
-            children: [master, detail],
-            show_detail,
-            wide,
-            side,
-            master_blocked,
-        }
-    }
-
     fn master_is_blocked(&self, progress: f32) -> bool {
         self.master_blocked && (self.show_detail || progress > 0.0)
     }
@@ -192,7 +170,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         tree.diff_children(&self.children);
         let state = tree.state.downcast_mut::<State>();
 
-        if state.transition.value() != self.show_detail {
+        if !self.wide {
+            *state = State::new(self.show_detail);
+        } else if state.transition.value() != self.show_detail {
             state.transition.go_mut(self.show_detail, Instant::now());
         }
     }
@@ -212,7 +192,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
             size,
             self.wide,
             tree.state.downcast_ref::<State>().progress(Instant::now()),
-            self.side,
+            self.detail_side,
+            self.compact,
         );
         let nodes = self
             .children
@@ -376,7 +357,10 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                 .zip(&tree.children)
                 .zip(layout.children())
                 .enumerate()
-                .filter(|(_, (_, child_layout))| child_layout.bounds().intersects(&clip))
+                .filter(|(index, (_, child_layout))| {
+                    pane_is_active(*index, self.wide, progress)
+                        && child_layout.bounds().intersects(&clip)
+                })
             {
                 let draw = |renderer: &mut iced::Renderer| {
                     child.as_widget().draw(
@@ -404,10 +388,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                                 ..renderer::Quad::default()
                             },
                             Background::from(
-                                gradient::Linear::new(Degrees(90.0))
-                                    .add_stop(0.0, WINDOW.scale_alpha(0.2 * progress))
-                                    .add_stop(0.7, WINDOW.scale_alpha(0.45 * progress))
-                                    .add_stop(1.0, WINDOW.scale_alpha(progress)),
+                                gradient::Linear::new(match self.detail_side {
+                                    PaneSide::Start => Degrees(90.0),
+                                    PaneSide::End => Degrees(270.0),
+                                })
+                                .add_stop(0.0, WINDOW.scale_alpha(0.2 * progress))
+                                .add_stop(0.7, WINDOW.scale_alpha(0.45 * progress))
+                                .add_stop(1.0, WINDOW.scale_alpha(progress)),
                             ),
                         );
                     });
@@ -471,12 +458,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
     }
 }
 
-impl<'a, Message: 'a> From<AnimatedSplit<'a, Message>> for Element<'a, Message> {
-    fn from(split: AnimatedSplit<'a, Message>) -> Self {
-        Element::new(split)
-    }
-}
-
 fn pane_is_active(index: usize, wide: bool, progress: f32) -> bool {
     match index {
         0 => wide || progress < 1.0,
@@ -489,35 +470,48 @@ fn pane_is_interactive(index: usize, wide: bool, progress: f32, master_blocked: 
     pane_is_active(index, wide, progress) && (index != 0 || !master_blocked)
 }
 
-fn pane_bounds(size: Size, wide: bool, progress: f32, side: PaneSide) -> [Rectangle; 2] {
+fn pane_bounds(
+    size: Size,
+    wide: bool,
+    progress: f32,
+    detail_side: PaneSide,
+    compact: Pane,
+) -> [Rectangle; 2] {
     if wide {
         let available = (size.width - spacing::SM).max(0.0);
-        let sidebar_width = available.min(SIDEBAR_MAX_WIDTH);
-        let content_width = available - sidebar_width;
+        let compact_width = (available / 3.0).min(COMPACT_MAX_WIDTH);
+        let fill_width = available - compact_width;
+        let (master_width, detail_width) = match compact {
+            Pane::Master => (compact_width, fill_width),
+            Pane::Detail => (fill_width, compact_width),
+        };
 
-        match side {
+        match detail_side {
             PaneSide::End => {
-                let master_width = size.width + (sidebar_width - size.width) * progress;
+                let current_master_width = size.width + (master_width - size.width) * progress;
 
                 [
-                    Rectangle::new(Point::ORIGIN, Size::new(master_width, size.height)),
+                    Rectangle::new(Point::ORIGIN, Size::new(current_master_width, size.height)),
                     Rectangle::new(
-                        Point::new(master_width + spacing::SM, 0.0),
-                        Size::new(content_width, size.height),
+                        Point::new(current_master_width + spacing::SM, 0.0),
+                        Size::new(detail_width, size.height),
                     ),
                 ]
             }
             PaneSide::Start => {
-                let offset = (sidebar_width + spacing::SM) * progress;
+                let offset = (detail_width + spacing::SM) * progress;
 
                 [
                     Rectangle::new(
                         Point::new(offset, 0.0),
-                        Size::new(size.width - offset, size.height),
+                        Size::new(
+                            size.width + (master_width - size.width) * progress,
+                            size.height,
+                        ),
                     ),
                     Rectangle::new(
-                        Point::new(-(sidebar_width + spacing::SM) * (1.0 - progress), 0.0),
-                        Size::new(sidebar_width, size.height),
+                        Point::new(-(detail_width + spacing::SM) * (1.0 - progress), 0.0),
+                        Size::new(detail_width, size.height),
                     ),
                 ]
             }
@@ -527,7 +521,7 @@ fn pane_bounds(size: Size, wide: bool, progress: f32, side: PaneSide) -> [Rectan
             Rectangle::new(Point::ORIGIN, size),
             Rectangle::new(
                 Point::new(
-                    match side {
+                    match detail_side {
                         PaneSide::Start => -size.width,
                         PaneSide::End => size.width,
                     } * (1.0 - progress),

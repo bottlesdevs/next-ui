@@ -1,26 +1,32 @@
-use iced::{ContentFit, Element, widget::svg};
+use iced::{
+    ContentFit, Element,
+    widget::{
+        svg,
+        text::{Fragment, IntoFragment},
+    },
+};
 
 use crate::icons::Icon;
 
-use super::list_row::{ListRow, labels};
+use super::list_row::{self, ListRow, labels};
 
 pub struct InfoRow<'a> {
-    title: &'a str,
-    description: &'a str,
+    title: Fragment<'a>,
+    description: Fragment<'a>,
     icon: Option<Icon>,
 }
 
 impl<'a> InfoRow<'a> {
-    pub fn new(title: &'a str) -> Self {
+    pub fn new(title: impl IntoFragment<'a>) -> Self {
         Self {
-            title,
-            description: "",
+            title: title.into_fragment(),
+            description: "".into_fragment(),
             icon: None,
         }
     }
 
-    pub fn description(mut self, description: &'a str) -> Self {
-        self.description = description;
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.description = description.into_fragment();
         self
     }
 
@@ -43,8 +49,8 @@ impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
         match info.icon {
             Some(icon) => row.leading(
                 svg(icon.handle())
-                    .width(24)
-                    .height(24)
+                    .width(list_row::BODY_SIZE)
+                    .height(list_row::BODY_SIZE)
                     .content_fit(ContentFit::Contain),
             ),
             None => row,

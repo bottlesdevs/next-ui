@@ -12,7 +12,6 @@ use uuid::Uuid;
 
 use crate::{
     icons::Icon,
-    theme,
     widgets::{
         button::{Button, ButtonKind},
         info_row::InfoRow,
@@ -20,7 +19,6 @@ use crate::{
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
         row_group::RowGroup,
-        text::TextExt as _,
         text_row::TextRow,
         title::Title,
     },
@@ -307,22 +305,25 @@ impl State {
 
         let mut content = column![accounts, container(link_popover).width(iced::Fill)].spacing(18);
         if let Some(error) = &self.last_error {
-            content = content.push(crate::widgets::info_card::InfoCard::new(
-                crate::widgets::info_card::Kind::Error,
-                "Account update failed",
-                error,
-            ));
+            content = content.push(
+                crate::widgets::info_card::InfoCard::new(
+                    crate::widgets::info_card::Kind::Error,
+                    "Account update failed",
+                    error,
+                )
+                .width(iced::Fill),
+            );
         }
         content.into()
     }
 
-    pub fn login_dialog(&self) -> Option<iced::Element<'_, Message>> {
+    pub fn login_dialog(&self) -> Option<iced::widget::Column<'_, Message>> {
         self.login_modal.as_ref().map(login_dialog)
     }
 }
 
-fn login_dialog(login: &LoginChallenge) -> iced::Element<'_, Message> {
-    use iced::widget::{column, container, row};
+fn login_dialog(login: &LoginChallenge) -> iced::widget::Column<'_, Message> {
+    use iced::widget::{column, row};
 
     let submit_label = if login.submitting {
         "Submitting…"
@@ -357,11 +358,14 @@ fn login_dialog(login: &LoginChallenge) -> iced::Element<'_, Message> {
     ]
     .spacing(18);
     if let Some(error) = &login.error {
-        content = content.push(crate::widgets::info_card::InfoCard::new(
-            crate::widgets::info_card::Kind::Error,
-            "Could not answer the sign-in prompt",
-            error,
-        ));
+        content = content.push(
+            crate::widgets::info_card::InfoCard::new(
+                crate::widgets::info_card::Kind::Error,
+                "Could not answer the sign-in prompt",
+                error,
+            )
+            .width(iced::Fill),
+        );
     }
     content = content.push(
         row![
@@ -375,11 +379,7 @@ fn login_dialog(login: &LoginChallenge) -> iced::Element<'_, Message> {
         .spacing(12),
     );
 
-    container(content)
-        .width(560)
-        .padding(24)
-        .style(theme::panel)
-        .into()
+    content
 }
 
 pub fn account_row<'a>(
@@ -398,26 +398,11 @@ pub fn action_button_row<'a, M: Clone + 'a>(
     button_label: &'a str,
     on_press: M,
 ) -> ListRow<'a, M> {
-    use iced::widget::{column, svg, text};
-
-    let labels = column![
-        text(title).label().medium(),
-        text(description).detail().muted()
-    ]
-    .spacing(6);
-
-    ListRow::new(labels)
-        .leading(
-            svg(icon.handle())
-                .width(24)
-                .height(24)
-                .content_fit(iced::ContentFit::Contain),
-        )
-        .trailing(
-            Button::new(button_label)
-                .kind(ButtonKind::Surface)
-                .on_press(on_press),
-        )
+    ListRow::from(InfoRow::new(title).description(description).icon(icon)).trailing(
+        Button::new(button_label)
+            .kind(ButtonKind::Surface)
+            .on_press(on_press),
+    )
 }
 
 fn link_account(

@@ -23,7 +23,7 @@ use crate::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
         row_group::RowGroup,
-        split_view::{PaneMode, PaneSide, SplitView},
+        split_view::{Pane, PaneMode, PaneSide, SplitView},
         tabs::{Tab, Tabs},
         text_row::TextRow,
         title::Title,
@@ -37,6 +37,10 @@ use iced::{
     widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
 use uuid::Uuid;
+
+const CONTENT_MAX_WIDTH: f32 = 1150.0;
+const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
+const DIALOG_MAX_WIDTH: f32 = 560.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryTab {
@@ -529,27 +533,27 @@ impl State {
 
     pub fn view(&self) -> Element<'_, Message> {
         let split = SplitView::new(
-            |_, _| {
+            |_| {
                 SplitView::new(
-                    |width, mode| self.primary_page(width, mode),
-                    |width, mode| self.detail_page(width, mode),
+                    |mode| self.primary_page(mode),
+                    |mode| self.detail_page(mode),
                 )
                 .show_detail(matches!(self.route, Route::Bottle { .. }))
                 .into()
             },
-            |width, mode| {
+            |mode| {
                 if matches!(self.route, Route::Profiles { .. }) {
-                    self.profile_settings_page(width, mode)
+                    self.profile_settings_page(mode)
                 } else {
-                    self.new_bottle_page(width, mode)
+                    self.new_bottle_page(mode)
                 }
             },
         )
-        .side(match self.route {
-            Route::Bottle { .. } | Route::NewBottle => PaneSide::Start,
+        .detail_side(match self.route {
             Route::Profiles { .. } => PaneSide::End,
-            Route::Bottles | Route::Library => PaneSide::Start,
+            _ => PaneSide::Start,
         })
+        .compact(Pane::Detail)
         .show_detail(matches!(
             self.route,
             Route::NewBottle | Route::Profiles { .. }
@@ -561,7 +565,7 @@ impl State {
         chrome::WindowFrame::new(content, Message::Window).into()
     }
 
-    fn primary_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
+    fn primary_page(&self, mode: PaneMode) -> Element<'_, Message> {
         let tabs = Tabs::new(
             [
                 Tab::new(PrimaryTab::Bottles, "Bottles"),
@@ -575,7 +579,7 @@ impl State {
                 mode == PaneMode::Split
                     || !matches!(self.route, Route::Bottle { .. } | Route::NewBottle)
             } else {
-                matches!(self.route, Route::Bottles | Route::Library)
+                !matches!(self.route, Route::Bottle { .. } | Route::Profiles { .. })
             })
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
             .middle(tabs)
@@ -585,13 +589,10 @@ impl State {
                     .map(Message::Profiles),
             );
         let content: Element<'_, Message> = match self.primary_tab() {
-            PrimaryTab::Bottles => self.bottles.rows_view(
-                &self.read_model.bottle_states,
-                width,
-                mode,
-                Message::BottleSelected,
-            ),
-            PrimaryTab::Library => self.library.view(width, mode).map(Message::Library),
+            PrimaryTab::Bottles => self
+                .bottles
+                .rows_view(&self.read_model.bottle_states, Message::BottleSelected),
+            PrimaryTab::Library => self.library.view().map(Message::Library),
         };
 
         column![header, scroll_panel(content)]
@@ -600,7 +601,7 @@ impl State {
             .into()
     }
 
-    fn profile_settings_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
+    fn profile_settings_page(&self, mode: PaneMode) -> Element<'_, Message> {
         let header = HeaderBar::new(Message::Window)
             .show_window_controls(mode == PaneMode::Single || !cfg!(target_os = "macos"))
             .start(header_button("Cancel", Icon::Arrow, Message::Back))
@@ -669,7 +670,8 @@ impl State {
                     crate::widgets::info_card::Kind::Error,
                     "Could not update profile",
                     error,
-                ),
+                )
+                .width(Fill),
                 content,
             ]
             .spacing(18)
@@ -688,7 +690,7 @@ impl State {
         {
             return modal(
                 page,
-                login.map(Message::Accounts),
+                Element::from(login).map(Message::Accounts),
                 Message::Accounts(accounts::Message::CancelLogin),
             );
         }
@@ -698,7 +700,7 @@ impl State {
         {
             return modal(
                 page,
-                profiles::new_profile_dialog(draft).map(Message::Profiles),
+                Element::from(profiles::new_profile_dialog(draft)).map(Message::Profiles),
                 Message::Profiles(profiles::Message::CancelNewProfile),
             );
         }
@@ -706,9 +708,9 @@ impl State {
         page
     }
 
-    fn new_bottle_page(&self, _width: f32, mode: PaneMode) -> Element<'_, Message> {
+    fn new_bottle_page(&self, mode: PaneMode) -> Element<'_, Message> {
         let header = HeaderBar::new(Message::Window)
-            .show_window_controls(mode == PaneMode::Single || !cfg!(target_os = "macos"))
+            .show_window_controls(mode == PaneMode::Single || cfg!(target_os = "macos"))
             .start(header_button(
                 "Cancel bottle creation",
                 Icon::Arrow,
@@ -731,7 +733,7 @@ impl State {
             .into()
     }
 
-    fn detail_page(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
+    fn detail_page(&self, mode: PaneMode) -> Element<'_, Message> {
         #[cfg(feature = "fvs")]
         let detail_tabs = [
             Tab::new(DetailTab::Programs, "Programs"),
@@ -796,7 +798,7 @@ impl State {
                     (self.selected_bottle_handle(), self.selected_bottle_state())
                 {
                     self.bottles
-                        .program_grid(bottle, state, width)
+                        .program_grid(bottle, state)
                         .map(Message::Bottles)
                 } else {
                     column![].into()
@@ -804,7 +806,7 @@ impl State {
             }
             DetailTab::Settings => self.settings.view(&settings_ctx).map(Message::Settings),
             #[cfg(feature = "fvs")]
-            DetailTab::Snapshots => self.snapshots.view(width).map(Message::Snapshots),
+            DetailTab::Snapshots => self.snapshots.view().map(Message::Snapshots),
         };
 
         column![header, scroll_panel(content)]
@@ -815,7 +817,8 @@ impl State {
 }
 
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    let content = container(content).width(Fill).padding(24).center_x(Fill);
+    let content = container(content).width(Fill).max_width(CONTENT_MAX_WIDTH);
+    let content = container(content).padding(24).center_x(Fill);
 
     container(
         scrollable(content)
@@ -849,6 +852,11 @@ fn modal<'a>(
     content: impl Into<Element<'a, Message>>,
     on_dismiss: Message,
 ) -> Element<'a, Message> {
+    let content = container(content)
+        .max_width(DIALOG_MAX_WIDTH)
+        .padding(24)
+        .style(theme::panel);
+
     stack![
         base.into(),
         opaque(

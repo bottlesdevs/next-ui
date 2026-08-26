@@ -5,8 +5,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use bottles_core::{Bottle, SnapshotSummary, error::Error as CoreError};
 use iced::{
-    Element, Task,
-    widget::{column, container},
+    Element, Fill, Length, Task,
+    widget::{column, responsive},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
+use super::CONTENT_GRID_BREAKPOINT;
 
 #[derive(Clone)]
 pub enum Message {
@@ -116,29 +116,35 @@ impl State {
         }
     }
 
-    pub fn view(&self, width: f32) -> Element<'_, Message> {
-        let columns = usize::from(width >= CONTENT_GRID_BREAKPOINT) + 1;
-        let rows = self.snapshot_rows.iter().fold(
-            RowGroup::new().columns(columns),
-            |rows, (title, description)| {
-                rows.add(
-                    ActionRow::new(title, ActionRowState::Ready(Message::Noop))
-                        .description(description)
-                        .icon(Icon::Timer),
+    pub fn view(&self) -> Element<'_, Message> {
+        let rows = responsive(move |size| {
+            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
+
+            self.snapshot_rows
+                .iter()
+                .fold(
+                    RowGroup::new().columns(columns),
+                    |rows, (title, description)| {
+                        rows.add(
+                            ActionRow::new(title, ActionRowState::Ready(Message::Noop))
+                                .description(description)
+                                .icon(Icon::Timer),
+                        )
+                    },
                 )
-            },
-        );
+                .into()
+        })
+        .height(Length::Shrink);
 
         let mut content = column![rows].spacing(12);
         if let Some(error) = &self.last_error {
-            content = content.push(InfoCard::new(
-                Kind::Error,
-                "Could not load snapshots",
-                error.to_string(),
-            ));
+            content = content.push(
+                InfoCard::new(Kind::Error, "Could not load snapshots", error.to_string())
+                    .width(Fill),
+            );
         }
 
-        container(content).max_width(1150).into()
+        content.into()
     }
 }
 

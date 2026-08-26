@@ -1,6 +1,6 @@
 use iced::{
     Alignment, Background, Border, Element, Fill, Padding, Theme,
-    widget::{Row as IcedRow, Space, column, container, text},
+    widget::{Row as IcedRow, Space, column, container, text, text::IntoFragment},
 };
 
 use super::{
@@ -41,8 +41,8 @@ pub(crate) struct Content<'a, Message> {
 }
 
 pub(crate) fn labels<'a, Message: 'a>(
-    title: &'a str,
-    description: &'a str,
+    title: impl IntoFragment<'a>,
+    description: impl IntoFragment<'a>,
 ) -> Element<'a, Message> {
     column![
         text(title).label().medium(),

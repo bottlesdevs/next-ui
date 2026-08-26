@@ -168,6 +168,7 @@ impl Gallery {
                     ]
                     .spacing(6),
                 )
+                .width(Fill)
                 .padding(24),
                 artwork_card::ArtworkCard::new("Artwork card", "Ready")
                     .menu(
@@ -192,17 +193,22 @@ impl Gallery {
             ]
             .spacing(18),
             row![
-                info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information."),
-                info_card::InfoCard::new(Kind::Info, "Info", "General information for the user."),
+                info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information.")
+                    .width(Fill),
+                info_card::InfoCard::new(Kind::Info, "Info", "General information for the user.")
+                    .width(Fill),
             ]
             .spacing(12),
             row![
-                info_card::InfoCard::new(Kind::Error, "Error", "Something needs attention."),
-                info_card::InfoCard::new(Kind::Warning, "Warning", "Proceed with care."),
+                info_card::InfoCard::new(Kind::Error, "Error", "Something needs attention.")
+                    .width(Fill),
+                info_card::InfoCard::new(Kind::Warning, "Warning", "Proceed with care.")
+                    .width(Fill),
             ]
             .spacing(12),
             row![
-                info_card::InfoCard::new(Kind::Success, "Success", "The operation completed."),
+                info_card::InfoCard::new(Kind::Success, "Success", "The operation completed.")
+                    .width(Fill),
                 Space::new().width(Fill),
             ]
             .spacing(12),

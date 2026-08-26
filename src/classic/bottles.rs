@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use bottles_core::{Addons, Bottle, BottleManager, BottleState, Progress, Slot, Storage};
 use iced::{
-    Element, Fill, Task,
-    widget::{Column, column, container, image, row},
+    Element, Length, Task,
+    widget::{Column, column, image, responsive, row},
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -20,13 +20,12 @@ use crate::{
         picker_row::PickerRow,
         row_group::RowGroup,
         selector_row::SelectorRow,
-        split_view::PaneMode,
         status_bar::{StatusBar, StatusState},
         text_row::TextRow,
     },
 };
 
-const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
+use super::CONTENT_GRID_BREAKPOINT;
 
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
@@ -230,22 +229,24 @@ impl State {
     pub fn rows_view<'a, Msg: 'static + Clone>(
         &self,
         bottle_states: &'a [Arc<BottleState>],
-        width: f32,
-        mode: PaneMode,
-        on_select: impl Fn(Uuid) -> Msg,
+        on_select: impl Fn(Uuid) -> Msg + 'a,
     ) -> Element<'a, Msg> {
-        let columns = usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
-        let rows = bottle_states
-            .iter()
-            .fold(RowGroup::new().columns(columns), |rows, state| {
-                rows.add(
-                    ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
-                        .description(state.runner().name())
-                        .icon(Icon::Bottles),
-                )
-            });
+        responsive(move |size| {
+            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
 
-        container(rows).max_width(1150).into()
+            bottle_states
+                .iter()
+                .fold(RowGroup::new().columns(columns), |rows, state| {
+                    rows.add(
+                        ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
+                            .description(state.runner().name())
+                            .icon(Icon::Bottles),
+                    )
+                })
+                .into()
+        })
+        .height(Length::Shrink)
+        .into()
     }
 
     pub fn creation_view(&self) -> Element<'_, Message> {
@@ -267,7 +268,7 @@ impl State {
         ]
         .spacing(12);
 
-        let mut page = column![content].width(Fill);
+        let mut page = column![content];
 
         if !self.creation_log.is_empty() {
             let state = if self.creation_failed {
@@ -294,16 +295,13 @@ impl State {
         page.into()
     }
 
-    pub fn program_grid<'a>(
-        &self,
-        bottle: Bottle,
-        state: &'a BottleState,
-        width: f32,
-    ) -> Element<'a, Message> {
+    pub fn program_grid<'a>(&self, bottle: Bottle, state: &'a BottleState) -> Element<'a, Message> {
         let programs = state.programs().collect::<Vec<_>>();
 
-        if width >= CONTENT_GRID_BREAKPOINT {
-            Column::with_children(programs.chunks(2).map(|chunk| {
+        responsive(move |size| {
+            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
+
+            Column::with_children(programs.chunks(columns).map(|chunk| {
                 row(chunk
                     .iter()
                     .copied()
@@ -313,16 +311,9 @@ impl State {
             }))
             .spacing(12)
             .into()
-        } else {
-            Column::with_children(
-                programs
-                    .iter()
-                    .copied()
-                    .map(|program| program_card(bottle.clone(), program)),
-            )
-            .spacing(12)
-            .into()
-        }
+        })
+        .height(Length::Shrink)
+        .into()
     }
 }
 

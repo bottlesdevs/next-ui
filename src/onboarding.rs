@@ -14,6 +14,7 @@ use crate::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
         info_card::{InfoCard, Kind as InfoCardKind},
+        info_row::InfoRow,
         list_row::ListRow,
         row_group::RowGroup,
         text::TextExt as _,
@@ -28,9 +29,10 @@ use iced::{
 };
 use tokio_util::sync::CancellationToken;
 
-const STEP_WIDTH: f32 = 900.0;
-const DOWNLOAD_WIDTH: f32 = 500.0;
+const EXPERIENCE_SELECTOR_MAX_WIDTH: f32 = 900.0;
+const RESOURCE_LIST_MAX_WIDTH: f32 = 500.0;
 const EXPERIENCE_ROW_GAP: f32 = 8.0;
+const TUTORIAL_TEXT_MAX_WIDTH: f32 = 700.0;
 
 const ONBOARDING_SLOTS: &[(Slot, &str)] =
     &[(Slot::WineBridge, "WineBridge"), (Slot::Runner, "Runner")];
@@ -351,37 +353,22 @@ impl State {
         ]
         .spacing(EXPERIENCE_ROW_GAP)
         .width(Length::FillPortion(1));
-
-        let details = container(self.selected_experience_view())
-            .width(Length::FillPortion(1))
-            .height(Fill)
-            .clip(true)
-            .style(|theme: &Theme| {
-                let colors = theme::BottlesTheme::from(theme).hint;
-
-                container::Style {
-                    background: Some(iced::Background::Color(colors.color)),
-                    border: iced::Border::default().rounded(6),
-                    ..container::Style::default()
-                }
-            });
-        let selector = row![experiences, details]
-            .spacing(8)
+        let selector = row![experiences, self.selected_experience_view()]
+            .spacing(EXPERIENCE_ROW_GAP)
             .width(Fill)
             .height(Length::Shrink);
 
-        center(
-            column![
-                column![header, selector]
-                    .spacing(72)
-                    .width(Fill)
-                    .align_x(Horizontal::Center),
-                self.apply_button()
-            ]
-            .spacing(96)
-            .width(STEP_WIDTH)
-            .align_x(Horizontal::Center),
-        )
+        column![
+            column![header, selector]
+                .spacing(72)
+                .width(Fill)
+                .max_width(EXPERIENCE_SELECTOR_MAX_WIDTH)
+                .align_x(Horizontal::Center),
+            self.apply_button()
+        ]
+        .spacing(96)
+        .width(Fill)
+        .align_x(Horizontal::Center)
         .into()
     }
 
@@ -422,13 +409,9 @@ impl State {
                 DownloadState::Pending
                 | DownloadState::Cancelled
                 | DownloadState::Unavailable
-                | DownloadState::Failed(_) => group.add(ListRow::new(
-                    column![
-                        text(&item.label).label().medium(),
-                        text(description).detail().muted()
-                    ]
-                    .spacing(6),
-                )),
+                | DownloadState::Failed(_) => {
+                    group.add(InfoRow::new(&item.label).description(description))
+                }
             };
 
             if let DownloadState::Failed(error) = &item.state {
@@ -483,25 +466,22 @@ impl State {
                 .into(),
         };
 
-        let mut resources = column![container(group).width(DOWNLOAD_WIDTH).center_x(Fill)]
+        let mut resources = column![group]
             .spacing(24)
-            .align_x(Horizontal::Center);
+            .width(Fill)
+            .max_width(RESOURCE_LIST_MAX_WIDTH);
         if has_failures {
-            resources = resources.push(container(failures).width(DOWNLOAD_WIDTH));
+            resources = resources.push(failures);
         }
 
-        center(
-            column![
-                column![header, resources]
-                    .spacing(72)
-                    .width(Fill)
-                    .align_x(Horizontal::Center),
-                action,
-            ]
-            .spacing(96)
-            .width(STEP_WIDTH)
-            .align_x(Horizontal::Center),
-        )
+        column![
+            column![header, resources]
+                .spacing(72)
+                .align_x(Horizontal::Center),
+            action,
+        ]
+        .spacing(96)
+        .align_x(Horizontal::Center)
         .into()
     }
 
@@ -535,6 +515,8 @@ impl State {
             experience_label(self.experience),
             format!("{first}\n\n{second}"),
         )
+        .width(Fill)
+        .height(Fill)
         .into()
     }
 }
@@ -755,17 +737,15 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
         text(body).body().muted()
     ]
     .spacing(20)
-    .width(Fill);
+    .max_width(TUTORIAL_TEXT_MAX_WIDTH);
     let next = onboarding_button_with_icon("Next").on_press(Message::NextTutorialStep);
 
-    center(
-        column![
-            row![icon, text_block].spacing(48).align_y(Vertical::Center),
-            container(next).center_x(Fill),
-        ]
-        .spacing(96)
-        .width(STEP_WIDTH),
-    )
+    column![
+        row![icon, text_block].spacing(48).align_y(Vertical::Center),
+        next,
+    ]
+    .spacing(96)
+    .align_x(Horizontal::Center)
     .into()
 }
 

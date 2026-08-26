@@ -4,9 +4,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use bottles_core::{Library, LibraryItem, SearchEntry, SearchSource, error::Error as CoreError};
 use iced::{
-    Element,
+    Element, Fill, Length,
     futures::{StreamExt as _, stream},
-    widget::{column, container, text_input},
+    widget::{column, responsive},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -16,11 +16,11 @@ use crate::{
         action_row::{ActionRow, State as ActionRowState},
         info_card::{InfoCard, Kind},
         row_group::RowGroup,
-        split_view::PaneMode,
+        search::Search as SearchWidget,
     },
 };
 
-const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
+use super::CONTENT_GRID_BREAKPOINT;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibraryState {
@@ -173,61 +173,47 @@ impl State {
         self.search.cancel();
     }
 
-    pub fn view(&self, width: f32, mode: PaneMode) -> Element<'_, Message> {
-        let search = text_input("Search library", &self.query)
-            .on_input(Message::QueryChanged)
-            .padding(12);
+    pub fn view(&self) -> Element<'_, Message> {
+        let search = SearchWidget::new("Search library", &self.query, Message::QueryChanged);
 
-        match self.search.state {
-            LibraryState::Idle => {
-                return container(
-                    column![
-                        search,
-                        InfoCard::new(
-                            Kind::Hint,
-                            "No active profile",
-                            "Sign in to a profile to see its library.",
-                        )
-                    ]
-                    .spacing(12),
-                )
-                .max_width(1150)
+        let notice = match self.search.state {
+            LibraryState::Idle => Some((
+                "No active profile",
+                "Sign in to a profile to see its library.",
+            )),
+            LibraryState::Loading => Some((
+                "Loading library",
+                "Loading games from this profile's linked storefronts.",
+            )),
+            LibraryState::Loaded => None,
+        };
+        if let Some((title, body)) = notice {
+            return column![search, InfoCard::new(Kind::Hint, title, body).width(Fill)]
+                .spacing(12)
                 .into();
-            }
-            LibraryState::Loading => {
-                return container(
-                    column![
-                        search,
-                        InfoCard::new(
-                            Kind::Hint,
-                            "Loading library",
-                            "Loading games from this profile's linked storefronts.",
-                        )
-                    ]
-                    .spacing(12),
-                )
-                .max_width(1150)
-                .into();
-            }
-            LibraryState::Loaded => {}
         }
 
         let mut content = column![search].spacing(12);
         if let Some(error) = &self.last_error {
-            content = content.push(InfoCard::new(Kind::Error, "Program launch failed", error));
+            content = content
+                .push(InfoCard::new(Kind::Error, "Program launch failed", error).width(Fill));
         }
         if self.search.entries.is_empty() {
-            return container(content.push(InfoCard::new(
-                Kind::Hint,
-                "Nothing here yet",
-                "Registered programs and linked storefront games will show up here.",
-            )))
-            .max_width(1150)
-            .into();
+            return content
+                .push(
+                    InfoCard::new(
+                        Kind::Hint,
+                        "Nothing here yet",
+                        "Registered programs and linked storefront games will show up here.",
+                    )
+                    .width(Fill),
+                )
+                .into();
         }
 
-        let columns = usize::from(mode == PaneMode::Single && width >= CONTENT_GRID_BREAKPOINT) + 1;
-        let rows =
+        let rows = responsive(move |size| {
+            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
+
             self.search
                 .entries
                 .iter()
@@ -237,9 +223,12 @@ impl State {
                             .description(entry.source_name())
                             .icon(source_icon(entry.source())),
                     )
-                });
+                })
+                .into()
+        })
+        .height(Length::Shrink);
 
-        container(content.push(rows)).max_width(1150).into()
+        content.push(rows).into()
     }
 }
 

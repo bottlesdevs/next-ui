@@ -9,7 +9,14 @@ use iced::{Element, Fill, Subscription, Task, Theme, theme::Mode as ThemeMode};
 use next_config::Config;
 use serde::{Deserialize, Serialize};
 
-use crate::{classic, onboarding, theme, ui::chrome, widgets::header_bar::HeaderBar};
+use crate::{
+    classic, onboarding, theme,
+    ui::chrome,
+    widgets::{
+        button::{Button, ButtonKind},
+        header_bar::HeaderBar,
+    },
+};
 
 const APP_CONFIG_FILE: &str = "config.toml";
 const COMPONENT_CATALOG_URL: &str = "https://bottles-next-deps.bromb.in/api/v1/catalog/components";
@@ -642,12 +649,14 @@ fn status_view<'a>(
     description: impl iced::widget::text::IntoFragment<'a>,
     offer_classic: bool,
 ) -> Element<'a, AppMessage> {
-    use iced::widget::{button, column, text};
+    use iced::widget::{column, text};
 
     let mut status = column![text(title).size(32), text(description)].spacing(12);
     if offer_classic {
         status = status.push(
-            button("Use Classic").on_press(AppMessage::RequestExperience(Experience::Classic)),
+            Button::new("Use Classic")
+                .kind(ButtonKind::Primary)
+                .on_press(AppMessage::RequestExperience(Experience::Classic)),
         );
     }
 
@@ -670,13 +679,15 @@ fn onboarding_notice_view<'a>(
     title: impl iced::widget::text::IntoFragment<'a>,
     description: impl iced::widget::text::IntoFragment<'a>,
 ) -> Element<'a, AppMessage> {
-    use iced::widget::{button, column, text};
+    use iced::widget::{column, text};
 
     onboarding::frame(
         column![
             text(title).size(32),
             text(description),
-            button("Continue").on_press(AppMessage::DismissNotice),
+            Button::new("Continue")
+                .kind(ButtonKind::Primary)
+                .on_press(AppMessage::DismissNotice),
         ]
         .spacing(12),
         AppMessage::Window,
@@ -700,7 +711,7 @@ fn workspace_view(workspace: &Workspace) -> Element<'_, AppMessage> {
 }
 
 fn confirmation_view(target: Experience) -> Element<'static, AppMessage> {
-    use iced::widget::{button, column, row, text};
+    use iced::widget::{column, row, text};
 
     let (description, confirm_label) = match target {
         Experience::Classic => (
@@ -713,8 +724,12 @@ fn confirmation_view(target: Experience) -> Element<'static, AppMessage> {
         ),
     };
     let actions = row![
-        button("Cancel").on_press(AppMessage::CancelExperienceSwitch),
-        button(confirm_label).on_press(AppMessage::ConfirmExperienceSwitch),
+        Button::new("Cancel")
+            .kind(ButtonKind::Transparent)
+            .on_press(AppMessage::CancelExperienceSwitch),
+        Button::new(confirm_label)
+            .kind(ButtonKind::Primary)
+            .on_press(AppMessage::ConfirmExperienceSwitch),
     ]
     .spacing(8);
 
@@ -732,13 +747,15 @@ fn notice_view<'a>(
     title: impl iced::widget::text::IntoFragment<'a>,
     description: impl iced::widget::text::IntoFragment<'a>,
 ) -> Element<'a, AppMessage> {
-    use iced::widget::{button, column, text};
+    use iced::widget::{column, text};
 
     root_view(
         column![
             text(title).size(32),
             text(description),
-            button("Continue").on_press(AppMessage::DismissNotice),
+            Button::new("Continue")
+                .kind(ButtonKind::Primary)
+                .on_press(AppMessage::DismissNotice),
         ]
         .spacing(12),
     )
