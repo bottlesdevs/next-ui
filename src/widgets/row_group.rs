@@ -8,10 +8,12 @@ use iced::{
 };
 
 use super::{
-    expander_row::{ExpanderParts, ExpanderRow, control, passive},
-    list_row::ListRow,
-    pressable::SharedFlag,
+    control::{Activation, Control, Interaction, State as ControlState, Style as ControlStyle},
+    draw_caret,
+    expander_row::{ExpanderRow, header_row},
+    list_row::{Content as RowContent, ListRow},
     spacing,
+    surface::{Kind as SurfaceKind, Surface},
     text::TextExt as _,
 };
 
@@ -27,7 +29,7 @@ pub struct RowGroup<'a, Message> {
 
 enum Entry<'a, Message> {
     Row(ListRow<'a, Message>),
-    Expander(ExpanderParts<'a, Message>),
+    Expander(ExpanderRow<'a, Message>),
 }
 
 #[doc(hidden)]
@@ -49,7 +51,7 @@ where
 impl<'a, Message> From<ExpanderRow<'a, Message>> for RowGroupEntry<'a, Message> {
     fn from(expander: ExpanderRow<'a, Message>) -> Self {
         Self {
-            entry: Entry::Expander(expander.into_parts()),
+            entry: Entry::Expander(expander),
         }
     }
 }
@@ -145,48 +147,66 @@ fn group_line<'a, Message: Clone + 'a>(
 
     for (header_index, entry) in entries.into_iter().enumerate() {
         match entry.entry {
-            Entry::Row(row) => headers.push(Element::from(row.parent_enabled(enabled))),
-            Entry::Expander(parts) => {
-                let ExpanderParts {
+            Entry::Row(row) => {
+                headers.push(row.into_control(enabled).into());
+            }
+            Entry::Expander(expander) => {
+                let ExpanderRow {
                     header,
                     columns: requested_columns,
                     content,
                     content_enabled,
                     enabled: expander_enabled,
-                } = parts;
-                let expander_enabled = enabled && expander_enabled;
+                } = expander;
 
                 if content.is_empty() {
-                    headers.push(Element::from(passive(header, expander_enabled)));
+                    headers.push(
+                        header_row(header, expander_enabled)
+                            .into_control(enabled)
+                            .into(),
+                    );
                     continue;
                 }
 
-                let activated = SharedFlag::default();
-                let expanded = SharedFlag::default();
-                let header = control(
-                    header,
-                    expander_enabled,
-                    activated.clone(),
-                    expanded.clone(),
-                );
+                let RowContent {
+                    element: header,
+                    selected,
+                    focus_first,
+                    disclosure_index,
+                    ..
+                } = header_row(header, expander_enabled).into_disclosure_content();
+                let activation = Activation::default();
+                let mut header = Control::new(header)
+                    .width(Length::Fill)
+                    .sensitive(enabled && expander_enabled)
+                    .activate_with(activation.clone());
+
+                if focus_first {
+                    header = header.focus_first_descendant();
+                }
                 let content_columns = if standalone {
                     requested_columns
                 } else {
                     requested_columns.min(columns)
                 };
-                let body: Element<'a, Message> = container(
-                    content.into_iter().fold(
-                        RowGroup::new()
-                            .columns(content_columns)
-                            .enabled(expander_enabled && content_enabled),
-                        RowGroup::add,
-                    ),
+                let body: Element<'a, Message> = Surface::new(
+                    SurfaceKind::Panel,
+                    container(
+                        content
+                            .into_iter()
+                            .fold(RowGroup::new().columns(content_columns), RowGroup::add),
+                    )
+                    .width(Length::Fill)
+                    .padding(spacing::MD),
                 )
-                .width(Length::Fill)
-                .padding(spacing::MD)
                 .into();
+                let body = Control::new(body)
+                    .width(Length::Fill)
+                    .sensitive(enabled && expander_enabled && content_enabled)
+                    .style(disabled_subtree_style)
+                    .into();
 
-                headers.push(Element::from(header));
+                headers.push(header.into());
                 expansions.push(Expansion {
                     header_index,
                     content_index: bodies.len(),
@@ -200,8 +220,10 @@ fn group_line<'a, Message: Clone + 'a>(
                         },
                         columns,
                     ),
-                    activated,
-                    expanded,
+                    sensitive: enabled && expander_enabled,
+                    selected,
+                    disclosure_index: disclosure_index.expect("expander header has a caret slot"),
+                    activation,
                 });
                 bodies.push(body);
             }
@@ -230,13 +252,39 @@ pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
     group_line(vec![entry], 1, true, true)
 }
 
+fn expander_header_style(
+    theme: &Theme,
+    interaction: &Interaction,
+    sensitive: bool,
+    selected: bool,
+    expanded: bool,
+    bounds: Rectangle,
+    cursor: mouse::Cursor,
+) -> ControlStyle {
+    let mut state = interaction.state(sensitive, true, bounds, cursor);
+    state.selected = selected;
+    state.expanded = expanded;
+    super::list_row::style(theme, state)
+}
+
+fn disabled_subtree_style(theme: &Theme, state: ControlState) -> ControlStyle {
+    ControlStyle {
+        text_color: theme.palette().text,
+        border: Border::default().rounded(RADIUS),
+        foreground: (!state.sensitive).then_some(Background::Color(crate::theme::SCRIM)),
+        ..ControlStyle::default()
+    }
+}
+
 struct Expansion {
     header_index: usize,
     content_index: usize,
     content_columns: usize,
     footprint: Footprint,
-    activated: SharedFlag,
-    expanded: SharedFlag,
+    sensitive: bool,
+    selected: bool,
+    disclosure_index: usize,
+    activation: Activation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,7 +322,10 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State::default())
+        tree::State::new(State {
+            signature: self.signature(),
+            ..State::default()
+        })
     }
 
     fn children(&self) -> Vec<Tree> {
@@ -283,19 +334,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(&self.children);
-        let signature: Vec<_> = self
-            .expansions
-            .iter()
-            .map(|expansion| {
-                (
-                    self.columns,
-                    expansion.header_index,
-                    expansion.content_columns,
-                    expansion.footprint.start,
-                    expansion.footprint.end,
-                )
-            })
-            .collect();
+        let signature = self.signature();
         let state = tree.state.downcast_mut::<State>();
 
         if state.signature != signature {
@@ -304,7 +343,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         }
 
         state.open.retain(|index| *index < self.expansions.len());
-        self.sync_controls(state);
     }
 
     fn size(&self) -> Size<Length> {
@@ -318,7 +356,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         limits: &layout::Limits,
     ) -> layout::Node {
         let state = tree.state.downcast_ref::<State>();
-        self.sync_controls(state);
         let width = limits.max().width;
         let cell_width = cell_width(width, self.columns);
         let loose_header_limits = layout::Limits::new(
@@ -398,27 +435,19 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        let state = tree.state.downcast_ref::<State>();
-        let layouts: Vec<_> = layout.children().collect();
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
-            for index in 0..self.header_count {
-                self.children[index].as_widget_mut().operate(
-                    &mut tree.children[index],
-                    layouts[index],
-                    renderer,
-                    operation,
-                );
-            }
-
-            for index in &state.open {
-                let content_index = self.expansions[*index].content_index;
-                self.children[content_index].as_widget_mut().operate(
-                    &mut tree.children[content_index],
-                    layouts[content_index],
-                    renderer,
-                    operation,
-                );
+            for ((child, state), child_layout) in self
+                .children
+                .iter_mut()
+                .zip(&mut tree.children)
+                .zip(layout.children())
+            {
+                if is_visible(child_layout) {
+                    child
+                        .as_widget_mut()
+                        .operate(state, child_layout, renderer, operation);
+                }
             }
         });
     }
@@ -434,52 +463,28 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        let layouts: Vec<_> = layout.children().collect();
-        let open = tree.state.downcast_ref::<State>().open.clone();
-
-        for index in 0..self.header_count {
-            self.children[index].as_widget_mut().update(
-                &mut tree.children[index],
-                event,
-                layouts[index],
-                cursor,
-                renderer,
-                clipboard,
-                shell,
-                viewport,
-            );
-        }
-
-        for index in open {
-            let content_index = self.expansions[index].content_index;
-            self.children[content_index].as_widget_mut().update(
-                &mut tree.children[content_index],
-                event,
-                layouts[content_index],
-                cursor,
-                renderer,
-                clipboard,
-                shell,
-                viewport,
-            );
-        }
-
-        let state = tree.state.downcast_mut::<State>();
-        let was_open = state.open.clone();
-        let footprints: Vec<_> = self
-            .expansions
-            .iter()
-            .map(|expansion| expansion.footprint)
-            .collect();
-
-        for (index, expansion) in self.expansions.iter().enumerate() {
-            if expansion.activated.take() {
-                toggle_open(&mut state.open, index, &footprints);
+        for ((child, state), child_layout) in self
+            .children
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+        {
+            if is_visible(child_layout) {
+                child.as_widget_mut().update(
+                    state,
+                    event,
+                    child_layout,
+                    cursor,
+                    renderer,
+                    clipboard,
+                    shell,
+                    viewport,
+                );
             }
         }
 
-        if state.open != was_open {
-            self.sync_controls(state);
+        let state = tree.state.downcast_mut::<State>();
+        if self.apply_activations(&mut state.open) {
             shell.invalidate_layout();
             shell.request_redraw();
         }
@@ -493,23 +498,26 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        let state = tree.state.downcast_ref::<State>();
+        let mut result = mouse::Interaction::default();
 
-        self.visible_indices(state)
-            .map(|index| {
-                self.children[index].as_widget().mouse_interaction(
-                    &tree.children[index],
-                    layout
-                        .children()
-                        .nth(index)
-                        .expect("group line child layout"),
+        for ((child, state), child_layout) in self
+            .children
+            .iter()
+            .zip(&tree.children)
+            .zip(layout.children())
+        {
+            if is_visible(child_layout) {
+                result = result.max(child.as_widget().mouse_interaction(
+                    state,
+                    child_layout,
                     cursor,
                     viewport,
                     renderer,
-                )
-            })
-            .max()
-            .unwrap_or_default()
+                ));
+            }
+        }
+
+        result
     }
 
     fn draw(
@@ -517,15 +525,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         tree: &Tree,
         renderer: &mut iced::Renderer,
         theme: &Theme,
-        style: &renderer::Style,
+        renderer_style: &renderer::Style,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
-        self.sync_controls(state);
         let children: Vec<_> = layout.children().collect();
-        let line_bounds = layout.bounds();
         let palette = theme.extended_palette();
         let color = palette.background.neutral.color;
         let background = palette.background.base.color;
@@ -533,21 +539,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         for index in &state.open {
             let expansion = &self.expansions[*index];
             let header = children[expansion.header_index].bounds();
-            let content = children[expansion.content_index].bounds();
-            let panel = Rectangle {
-                height: line_bounds.y + line_bounds.height - content.y,
-                ..content
-            };
-
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: panel,
-                    border: Border::default().rounded(RADIUS),
-                    shadow: Shadow::default(),
-                    snap: true,
-                },
-                Background::Color(color),
-            );
+            let panel = children[expansion.content_index].bounds();
 
             renderer.fill_quad(
                 renderer::Quad {
@@ -576,16 +568,70 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             }
         }
 
-        for index in self.visible_indices(state) {
-            self.children[index].as_widget().draw(
-                &tree.children[index],
-                renderer,
+        for (index, expansion) in self.expansions.iter().enumerate() {
+            let bounds = children[expansion.header_index].bounds();
+            let interaction = tree.children[expansion.header_index]
+                .state
+                .downcast_ref::<Interaction>();
+            let style = expander_header_style(
                 theme,
-                style,
-                children[index],
+                interaction,
+                expansion.sensitive,
+                expansion.selected,
+                state.open.contains(&index),
+                bounds,
                 cursor,
-                viewport,
             );
+
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds,
+                    border: style.border,
+                    shadow: style.shadow,
+                    snap: style.snap,
+                },
+                style
+                    .background
+                    .unwrap_or(Background::Color(iced::Color::TRANSPARENT)),
+            );
+        }
+
+        for (index, child_layout) in children.iter().copied().enumerate() {
+            if is_visible(child_layout) {
+                self.children[index].as_widget().draw(
+                    &tree.children[index],
+                    renderer,
+                    theme,
+                    renderer_style,
+                    child_layout,
+                    cursor,
+                    viewport,
+                );
+            }
+        }
+
+        for (index, expansion) in self.expansions.iter().enumerate() {
+            draw_caret(
+                renderer,
+                disclosure_bounds(children[expansion.header_index], expansion.disclosure_index),
+                if state.open.contains(&index) {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+
+            if !expansion.sensitive {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: children[expansion.header_index].bounds(),
+                        border: Border::default().rounded(RADIUS),
+                        shadow: Shadow::default(),
+                        snap: true,
+                    },
+                    Background::Color(crate::theme::SCRIM),
+                );
+            }
         }
     }
 
@@ -602,11 +648,14 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             .iter_mut()
             .zip(&mut tree.children)
             .zip(layout.children())
-            .filter(|(_, layout)| layout.bounds().width > 0.0 && layout.bounds().height > 0.0)
-            .filter_map(|((child, state), layout)| {
+            .filter_map(|((child, state), child_layout)| {
+                if !is_visible(child_layout) {
+                    return None;
+                }
+
                 child
                     .as_widget_mut()
-                    .overlay(state, layout, renderer, viewport, translation)
+                    .overlay(state, child_layout, renderer, viewport, translation)
             })
             .collect::<Vec<_>>();
 
@@ -615,20 +664,57 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 }
 
 impl<Message> GroupLine<'_, Message> {
-    fn sync_controls(&self, state: &State) {
-        for (index, expansion) in self.expansions.iter().enumerate() {
-            expansion.expanded.set(state.open.contains(&index));
-        }
+    fn signature(&self) -> Vec<(usize, usize, usize, usize, usize)> {
+        self.expansions
+            .iter()
+            .map(|expansion| {
+                (
+                    self.columns,
+                    expansion.header_index,
+                    expansion.content_columns,
+                    expansion.footprint.start,
+                    expansion.footprint.end,
+                )
+            })
+            .collect()
     }
 
-    fn visible_indices<'a>(&'a self, state: &'a State) -> impl Iterator<Item = usize> + 'a {
-        (0..self.header_count).chain(
-            state
-                .open
-                .iter()
-                .map(|index| self.expansions[*index].content_index),
-        )
+    fn apply_activations(&self, open: &mut Vec<usize>) -> bool {
+        let footprints: Vec<_> = self
+            .expansions
+            .iter()
+            .map(|expansion| expansion.footprint)
+            .collect();
+        let mut changed = false;
+
+        for (target, expansion) in self.expansions.iter().enumerate() {
+            if expansion.activation.replace(false) {
+                toggle_open(open, target, &footprints);
+                changed = true;
+            }
+        }
+
+        changed
     }
+}
+
+fn is_visible(layout: Layout<'_>) -> bool {
+    let bounds = layout.bounds();
+    bounds.width > 0.0 && bounds.height > 0.0
+}
+
+fn disclosure_bounds(header: Layout<'_>, index: usize) -> Rectangle {
+    header
+        .children()
+        .next()
+        .expect("expander control content")
+        .children()
+        .next()
+        .expect("list row content")
+        .children()
+        .nth(index)
+        .expect("expander disclosure slot")
+        .bounds()
 }
 
 fn cell_width(width: f32, columns: usize) -> f32 {

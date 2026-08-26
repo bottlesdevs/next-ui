@@ -116,7 +116,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         if editable {
             row = row
                 .trailing(icon_view(Icon::Pencil, 16.0, false))
-                .focus_content_on_press();
+                .focus_first();
         }
 
         row
