@@ -5,7 +5,11 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, spacing, text::TextExt as _};
+use super::{
+    list_row::{self, ListRow},
+    spacing,
+    text::TextExt as _,
+};
 
 pub struct TextRow<'a, Message> {
     title: &'a str,
@@ -83,17 +87,17 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         let mut value = row![].spacing(spacing::SM).align_y(Center);
 
         if let Some(icon) = text_row.icon {
-            value = value.push(icon_view(icon, 12.0, error));
+            value = value.push(icon_view(icon, list_row::BODY_SIZE, error));
         }
 
         let mut input = text_input(text_row.placeholder, text_row.value)
             .width(Fill)
             .padding(0)
-            .size(16)
+            .size(list_row::BODY_SIZE)
             .secure(text_row.secure)
             .on_input_maybe(text_row.on_input)
             .on_submit_maybe(text_row.on_submit)
-            .style(move |theme, _| input_style(theme, editable, error));
+            .style(move |theme, _| input_style(theme, error));
 
         if let Some(id) = text_row.id {
             input = input.id(id);
@@ -106,16 +110,20 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
             .spacing(spacing::XS);
 
         if let Some(error) = text_row.error {
-            labels = labels.push(text(error).detail().style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().danger),
-            }));
+            labels = labels.push(
+                text(error)
+                    .size(list_row::BODY_SIZE)
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().danger),
+                    }),
+            );
         }
 
         let mut row = ListRow::new(labels);
 
         if editable {
             row = row
-                .trailing(icon_view(Icon::Pencil, 16.0, false))
+                .trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false))
                 .focus_first();
         }
 
@@ -123,7 +131,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
     }
 }
 
-fn input_style(theme: &Theme, editable: bool, error: bool) -> text_input::Style {
+fn input_style(theme: &Theme, error: bool) -> text_input::Style {
     let muted = theme.extended_palette().secondary.base.text;
 
     text_input::Style {
@@ -135,11 +143,7 @@ fn input_style(theme: &Theme, editable: bool, error: bool) -> text_input::Style 
         }),
         icon: muted,
         placeholder: muted,
-        value: if editable {
-            theme.palette().text
-        } else {
-            muted
-        },
+        value: muted,
         selection: theme.palette().primary,
     }
 }

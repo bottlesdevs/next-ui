@@ -139,13 +139,13 @@ fn header<'a, Message: 'a>(
     if let Some(icon) = icon {
         value_row = value_row.push(
             svg(icon.handle())
-                .width(16)
-                .height(16)
+                .width(list_row::BODY_SIZE)
+                .height(list_row::BODY_SIZE)
                 .content_fit(ContentFit::Contain),
         );
     }
 
-    value_row = value_row.push(text(value).detail().muted());
+    value_row = value_row.push(text(value).size(list_row::BODY_SIZE).muted());
 
     container(
         row![
@@ -158,7 +158,7 @@ fn header<'a, Message: 'a>(
         .spacing(spacing::MD),
     )
     .width(Fill)
-    .padding([spacing::SM, spacing::LG])
+    .padding(list_row::STANDARD_PADDING)
     .into()
 }
 

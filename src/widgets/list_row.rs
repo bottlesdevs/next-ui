@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Background, Border, Element, Fill, Theme,
+    Alignment, Background, Border, Element, Fill, Padding, Theme,
     widget::{Row as IcedRow, Space, column, container, text},
 };
 
@@ -7,6 +7,14 @@ use super::{
     control::{Control, State, Style},
     spacing,
     text::TextExt as _,
+};
+
+pub(crate) const BODY_SIZE: f32 = 16.0;
+pub(crate) const STANDARD_PADDING: Padding = Padding {
+    top: spacing::MD,
+    right: spacing::MD,
+    bottom: spacing::MD,
+    left: spacing::LG,
 };
 
 /// A semantic row recipe. Its visual control is built only when the row is
@@ -19,6 +27,7 @@ pub struct ListRow<'a, Message> {
     selected: bool,
     on_press: Option<Message>,
     focus_first: bool,
+    padding: Padding,
 }
 
 pub(crate) struct Content<'a, Message> {
@@ -37,7 +46,7 @@ pub(crate) fn labels<'a, Message: 'a>(
 ) -> Element<'a, Message> {
     column![
         text(title).label().medium(),
-        text(description).detail().muted(),
+        text(description).size(BODY_SIZE).muted(),
     ]
     .spacing(spacing::XS)
     .into()
@@ -53,6 +62,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             selected: false,
             on_press: None,
             focus_first: false,
+            padding: STANDARD_PADDING,
         }
     }
 
@@ -88,6 +98,11 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
 
     pub(crate) fn focus_first(mut self) -> Self {
         self.focus_first = true;
+        self
+    }
+
+    pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
         self
     }
 
@@ -140,7 +155,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         Content {
             element: container(row)
                 .width(Fill)
-                .padding([spacing::MD, spacing::LG])
+                .padding(self.padding)
                 .align_y(Alignment::Center)
                 .clip(true)
                 .into(),
