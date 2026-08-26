@@ -1,12 +1,14 @@
 use iced::{
-    Center, Element, Theme,
+    Center, ContentFit, Element, Theme,
     theme::palette::Pair,
-    widget::{column, row, text, text::Fragment, text::IntoFragment},
+    widget::{column, row, svg, text, text::Fragment, text::IntoFragment},
 };
 
 use crate::{icons::Icon, theme};
 
 use super::{card::Card, spacing, text::TextExt as _};
+
+const TITLE_SIZE: f32 = 17.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -39,27 +41,33 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
 
         Card::new(
             column![
-                row![icon(kind), text(title).size(17).medium(),]
-                    .spacing(spacing::SM)
+                row![icon(kind), text(title).size(TITLE_SIZE).medium(),]
+                    .spacing(8)
                     .align_y(Center),
                 text(body).size(14),
             ]
             .spacing(spacing::SM),
         )
-        .padding(spacing::LG)
+        .padding(16)
         .style(move |current_theme| theme::surface(colors(current_theme, kind)))
         .into()
     }
 }
 
 fn icon<'a, Message: 'a>(kind: Kind) -> Element<'a, Message> {
-    match kind {
-        Kind::Hint => Icon::Wand.view(),
-        Kind::Info => Icon::Info.view(),
-        Kind::Error => Icon::Error.view(),
-        Kind::Warning => Icon::Warning.view(),
-        Kind::Success => Icon::DoubleCheckmark.view(),
-    }
+    let icon = match kind {
+        Kind::Hint => Icon::Wand,
+        Kind::Info => Icon::Info,
+        Kind::Error => Icon::Error,
+        Kind::Warning => Icon::Warning,
+        Kind::Success => Icon::DoubleCheckmark,
+    };
+
+    svg(icon.handle())
+        .width(TITLE_SIZE)
+        .height(TITLE_SIZE)
+        .content_fit(ContentFit::Contain)
+        .into()
 }
 
 fn colors(theme: &Theme, kind: Kind) -> Pair {
