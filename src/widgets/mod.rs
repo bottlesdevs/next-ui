@@ -13,6 +13,16 @@ mod spacing {
     pub(crate) const XG: f32 = 32.0;
 }
 
+fn reconcile_index<T: PartialEq>(
+    old_keys: &[T],
+    old_index: Option<usize>,
+    new_keys: &[T],
+) -> Option<usize> {
+    old_index
+        .and_then(|index| old_keys.get(index))
+        .and_then(|key| new_keys.iter().position(|candidate| candidate == key))
+}
+
 fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, expansion: f32) {
     let handle = crate::icons::Icon::DownCaret.handle();
     let Size { width, height } = renderer.measure_svg(&handle);
