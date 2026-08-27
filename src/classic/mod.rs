@@ -37,7 +37,7 @@ use iced::{
     theme::Mode as ThemeMode,
     widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
-use layout::{Pane, PaneMode, PaneSide, SplitView};
+use layout::{NavigationSplit, Pane, PaneMode, PaneSide, SplitView};
 use uuid::Uuid;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
@@ -540,7 +540,7 @@ impl State {
     pub fn view(&self) -> Element<'_, Message> {
         let split = SplitView::new(
             |_| {
-                SplitView::new(
+                NavigationSplit::new(
                     |mode| self.primary_page(mode),
                     |mode| self.detail_page(mode),
                 )

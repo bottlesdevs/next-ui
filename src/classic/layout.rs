@@ -48,6 +48,32 @@ pub struct SplitView<'a, Message> {
     master_blocked: bool,
 }
 
+pub struct NavigationSplit<'a, Message> {
+    split: SplitView<'a, Message>,
+}
+
+impl<'a, Message> NavigationSplit<'a, Message> {
+    pub fn new(
+        master: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
+        detail: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
+    ) -> Self {
+        Self {
+            split: SplitView::new(master, detail),
+        }
+    }
+
+    pub fn show_detail(mut self, show_detail: bool) -> Self {
+        self.split = self.split.show_detail(show_detail);
+        self
+    }
+}
+
+impl<'a, Message: 'a> From<NavigationSplit<'a, Message>> for Element<'a, Message> {
+    fn from(navigation: NavigationSplit<'a, Message>) -> Self {
+        navigation.split.into()
+    }
+}
+
 impl<'a, Message> SplitView<'a, Message> {
     pub fn new(
         master: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
@@ -549,5 +575,49 @@ fn pane_bounds(
                 Size::new(size.width, size.height),
             ),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wide_navigation_uses_a_one_third_master_capped_at_420() {
+        let medium = Size::new(1200.0, 1000.0);
+        let size = Size::new(1600.0, 1000.0);
+
+        let [medium_master, medium_detail] =
+            pane_bounds(medium, true, 1.0, PaneSide::End, Pane::Master, false);
+        let [closed_master, closed_detail] =
+            pane_bounds(size, true, 0.0, PaneSide::End, Pane::Master, false);
+        let [open_master, open_detail] =
+            pane_bounds(size, true, 1.0, PaneSide::End, Pane::Master, false);
+
+        assert_eq!(medium_master.size(), Size::new(396.0, 1000.0));
+        assert_eq!(medium_detail.position(), Point::new(408.0, 0.0));
+        assert_eq!(medium_detail.size(), Size::new(792.0, 1000.0));
+        assert_eq!(closed_master, Rectangle::new(Point::ORIGIN, size));
+        assert_eq!(closed_detail.position(), Point::new(1612.0, 0.0));
+        assert_eq!(open_master.size(), Size::new(420.0, 1000.0));
+        assert_eq!(open_detail.position(), Point::new(432.0, 0.0));
+        assert_eq!(open_detail.size(), Size::new(1168.0, 1000.0));
+        assert!(pane_is_interactive(0, true, 1.0, false));
+        assert!(pane_is_interactive(1, true, 1.0, false));
+    }
+
+    #[test]
+    fn narrow_navigation_endpoints_use_full_window_pages() {
+        let size = Size::new(720.0, 600.0);
+
+        let [closed_master, closed_detail] =
+            pane_bounds(size, false, 0.0, PaneSide::End, Pane::Master, false);
+        let [open_master, open_detail] =
+            pane_bounds(size, false, 1.0, PaneSide::End, Pane::Master, false);
+
+        assert_eq!(closed_master, Rectangle::new(Point::ORIGIN, size));
+        assert_eq!(closed_detail, Rectangle::new(Point::new(720.0, 0.0), size));
+        assert_eq!(open_master, Rectangle::new(Point::ORIGIN, size));
+        assert_eq!(open_detail, Rectangle::new(Point::ORIGIN, size));
     }
 }
