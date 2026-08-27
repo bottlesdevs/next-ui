@@ -13,6 +13,7 @@ use crate::{
     icons::Icon,
     widgets::{
         button::{Button, ButtonKind},
+        info_card::{InfoCard, Kind as InfoCardKind},
         popover::{Popover, PopoverItem},
         text_row::TextRow,
         title::Title,
@@ -29,10 +30,7 @@ pub fn profile_events(
 pub enum Message {
     ToggleProfileSettings,
     ActivateProfile(Uuid),
-    ToggleNewProfile,
-    CancelNewProfile,
-    NewProfileNameChanged(String),
-    SubmitNewProfile,
+    Create(String),
     ProfileUpdated {
         generation: u64,
         result: Result<Profile, Arc<CoreError>>,
@@ -48,8 +46,76 @@ pub enum Message {
 
 pub enum Output {
     ToggleSettings,
-    OpenDialog,
-    CloseDialog,
+    CreateFinished(Result<(), Arc<CoreError>>),
+}
+
+#[derive(Clone)]
+pub(crate) enum NewProfileMessage {
+    NameChanged(String),
+    Submit,
+    Cancel,
+}
+
+pub(super) struct NewProfileDialog {
+    name: String,
+    error: Option<String>,
+}
+
+impl NewProfileDialog {
+    pub(super) fn new() -> Self {
+        Self {
+            name: String::new(),
+            error: None,
+        }
+    }
+
+    pub(super) fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    pub(super) fn submission(&self) -> String {
+        self.name.clone()
+    }
+
+    pub(super) fn clear_error(&mut self) {
+        self.error = None;
+    }
+
+    pub(super) fn set_error(&mut self, error: String) {
+        self.error = Some(error);
+    }
+
+    pub(super) fn view(&self, pending: bool) -> iced::widget::Column<'_, NewProfileMessage> {
+        let mut content = column![
+            container(Title::new("New profile").subtitle("Give this profile a name."))
+                .center_x(iced::Fill),
+            TextRow::new("Profile name", &self.name)
+                .icon(Icon::Person)
+                .on_input(NewProfileMessage::NameChanged)
+                .on_submit(NewProfileMessage::Submit),
+        ]
+        .spacing(18);
+
+        if let Some(error) = &self.error {
+            content = content.push(
+                InfoCard::new(InfoCardKind::Error, "Could not create profile", error)
+                    .width(iced::Fill),
+            );
+        }
+
+        content.push(
+            row![
+                Button::new("Create")
+                    .kind(ButtonKind::Primary)
+                    .on_press(NewProfileMessage::Submit)
+                    .loading(pending),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Transparent)
+                    .on_press(NewProfileMessage::Cancel),
+            ]
+            .spacing(12),
+        )
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -64,7 +130,6 @@ pub struct State {
     profiles: Profiles,
     selected_id: Uuid,
     name_draft: String,
-    new_profile_draft: Option<String>,
     last_error: Option<String>,
     request_generation: u64,
     request_kind: Option<RequestKind>,
@@ -76,7 +141,6 @@ impl State {
             profiles,
             selected_id: selected.id(),
             name_draft: selected.name().to_owned(),
-            new_profile_draft: None,
             last_error: None,
             request_generation: 0,
             request_kind: None,
@@ -93,10 +157,6 @@ impl State {
         &self.name_draft
     }
 
-    pub fn new_profile_draft(&self) -> Option<&str> {
-        self.new_profile_draft.as_deref()
-    }
-
     pub(super) fn manager(&self) -> &Profiles {
         &self.profiles
     }
@@ -107,6 +167,10 @@ impl State {
 
     pub fn has_active_operation(&self) -> bool {
         self.request_kind.is_some()
+    }
+
+    pub(super) fn creating_profile(&self) -> bool {
+        self.request_kind == Some(RequestKind::Create)
     }
 
     pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
@@ -128,26 +192,10 @@ impl State {
                     );
                 }
             }
-            Message::ToggleNewProfile => {
-                self.new_profile_draft = Some(String::new());
-                output = Some(Output::OpenDialog);
-            }
-            Message::CancelNewProfile => {
-                self.new_profile_draft = None;
-                output = Some(Output::CloseDialog);
-            }
-            Message::NewProfileNameChanged(name) => {
-                if let Some(draft) = &mut self.new_profile_draft {
-                    *draft = name;
-                }
-            }
-            Message::SubmitNewProfile => {
+            Message::Create(draft) => {
                 if self.request_kind.is_some() {
                     return (Task::none(), None);
                 }
-                let Some(draft) = self.new_profile_draft.take() else {
-                    return (Task::none(), None);
-                };
 
                 let profiles = self.profiles.clone();
                 let name = if draft.trim().is_empty() {
@@ -169,10 +217,9 @@ impl State {
                 generation,
                 result: Ok(_),
             } if generation == self.request_generation => {
-                self.new_profile_draft = None;
                 self.last_error = None;
                 if self.request_kind == Some(RequestKind::Create) {
-                    output = Some(Output::CloseDialog);
+                    output = Some(Output::CreateFinished(Ok(())));
                 }
                 self.request_kind = None;
             }
@@ -180,7 +227,11 @@ impl State {
                 generation,
                 result: Err(error),
             } if generation == self.request_generation => {
-                self.last_error = Some(error.to_string());
+                if self.request_kind == Some(RequestKind::Create) {
+                    output = Some(Output::CreateFinished(Err(error)));
+                } else {
+                    self.last_error = Some(error.to_string());
+                }
                 self.request_kind = None;
             }
             Message::NameChanged(name) => self.name_draft = name,
@@ -263,23 +314,18 @@ impl State {
     }
 }
 
-pub fn new_profile_dialog(name: &str) -> iced::widget::Column<'_, Message> {
-    column![
-        container(Title::new("New profile").subtitle("Give this profile a name."))
-            .center_x(iced::Fill),
-        TextRow::new("Profile name", name)
-            .icon(Icon::Person)
-            .on_input(Message::NewProfileNameChanged)
-            .on_submit(Message::SubmitNewProfile),
-        row![
-            Button::new("Create")
-                .kind(ButtonKind::Primary)
-                .on_press(Message::SubmitNewProfile),
-            Button::new("Cancel")
-                .kind(ButtonKind::Transparent)
-                .on_press(Message::CancelNewProfile),
-        ]
-        .spacing(12),
-    ]
-    .spacing(18)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_submission_does_not_consume_the_dialog_draft() {
+        let mut dialog = NewProfileDialog::new();
+        dialog.set_name("Player one".into());
+
+        assert_eq!(dialog.submission(), "Player one");
+        dialog.set_error("creation failed".into());
+        assert_eq!(dialog.submission(), "Player one");
+        assert_eq!(dialog.error.as_deref(), Some("creation failed"));
+    }
 }

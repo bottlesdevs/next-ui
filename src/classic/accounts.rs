@@ -87,17 +87,113 @@ impl AccountLinkInteraction for LoginInteraction {
     }
 }
 
-struct LoginChallenge {
+pub(crate) struct LoginDialog {
     code_draft: String,
     prompt: LoginPrompt,
     submitting: bool,
     error: Option<String>,
 }
 
-impl LoginChallenge {
-    fn cancel(self) {
+impl LoginDialog {
+    fn new(prompt: LoginPrompt) -> Self {
+        Self {
+            code_draft: String::new(),
+            prompt,
+            submitting: false,
+            error: None,
+        }
+    }
+
+    pub(super) fn set_code(&mut self, code: String) {
+        self.code_draft = code;
+    }
+
+    pub(super) fn url(&self) -> &str {
+        &self.prompt.url
+    }
+
+    pub(super) fn submit(&mut self) {
+        match self.prompt.submit(self.code_draft.trim()) {
+            Ok(()) => self.submitting = true,
+            Err(error) => self.error = Some(error.to_string()),
+        }
+    }
+
+    pub(super) fn view(&self) -> iced::widget::Column<'_, LoginMessage> {
+        use iced::widget::{column, container, row};
+
+        let submit_label = if self.submitting {
+            "Submitting…"
+        } else {
+            "Submit"
+        };
+
+        let mut content = column![
+            container(Title::new("Sign in").subtitle(&self.prompt.instructions))
+                .center_x(iced::Fill),
+            RowGroup::new()
+                .row(
+                    ListRow::from(
+                        InfoRow::new("Sign-in link (click to copy)")
+                            .description(&self.prompt.url)
+                            .icon(Icon::Controller),
+                    )
+                    .on_press(LoginMessage::CopyUrl),
+                )
+                .row(action_button_row(
+                    Icon::Arrow,
+                    "Open in your browser",
+                    "Sign in there, then paste the requested value below.",
+                    "Open",
+                    LoginMessage::OpenUrl,
+                ))
+                .row(
+                    TextRow::new("Authorization code", &self.code_draft)
+                        .icon(Icon::Checkmark)
+                        .on_input(LoginMessage::CodeChanged)
+                        .on_submit(LoginMessage::Submit),
+                ),
+        ]
+        .spacing(18);
+        if let Some(error) = &self.error {
+            content = content.push(
+                crate::widgets::info_card::InfoCard::new(
+                    crate::widgets::info_card::Kind::Error,
+                    "Could not answer the sign-in prompt",
+                    error,
+                )
+                .width(iced::Fill),
+            );
+        }
+        content = content.push(
+            row![
+                Button::new(submit_label)
+                    .kind(ButtonKind::Primary)
+                    .on_press_maybe((!self.submitting).then_some(LoginMessage::Submit)),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Transparent)
+                    .on_press(LoginMessage::Cancel),
+            ]
+            .spacing(12),
+        );
+
+        content
+    }
+}
+
+impl Drop for LoginDialog {
+    fn drop(&mut self) {
         self.prompt.cancel();
     }
+}
+
+#[derive(Clone)]
+pub(crate) enum LoginMessage {
+    CodeChanged(String),
+    OpenUrl,
+    CopyUrl,
+    Submit,
+    Cancel,
 }
 
 #[derive(Clone)]
@@ -105,22 +201,16 @@ pub enum Message {
     UnlinkAccount(PluginId),
     BeginLogin(StorefrontProvider),
     LoginRequested(LoginPrompt),
-    LoginCodeChanged(String),
-    OpenLoginUrl,
-    CopyLoginUrl,
-    SubmitLoginCode,
-    CancelLogin,
     ProfileUpdated(Result<Profile, Arc<CoreError>>),
     Noop,
 }
 
 pub enum Output {
-    OpenDialog,
-    CloseDialog,
+    LoginRequested(LoginDialog),
+    LinkFinished,
 }
 
 pub struct State {
-    login_modal: Option<LoginChallenge>,
     link_cancellation: Option<CancellationToken>,
     mutation_pending: bool,
     last_error: Option<String>,
@@ -135,7 +225,6 @@ impl Default for State {
 impl State {
     pub fn new() -> Self {
         Self {
-            login_modal: None,
             link_cancellation: None,
             mutation_pending: false,
             last_error: None,
@@ -147,13 +236,6 @@ impl State {
         if let Some(cancellation) = &self.link_cancellation {
             cancellation.cancel();
         }
-        if let Some(login) = self.login_modal.take() {
-            login.cancel();
-        }
-    }
-
-    pub fn close_login(&mut self) {
-        self.cancel_active_operation();
     }
 
     pub fn has_active_operation(&self) -> bool {
@@ -196,56 +278,34 @@ impl State {
                 }
             }
             Message::LoginRequested(prompt) => {
-                self.login_modal = Some(LoginChallenge {
-                    code_draft: String::new(),
-                    prompt,
-                    submitting: false,
-                    error: None,
-                });
-                output = Some(Output::OpenDialog);
-            }
-            Message::LoginCodeChanged(code) => {
-                if let Some(login) = &mut self.login_modal {
-                    login.code_draft = code;
+                if self
+                    .link_cancellation
+                    .as_ref()
+                    .is_some_and(|cancellation| !cancellation.is_cancelled())
+                {
+                    output = Some(Output::LoginRequested(LoginDialog::new(prompt)));
+                } else {
+                    prompt.cancel();
                 }
             }
-            Message::OpenLoginUrl => {
-                if let Some(login) = &self.login_modal {
-                    open_url(&login.prompt.url);
+            Message::ProfileUpdated(result) => {
+                if self.finish_update(result) {
+                    output = Some(Output::LinkFinished);
                 }
             }
-            Message::CopyLoginUrl => {
-                if let Some(login) = &self.login_modal {
-                    return (iced::clipboard::write(login.prompt.url.clone()), None);
-                }
-            }
-            Message::SubmitLoginCode => {
-                if let Some(login) = &mut self.login_modal {
-                    match login.prompt.submit(login.code_draft.trim()) {
-                        Ok(()) => login.submitting = true,
-                        Err(error) => login.error = Some(error.to_string()),
-                    }
-                }
-            }
-            Message::CancelLogin => {
-                self.cancel_active_operation();
-                output = Some(Output::CloseDialog);
-            }
-            Message::ProfileUpdated(result) => output = Some(self.finish_link(result)),
             Message::Noop => {}
         }
 
         (iced::Task::none(), output)
     }
 
-    fn finish_link(&mut self, result: Result<Profile, Arc<CoreError>>) -> Output {
-        self.login_modal = None;
-        self.link_cancellation = None;
+    fn finish_update(&mut self, result: Result<Profile, Arc<CoreError>>) -> bool {
+        let linked = self.link_cancellation.take().is_some();
         self.mutation_pending = false;
         self.last_error = result.err().and_then(|error| {
             (!matches!(error.as_ref(), CoreError::Cancelled)).then(|| error.to_string())
         });
-        Output::CloseDialog
+        linked
     }
 
     pub fn view_links<'a>(&'a self, ctx: &Context<'a>) -> iced::Element<'a, Message> {
@@ -301,70 +361,6 @@ impl State {
         }
         content.into()
     }
-
-    pub fn login_dialog(&self) -> Option<iced::widget::Column<'_, Message>> {
-        self.login_modal.as_ref().map(login_dialog)
-    }
-}
-
-fn login_dialog(login: &LoginChallenge) -> iced::widget::Column<'_, Message> {
-    use iced::widget::{column, container, row};
-
-    let submit_label = if login.submitting {
-        "Submitting…"
-    } else {
-        "Submit"
-    };
-
-    let mut content = column![
-        container(Title::new("Sign in").subtitle(&login.prompt.instructions)).center_x(iced::Fill),
-        RowGroup::new()
-            .row(
-                ListRow::from(
-                    InfoRow::new("Sign-in link (click to copy)")
-                        .description(&login.prompt.url)
-                        .icon(Icon::Controller),
-                )
-                .on_press(Message::CopyLoginUrl),
-            )
-            .row(action_button_row(
-                Icon::Arrow,
-                "Open in your browser",
-                "Sign in there, then paste the requested value below.",
-                "Open",
-                Message::OpenLoginUrl,
-            ))
-            .row(
-                TextRow::new("Authorization code", &login.code_draft)
-                    .icon(Icon::Checkmark)
-                    .on_input(Message::LoginCodeChanged)
-                    .on_submit(Message::SubmitLoginCode),
-            ),
-    ]
-    .spacing(18);
-    if let Some(error) = &login.error {
-        content = content.push(
-            crate::widgets::info_card::InfoCard::new(
-                crate::widgets::info_card::Kind::Error,
-                "Could not answer the sign-in prompt",
-                error,
-            )
-            .width(iced::Fill),
-        );
-    }
-    content = content.push(
-        row![
-            Button::new(submit_label)
-                .kind(ButtonKind::Primary)
-                .on_press_maybe((!login.submitting).then_some(Message::SubmitLoginCode)),
-            Button::new("Cancel")
-                .kind(ButtonKind::Transparent)
-                .on_press(Message::CancelLogin),
-        ]
-        .spacing(12),
-    );
-
-    content
 }
 
 pub fn account_row<'a>(
@@ -435,14 +431,28 @@ mod tests {
     fn login_prompt_submission_is_one_shot() {
         futures_lite::future::block_on(async {
             let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
-            let clone = prompt.clone();
+            let mut dialog = LoginDialog::new(prompt);
+            dialog.set_code("first".into());
 
-            assert!(prompt.submit("first").is_ok());
+            dialog.submit();
+            assert!(dialog.submitting);
+            dialog.submit();
             assert_eq!(
-                clone.submit("second"),
-                Err("account-link prompt was already answered")
+                dialog.error.as_deref(),
+                Some("account-link prompt was already answered")
             );
             assert_eq!(answer.await.unwrap(), "first");
+        });
+    }
+
+    #[test]
+    fn dropping_a_login_dialog_cancels_its_unanswered_prompt() {
+        futures_lite::future::block_on(async {
+            let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
+
+            drop(LoginDialog::new(prompt));
+
+            assert!(answer.await.is_err());
         });
     }
 
@@ -457,7 +467,7 @@ mod tests {
         assert!(cancellation.is_cancelled());
         assert!(state.has_active_operation());
 
-        state.finish_link(Err(Arc::new(CoreError::Cancelled)));
+        assert!(state.finish_update(Err(Arc::new(CoreError::Cancelled))));
 
         assert!(!state.has_active_operation());
         assert!(state.last_error.is_none());
