@@ -58,7 +58,6 @@ pub fn bottle_state_events(
 pub enum Message {
     CreateBottle,
     BottleCreation(operation::Event<u64, Bottle>),
-    ToggleCreationLog,
     BottleNameChanged(String),
     RunnerSelected(RunnerOption),
     PurposeSelected(&'static str),
@@ -80,7 +79,6 @@ pub struct State {
     purpose: &'static str,
     architecture: &'static str,
     creation_log: String,
-    creation_log_expanded: bool,
     creation_failed: bool,
     creation_generation: u64,
     creation_cancellation: Option<CancellationToken>,
@@ -108,7 +106,6 @@ impl State {
             purpose: PURPOSES[0],
             architecture: ARCHITECTURES[0],
             creation_log: String::new(),
-            creation_log_expanded: false,
             creation_failed: false,
             creation_generation: 0,
             creation_cancellation: None,
@@ -154,7 +151,6 @@ impl State {
 
                     self.creation_log.clear();
                     self.creation_failed = false;
-                    self.creation_log_expanded = true;
                     self.last_error = None;
 
                     return (task.map(Message::BottleCreation), None);
@@ -194,9 +190,6 @@ impl State {
                     self.creation_log
                         .push_str(&format!("{} Failed: {error}", timestamp()));
                 }
-            }
-            Message::ToggleCreationLog => {
-                self.creation_log_expanded = !self.creation_log_expanded;
             }
             Message::BottleNameChanged(name) => self.bottle_name = name,
             Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
@@ -286,9 +279,7 @@ impl State {
                         .unwrap_or_default(),
                     state,
                 )
-                .log(&self.creation_log)
-                .expanded(self.creation_log_expanded)
-                .on_toggle(Message::ToggleCreationLog),
+                .log(&self.creation_log),
             );
         }
 

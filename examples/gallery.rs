@@ -49,7 +49,6 @@ struct Gallery {
     selected_tab: usize,
     switched_on: bool,
     group_switched_on: bool,
-    status_expanded: bool,
     value: usize,
 }
 
@@ -62,7 +61,6 @@ impl Default for Gallery {
             selected_tab: 0,
             switched_on: false,
             group_switched_on: false,
-            status_expanded: false,
             value: 1,
         }
     }
@@ -77,7 +75,6 @@ enum Message {
     Switched(bool),
     GroupSwitched(bool),
     Window(chrome::Action),
-    StatusToggled,
     Previous,
     Next,
     MoveFocus(bool),
@@ -97,7 +94,6 @@ impl Gallery {
             Message::GroupSwitched(value) => self.group_switched_on = value,
             Message::Window(chrome::Action::RequestClose) => return iced::exit(),
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
-            Message::StatusToggled => self.status_expanded = !self.status_expanded,
             Message::Previous => self.value = self.value.saturating_sub(1),
             Message::Next => self.value = (self.value + 1).min(DLSS_LEVELS.len() - 1),
             Message::MoveFocus(previous) => {
@@ -426,19 +422,9 @@ impl Gallery {
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)
                 .log(LOG),
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Stopped,)
-                .log(LOG)
-                .expanded(self.status_expanded)
-                .on_toggle(Message::StatusToggled),
-            status_bar::StatusBar::<Message>::new(
-                "Win64",
-                "soda-7.0.9",
-                status_bar::StatusState::Starting,
-            ),
-            status_bar::StatusBar::<Message>::new(
-                "Win64",
-                "soda-7.0.9",
-                status_bar::StatusState::Failed,
-            ),
+                .log(LOG),
+            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Starting,),
+            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Failed,),
         ]
         .spacing(18);
 

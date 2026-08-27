@@ -1,7 +1,11 @@
 use iced::{
-    Element, Fill, Theme,
+    Alignment, Element, Event, Fill, Length, Padding, Size, Theme, Vector,
+    advanced::{
+        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
+        widget::{Operation, Tree, tree},
+    },
     alignment::Vertical,
-    widget::{Space, column, container, row, scrollable, text},
+    widget::{Space, container, row, scrollable, text},
 };
 
 use crate::{icons::Icon, theme};
@@ -37,24 +41,20 @@ impl StatusState {
     }
 }
 
-pub struct StatusBar<'a, Message> {
+pub struct StatusBar<'a> {
     architecture: &'a str,
     runner: &'a str,
     state: StatusState,
     log: Option<&'a str>,
-    expanded: bool,
-    on_toggle: Option<Message>,
 }
 
-impl<'a, Message> StatusBar<'a, Message> {
+impl<'a> StatusBar<'a> {
     pub fn new(architecture: &'a str, runner: &'a str, state: StatusState) -> Self {
         Self {
             architecture,
             runner,
             state,
             log: None,
-            expanded: false,
-            on_toggle: None,
         }
     }
 
@@ -62,20 +62,10 @@ impl<'a, Message> StatusBar<'a, Message> {
         self.log = Some(log);
         self
     }
-
-    pub fn expanded(mut self, expanded: bool) -> Self {
-        self.expanded = expanded;
-        self
-    }
-
-    pub fn on_toggle(mut self, on_toggle: Message) -> Self {
-        self.on_toggle = Some(on_toggle);
-        self
-    }
 }
 
-impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Message> {
-    fn from(status: StatusBar<'a, Message>) -> Self {
+impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
+    fn from(status: StatusBar<'a>) -> Self {
         let mut header = row![
             row![
                 Icon::Chip.view(),
@@ -105,35 +95,294 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         .spacing(spacing::LG)
         .align_y(Vertical::Center);
 
-        if status.log.is_some() && status.on_toggle.is_some() {
+        if status.log.is_some() {
             header = header.push(
                 Button::icon_only("Toggle log", Icon::Computer)
                     .diameter(32.0)
-                    .on_press_maybe(status.on_toggle),
+                    .on_press(()),
             );
         }
 
-        let mut content =
-            column![container(header).padding([spacing::XS, spacing::LG])].width(Fill);
+        let header: Element<'a, ()> = container(header).padding([spacing::XS, spacing::LG]).into();
+        let mut children = vec![header];
 
-        if status.expanded
-            && let Some(log) = status.log
-        {
-            content = content.push(
+        if let Some(log) = status.log {
+            children.push(
                 container(scrollable(text(log).supporting()).height(Fill))
                     .padding([spacing::MD, spacing::LG])
                     .width(Fill)
                     .max_height(180)
                     .style(|current_theme: &Theme| {
                         container::background(theme::BottlesTheme::from(current_theme).hint.color)
-                    }),
+                    })
+                    .into(),
             );
         }
 
-        container(content)
-            .width(Fill)
-            .clip(true)
-            .style(theme::panel)
-            .into()
+        container(Element::new(StatusWidget {
+            children,
+            status: status.state,
+        }))
+        .width(Fill)
+        .clip(true)
+        .style(theme::panel)
+        .into()
+    }
+}
+
+struct StatusWidget<'a> {
+    children: Vec<Element<'a, ()>>,
+    status: StatusState,
+}
+
+impl StatusWidget<'_> {
+    fn has_log(&self) -> bool {
+        self.children.len() > 1
+    }
+}
+
+#[derive(Debug)]
+struct State {
+    expanded: bool,
+    had_log: bool,
+    status: StatusState,
+}
+
+impl State {
+    fn new(has_log: bool, status: StatusState) -> Self {
+        Self {
+            expanded: has_log,
+            had_log: has_log,
+            status,
+        }
+    }
+
+    fn reconcile(&mut self, has_log: bool, status: StatusState) {
+        if has_log
+            && (!self.had_log
+                || (self.status != StatusState::Failed && status == StatusState::Failed))
+        {
+            self.expanded = true;
+        } else if !has_log {
+            self.expanded = false;
+        }
+
+        self.had_log = has_log;
+        self.status = status;
+    }
+}
+
+impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'_> {
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<State>()
+    }
+
+    fn state(&self) -> tree::State {
+        tree::State::new(State::new(self.has_log(), self.status))
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        self.children.iter().map(Tree::new).collect()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        tree.diff_children(&self.children);
+        tree.state
+            .downcast_mut::<State>()
+            .reconcile(self.has_log(), self.status);
+    }
+
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Fill, Length::Shrink)
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        let state = tree.state.downcast_ref::<State>();
+        let visible = 1 + usize::from(state.expanded && self.has_log());
+
+        layout::flex::resolve(
+            layout::flex::Axis::Vertical,
+            renderer,
+            limits,
+            Length::Fill,
+            Length::Shrink,
+            Padding::ZERO,
+            0.0,
+            Alignment::Start,
+            &mut self.children[..visible],
+            &mut tree.children[..visible],
+        )
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn Operation,
+    ) {
+        for ((child, child_tree), child_layout) in self
+            .children
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+        {
+            child
+                .as_widget_mut()
+                .operate(child_tree, child_layout, renderer, operation);
+        }
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &iced::Rectangle,
+    ) {
+        let mut messages = Vec::new();
+        let mut local_shell = Shell::new(&mut messages);
+
+        for ((child, child_tree), child_layout) in self
+            .children
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+        {
+            child.as_widget_mut().update(
+                child_tree,
+                event,
+                child_layout,
+                cursor,
+                renderer,
+                clipboard,
+                &mut local_shell,
+                viewport,
+            );
+        }
+
+        if local_shell.is_empty() {
+            shell.merge(local_shell, unexpected_status_message);
+        } else {
+            let state = tree.state.downcast_mut::<State>();
+            state.expanded = !state.expanded;
+            shell.capture_event();
+            shell.invalidate_layout();
+            shell.request_redraw();
+        }
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &iced::Rectangle,
+        renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        self.children
+            .iter()
+            .zip(&tree.children)
+            .zip(layout.children())
+            .map(|((child, child_tree), child_layout)| {
+                child.as_widget().mouse_interaction(
+                    child_tree,
+                    child_layout,
+                    cursor,
+                    viewport,
+                    renderer,
+                )
+            })
+            .max()
+            .unwrap_or_default()
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut iced::Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &iced::Rectangle,
+    ) {
+        for ((child, child_tree), child_layout) in self
+            .children
+            .iter()
+            .zip(&tree.children)
+            .zip(layout.children())
+        {
+            child.as_widget().draw(
+                child_tree,
+                renderer,
+                theme,
+                style,
+                child_layout,
+                cursor,
+                viewport,
+            );
+        }
+    }
+
+    fn overlay<'a>(
+        &'a mut self,
+        tree: &'a mut Tree,
+        layout: Layout<'a>,
+        renderer: &iced::Renderer,
+        viewport: &iced::Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
+        let overlays = self
+            .children
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+            .filter_map(|((child, child_tree), child_layout)| {
+                child
+                    .as_widget_mut()
+                    .overlay(child_tree, child_layout, renderer, viewport, translation)
+                    .map(|overlay| overlay.map(&unexpected_status_message::<Message>))
+            })
+            .collect::<Vec<_>>();
+
+        (!overlays.is_empty()).then(|| overlay::Group::with_children(overlays).overlay())
+    }
+}
+
+fn unexpected_status_message<Message>((): ()) -> Message {
+    unreachable!("status bar messages are handled locally")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{State, StatusState};
+
+    #[test]
+    fn disclosure_opens_for_new_logs_and_failures_without_overriding_user_choice() {
+        let mut state = State::new(false, StatusState::Starting);
+
+        state.reconcile(true, StatusState::Starting);
+        assert!(state.expanded);
+
+        state.expanded = false;
+        state.reconcile(true, StatusState::Starting);
+        assert!(!state.expanded);
+
+        state.reconcile(true, StatusState::Failed);
+        assert!(state.expanded);
+
+        state.expanded = false;
+        state.reconcile(true, StatusState::Failed);
+        assert!(!state.expanded);
     }
 }
