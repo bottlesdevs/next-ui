@@ -25,6 +25,31 @@ enum Placement {
     Popover,
 }
 
+enum Owner<'a> {
+    Search(&'a mut bool),
+    Popover(&'a mut PopoverState),
+}
+
+impl Owner<'_> {
+    fn placement(&self) -> Placement {
+        match self {
+            Self::Search(_) => Placement::Search,
+            Self::Popover(_) => Placement::Popover,
+        }
+    }
+
+    fn dismiss(&mut self) {
+        match self {
+            Self::Search(dismissed) => **dismissed = true,
+            Self::Popover(state) => {
+                state.open = false;
+                state.focus_panel = false;
+                state.focus_trigger = true;
+            }
+        }
+    }
+}
+
 pub(super) struct PanelContent<'a, Message> {
     children: Vec<Element<'a, Message>>,
 }
@@ -134,9 +159,7 @@ where
     viewport: Rectangle,
     content: &'a mut PanelContent<'b, Message>,
     tree: &'a mut Tree,
-    placement: Placement,
-    search_dismissed: Option<&'a mut bool>,
-    popover: Option<&'a mut PopoverState>,
+    owner: Owner<'a>,
 }
 
 impl<'a, 'b, Message> AnchoredPanel<'a, 'b, Message>
@@ -159,9 +182,7 @@ where
             viewport,
             content,
             tree,
-            placement: Placement::Search,
-            search_dismissed: Some(dismissed),
-            popover: None,
+            owner: Owner::Search(dismissed),
         }
     }
 
@@ -181,21 +202,7 @@ where
             viewport,
             content,
             tree,
-            placement: Placement::Popover,
-            search_dismissed: None,
-            popover: Some(state),
-        }
-    }
-
-    fn dismiss(&mut self) {
-        if let Some(dismissed) = &mut self.search_dismissed {
-            **dismissed = true;
-        }
-
-        if let Some(state) = &mut self.popover {
-            state.open = false;
-            state.focus_panel = false;
-            state.focus_trigger = true;
+            owner: Owner::Popover(state),
         }
     }
 }
@@ -298,8 +305,9 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
         let bounds = Rectangle::with_size(bounds);
         let viewport = self.viewport.intersection(&bounds).unwrap_or(bounds);
+        let placement = self.owner.placement();
         let geometry = geometry(
-            self.placement,
+            placement,
             self.position,
             self.target_height,
             self.width,
@@ -317,7 +325,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             .split_first_mut()
             .expect("anchored panel body tree");
 
-        let width = if matches!(self.placement, Placement::Popover) {
+        let width = if matches!(placement, Placement::Popover) {
             let probe_limits = layout::Limits::with_compression(
                 Size::ZERO,
                 Size::new(geometry.max_width, max_height),
@@ -383,14 +391,14 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         shell: &mut Shell<'_, Message>,
     ) {
         if dismisses(event, cursor, layout.bounds()) {
-            self.dismiss();
+            self.owner.dismiss();
             shell.capture_event();
             shell.request_redraw();
 
             return;
         }
 
-        if let Some(state) = &mut self.popover
+        if let Owner::Popover(state) = &mut self.owner
             && state.focus_panel
         {
             if let (Some(body), Some(body_tree), Some(body_layout)) = (
@@ -428,7 +436,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         }
 
         if !panel_shell.is_empty() {
-            self.dismiss();
+            self.owner.dismiss();
         }
 
         shell.merge(panel_shell, std::convert::identity);
