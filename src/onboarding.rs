@@ -24,7 +24,7 @@ use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Err
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
-    widget::{center, column, container, row, text},
+    widget::{column, container, row, scrollable, text},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -513,10 +513,9 @@ pub(crate) fn shell<'a, Message: Clone + 'a>(
     let panel = container(
         column![
             header,
-            container(center(content))
+            scrollable(container(content).center(Fill).padding(32))
                 .width(Fill)
                 .height(Fill)
-                .padding(32)
         ]
         .width(Fill)
         .height(Fill),
