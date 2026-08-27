@@ -35,7 +35,7 @@ use iced::{
     keyboard::{self, key},
     widget::{column, container, scrollable},
 };
-use layout::{NavigationSplit, PaneContext, PaneMode, Side, SidePanel};
+use layout::{PaneContext, Side, navigation_split, side_panel};
 use uuid::Uuid;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
@@ -612,19 +612,19 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let split = SidePanel::new(
+        let split = side_panel(
             match self.panel {
                 Panel::Profiles => Side::End,
                 Panel::NewBottle => Side::Start,
             },
+            self.panel_open,
             |base_context| {
-                NavigationSplit::new(
+                navigation_split(
                     base_context,
+                    matches!(self.route, Route::Bottle { .. }),
                     |context| self.primary_page(context),
                     |context| self.detail_page(context),
                 )
-                .show_detail(matches!(self.route, Route::Bottle { .. }))
-                .into()
             },
             |context| {
                 if self.panel == Panel::Profiles {
@@ -633,8 +633,7 @@ impl State {
                     self.new_bottle_page(context)
                 }
             },
-        )
-        .open(self.panel_open);
+        );
 
         container(split).width(Fill).height(Fill).into()
     }
@@ -819,7 +818,7 @@ impl State {
         );
         let mut header = context.header(Message::Window(chrome::Action::Drag));
 
-        if context.mode == PaneMode::Single {
+        if context.is_standalone() {
             header = header.start(
                 Button::icon_only("Back to bottles", Icon::Arrow)
                     .diameter(32.0)

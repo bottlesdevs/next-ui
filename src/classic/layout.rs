@@ -21,19 +21,17 @@ const BREAKPOINT: f32 = 900.0;
 const COMPACT_MAX_WIDTH: f32 = 420.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneMode {
-    Single,
-    Split,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PaneContext {
-    pub mode: PaneMode,
+pub(super) struct PaneContext {
+    standalone: bool,
     owns_window_control: bool,
 }
 
 impl PaneContext {
-    pub fn header<'a, Message>(self, on_drag: Message) -> HeaderBar<'a, Message> {
+    pub(super) fn is_standalone(self) -> bool {
+        self.standalone
+    }
+
+    pub(super) fn header<'a, Message>(self, on_drag: Message) -> HeaderBar<'a, Message> {
         if self.owns_window_control {
             HeaderBar::new(on_drag)
         } else {
@@ -43,7 +41,7 @@ impl PaneContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
+pub(super) enum Side {
     Start,
     End,
 }
@@ -65,16 +63,8 @@ impl Kind {
         show_second: bool,
         window_control_at_start: bool,
     ) -> [PaneContext; 2] {
-        let first_mode = if wide && show_second {
-            PaneMode::Split
-        } else {
-            PaneMode::Single
-        };
-        let second_mode = if wide {
-            PaneMode::Split
-        } else {
-            PaneMode::Single
-        };
+        let first_standalone = !(wide && show_second);
+        let second_standalone = !wide;
 
         let [first_owns_control, second_owns_control] = match self {
             Self::Navigation(parent) if !show_second => [parent.owns_window_control, false],
@@ -90,11 +80,11 @@ impl Kind {
 
         [
             PaneContext {
-                mode: first_mode,
+                standalone: first_standalone,
                 owns_window_control: first_owns_control,
             },
             PaneContext {
-                mode: second_mode,
+                standalone: second_standalone,
                 owns_window_control: second_owns_control,
             },
         ]
@@ -107,105 +97,43 @@ impl Side {
     }
 }
 
-pub struct NavigationSplit<'a, Message> {
-    split: AdaptiveSplit<'a, Message>,
+pub(super) fn navigation_split<'a, Message: 'a>(
+    parent: PaneContext,
+    show_detail: bool,
+    master: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+    detail: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+) -> Element<'a, Message> {
+    adaptive_split(Kind::Navigation(parent), show_detail, master, detail)
 }
 
-impl<'a, Message> NavigationSplit<'a, Message> {
-    pub fn new(
-        parent: PaneContext,
-        master: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
-        detail: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
-    ) -> Self {
-        Self {
-            split: AdaptiveSplit::new(master, detail, Kind::Navigation(parent)),
-        }
-    }
-
-    pub fn show_detail(mut self, show_detail: bool) -> Self {
-        self.split.show_second = show_detail;
-        self
-    }
+pub(super) fn side_panel<'a, Message: 'a>(
+    side: Side,
+    open: bool,
+    base: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+    panel: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+) -> Element<'a, Message> {
+    adaptive_split(Kind::SidePanel(side), open, base, panel)
 }
 
-impl<'a, Message: 'a> From<NavigationSplit<'a, Message>> for Element<'a, Message> {
-    fn from(navigation: NavigationSplit<'a, Message>) -> Self {
-        navigation.split.into()
-    }
-}
-
-pub struct SidePanel<'a, Message> {
-    split: AdaptiveSplit<'a, Message>,
-}
-
-impl<'a, Message> SidePanel<'a, Message> {
-    pub fn new(
-        side: Side,
-        base: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
-        panel: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
-    ) -> Self {
-        Self {
-            split: AdaptiveSplit::new(base, panel, Kind::SidePanel(side)),
-        }
-    }
-
-    pub fn open(mut self, open: bool) -> Self {
-        self.split.show_second = open;
-        self
-    }
-}
-
-impl<'a, Message: 'a> From<SidePanel<'a, Message>> for Element<'a, Message> {
-    fn from(panel: SidePanel<'a, Message>) -> Self {
-        panel.split.into()
-    }
-}
-
-struct AdaptiveSplit<'a, Message> {
-    first: Box<dyn Fn(PaneContext) -> Element<'a, Message> + 'a>,
-    second: Box<dyn Fn(PaneContext) -> Element<'a, Message> + 'a>,
-    show_second: bool,
+fn adaptive_split<'a, Message: 'a>(
     kind: Kind,
-}
+    show_second: bool,
+    first: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+    second: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+) -> Element<'a, Message> {
+    responsive(move |size| {
+        let wide = size.width >= BREAKPOINT;
+        let [first_context, second_context] =
+            kind.contexts(wide, show_second, WINDOW_CONTROL_AT_START);
 
-impl<'a, Message> AdaptiveSplit<'a, Message> {
-    fn new(
-        first: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
-        second: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
-        kind: Kind,
-    ) -> Self {
-        Self {
-            first: Box::new(first),
-            second: Box::new(second),
-            show_second: false,
-            kind,
-        }
-    }
-}
-
-impl<'a, Message: 'a> From<AdaptiveSplit<'a, Message>> for Element<'a, Message> {
-    fn from(split: AdaptiveSplit<'a, Message>) -> Self {
-        let AdaptiveSplit {
-            first,
-            second,
+        Element::new(AnimatedSplit {
+            children: [first(first_context), second(second_context)],
             show_second,
+            wide,
             kind,
-        } = split;
-
-        responsive(move |size| {
-            let wide = size.width >= BREAKPOINT;
-            let [first_context, second_context] =
-                kind.contexts(wide, show_second, WINDOW_CONTROL_AT_START);
-
-            Element::new(AnimatedSplit {
-                children: [first(first_context), second(second_context)],
-                show_second,
-                wide,
-                kind,
-            })
         })
-        .into()
-    }
+    })
+    .into()
 }
 
 struct AnimatedSplit<'a, Message> {
@@ -623,7 +551,7 @@ mod tests {
 
     fn root_context() -> PaneContext {
         PaneContext {
-            mode: PaneMode::Single,
+            standalone: true,
             owns_window_control: true,
         }
     }
@@ -651,7 +579,7 @@ mod tests {
         );
 
         let nested = Kind::Navigation(PaneContext {
-            mode: PaneMode::Split,
+            standalone: false,
             owns_window_control: false,
         });
         assert_eq!(owners(nested.contexts(true, true, false)), [false, false]);
