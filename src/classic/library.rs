@@ -218,7 +218,7 @@ impl State {
                 .entries
                 .iter()
                 .fold(RowGroup::new().columns(columns), |rows, entry| {
-                    rows.add(
+                    rows.row(
                         ActionRow::new(entry.title(), ActionRowState::Ready(entry_action(entry)))
                             .description(entry.source_name())
                             .icon(source_icon(entry.source())),

@@ -336,21 +336,21 @@ impl Gallery {
             .title("Graphics")
             .description("Rows wrap according to the configured column count.")
             .columns(2)
-            .add(
+            .row(
                 switcher_row::SwitcherRow::new("DLSS", self.switched_on)
                     .on_toggle(Message::Switched)
                     .description("Deep Learning Super Sampling"),
             )
-            .add(
+            .row(
                 picker_row::PickerRow::new("Shader directory")
                     .description("Choose the location")
                     .on_press(Message::Noop),
             )
-            .add(
+            .row(
                 action_row::ActionRow::new("Discrete GPU", action_row::State::Ready(Message::Noop))
                     .description("Configure graphics adapter"),
             )
-            .add(
+            .expander(
                 expander_row::ExpanderRow::with_header(
                     switcher_row::SwitcherRow::new("FSR", self.group_switched_on)
                         .on_toggle(Message::GroupSwitched)
@@ -375,7 +375,7 @@ impl Gallery {
             .title("Non-overlapping expanders")
             .description("Both expanders can remain open because their panels do not overlap")
             .columns(3)
-            .add(
+            .expander(
                 expander_row::ExpanderRow::new("First expander")
                     .description("One-column panel")
                     .add(
@@ -386,7 +386,7 @@ impl Gallery {
                         .description("Inside the first column"),
                     ),
             )
-            .add(
+            .expander(
                 expander_row::ExpanderRow::new("Second expander")
                     .description("Two-column panel")
                     .columns(2)
@@ -405,7 +405,7 @@ impl Gallery {
                         .description("Second panel column"),
                     ),
             )
-            .add(
+            .row(
                 action_row::ActionRow::new(
                     "Independent action",
                     action_row::State::Ready(Message::Noop),
@@ -417,10 +417,10 @@ impl Gallery {
             .title("2 × 2 expander grid")
             .description("Opening a sibling closes the overlapping panel on the same grid line")
             .columns(2)
-            .add(action_grid_expander("Expander A"))
-            .add(action_grid_expander("Expander B"))
-            .add(action_grid_expander("Expander C"))
-            .add(action_grid_expander("Expander D"));
+            .expander(action_grid_expander("Expander A"))
+            .expander(action_grid_expander("Expander B"))
+            .expander(action_grid_expander("Expander C"))
+            .expander(action_grid_expander("Expander D"));
 
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)

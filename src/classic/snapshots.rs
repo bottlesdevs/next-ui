@@ -125,7 +125,7 @@ impl State {
                 .fold(
                     RowGroup::new().columns(columns),
                     |rows, (title, description)| {
-                        rows.add(
+                        rows.row(
                             ActionRow::new(title, ActionRowState::Ready(Message::Noop))
                                 .description(description)
                                 .icon(Icon::Timer),

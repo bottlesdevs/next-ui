@@ -122,18 +122,18 @@ impl State {
 
         let bottle = RowGroup::new()
             .title("Bottle")
-            .add(
+            .row(
                 ActionRow::new(state.runner().name(), ActionRowState::Disabled)
                     .description(state.runner().version())
                     .icon(Icon::Run),
             )
-            .add(environment_row(environment_label));
+            .row(environment_row(environment_label));
 
         let graphics = RowGroup::new()
             .title("Graphics")
-            .add(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
-            .add(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
-            .add(
+            .row(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
+            .row(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
+            .row(
                 SwitcherRow::new("Discrete GPU", false).description("Force use your dedicated GPU"),
             );
 
@@ -141,12 +141,12 @@ impl State {
         let graphics = {
             let wrappers = state.wrappers();
             graphics
-                .add(
+                .row(
                     SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                         .description("Use the SteamOS compositor")
                         .on_toggle(Message::ToggleGamescope),
                 )
-                .add(
+                .row(
                     SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                         .description("Show a performance overlay")
                         .on_toggle(Message::ToggleMangoHud),
@@ -154,7 +154,7 @@ impl State {
         };
 
         let graphics = graphics
-            .add(PickerRow::new("Display Settings").description("Resolution and other options"));
+            .row(PickerRow::new("Display Settings").description("Resolution and other options"));
 
         let content = column![bottle, graphics].spacing(12);
         #[cfg(target_os = "linux")]

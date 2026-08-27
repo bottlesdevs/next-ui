@@ -1,9 +1,6 @@
 use iced::Element;
 
-use super::{
-    list_row::ListRow,
-    row_group::{RowGroupEntry, standalone_expander},
-};
+use super::{list_row::ListRow, row_group::standalone_expander};
 
 pub struct ExpanderRow<'a, Message> {
     pub(crate) header: Header<'a, Message>,
@@ -77,7 +74,7 @@ impl<'a, Message> ExpanderRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Message> {
     fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        standalone_expander(RowGroupEntry::from(expander))
+        standalone_expander(expander)
     }
 }
 

@@ -383,7 +383,7 @@ impl State {
         let mut has_failures = false;
 
         if matches!(self.setup_phase, SetupPhase::Preparing(_)) {
-            group = group.add(
+            group = group.row(
                 ActionRow::new("Resource catalog", RowState::Progress(0.0))
                     .description("Preparing"),
             );
@@ -399,18 +399,18 @@ impl State {
             };
 
             group = match &item.state {
-                DownloadState::Running(_) => group.add(
+                DownloadState::Running(_) => group.row(
                     ActionRow::new(&item.label, RowState::Progress(item.progress))
                         .description(description),
                 ),
-                DownloadState::Succeeded => group.add(
+                DownloadState::Succeeded => group.row(
                     ActionRow::new(&item.label, RowState::Progress(1.0)).description(description),
                 ),
                 DownloadState::Pending
                 | DownloadState::Cancelled
                 | DownloadState::Unavailable
                 | DownloadState::Failed(_) => {
-                    group.add(InfoRow::new(&item.label).description(description))
+                    group.row(InfoRow::new(&item.label).description(description))
                 }
             };
 

@@ -237,7 +237,7 @@ impl State {
             bottle_states
                 .iter()
                 .fold(RowGroup::new().columns(columns), |rows, state| {
-                    rows.add(
+                    rows.row(
                         ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
                             .description(state.runner().name())
                             .icon(Icon::Bottles),

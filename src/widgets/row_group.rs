@@ -27,36 +27,12 @@ pub struct RowGroup<'a, Message> {
     description: Option<&'a str>,
     columns: usize,
     enabled: bool,
-    entries: Vec<RowGroupEntry<'a, Message>>,
+    entries: Vec<Entry<'a, Message>>,
 }
 
 enum Entry<'a, Message> {
     Row(ListRow<'a, Message>),
     Expander(ExpanderRow<'a, Message>),
-}
-
-#[doc(hidden)]
-pub struct RowGroupEntry<'a, Message> {
-    entry: Entry<'a, Message>,
-}
-
-impl<'a, Message, T> From<T> for RowGroupEntry<'a, Message>
-where
-    T: Into<ListRow<'a, Message>>,
-{
-    fn from(row: T) -> Self {
-        Self {
-            entry: Entry::Row(row.into()),
-        }
-    }
-}
-
-impl<'a, Message> From<ExpanderRow<'a, Message>> for RowGroupEntry<'a, Message> {
-    fn from(expander: ExpanderRow<'a, Message>) -> Self {
-        Self {
-            entry: Entry::Expander(expander),
-        }
-    }
 }
 
 impl<'a, Message: 'a> RowGroup<'a, Message> {
@@ -90,8 +66,13 @@ impl<'a, Message: 'a> RowGroup<'a, Message> {
         self
     }
 
-    pub fn add(mut self, entry: impl Into<RowGroupEntry<'a, Message>>) -> Self {
-        self.entries.push(entry.into());
+    pub fn row(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
+        self.entries.push(Entry::Row(row.into()));
+        self
+    }
+
+    pub fn expander(mut self, expander: ExpanderRow<'a, Message>) -> Self {
+        self.entries.push(Entry::Expander(expander));
         self
     }
 }
@@ -138,7 +119,7 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
 }
 
 fn group_line<'a, Message: Clone + 'a>(
-    entries: Vec<RowGroupEntry<'a, Message>>,
+    entries: Vec<Entry<'a, Message>>,
     columns: usize,
     enabled: bool,
     standalone: bool,
@@ -149,7 +130,7 @@ fn group_line<'a, Message: Clone + 'a>(
     let mut expansions = Vec::new();
 
     for (header_index, entry) in entries.into_iter().enumerate() {
-        match entry.entry {
+        match entry {
             Entry::Row(row) => {
                 headers.push(row.into_control(enabled).into());
             }
@@ -188,7 +169,7 @@ fn group_line<'a, Message: Clone + 'a>(
                     container(
                         content
                             .into_iter()
-                            .fold(RowGroup::new().columns(content_columns), RowGroup::add),
+                            .fold(RowGroup::new().columns(content_columns), RowGroup::row),
                     )
                     .width(Length::Fill)
                     .padding(spacing::MD),
@@ -241,9 +222,9 @@ fn group_line<'a, Message: Clone + 'a>(
 }
 
 pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
-    entry: RowGroupEntry<'a, Message>,
+    expander: ExpanderRow<'a, Message>,
 ) -> Element<'a, Message> {
-    group_line(vec![entry], 1, true, true)
+    group_line(vec![Entry::Expander(expander)], 1, true, true)
 }
 
 fn expander_header_style(

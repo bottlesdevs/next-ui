@@ -658,19 +658,19 @@ impl State {
             column![
                 RowGroup::new()
                     .title("Experience")
-                    .add(
+                    .row(
                         ActionRow::new("Classic", ActionRowState::Disabled)
                             .description("Current experience")
                             .icon(Icon::Checkmark),
                     )
-                    .add(
+                    .row(
                         ActionRow::new("Next", ActionRowState::Disabled)
                             .description("Not available yet")
                             .icon(Icon::Wand),
                     ),
                 RowGroup::new()
                     .title("Profile")
-                    .add(
+                    .row(
                         TextRow::new("Profile name", self.profiles.name_draft())
                             .icon(Icon::Person)
                             .on_input(|name| {
@@ -678,7 +678,7 @@ impl State {
                             })
                             .on_submit(Message::Profiles(profiles::Message::RenameSubmit,)),
                     )
-                    .add(accounts::action_button_row(
+                    .row(accounts::action_button_row(
                         Icon::Cross,
                         "Delete profile",
                         "Removes this profile and its linked accounts from this device",

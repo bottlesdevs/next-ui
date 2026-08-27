@@ -255,7 +255,7 @@ impl State {
 
         let mut accounts = RowGroup::new().title("Linked accounts");
         for account in active.accounts() {
-            accounts = accounts.add(account_row(
+            accounts = accounts.row(account_row(
                 provider_icon(&account.provider),
                 format!(
                     "{} on {}",
@@ -319,7 +319,7 @@ fn login_dialog(login: &LoginChallenge) -> iced::widget::Column<'_, Message> {
     let mut content = column![
         container(Title::new("Sign in").subtitle(&login.prompt.instructions)).center_x(iced::Fill),
         RowGroup::new()
-            .add(
+            .row(
                 ListRow::from(
                     InfoRow::new("Sign-in link (click to copy)")
                         .description(&login.prompt.url)
@@ -327,14 +327,14 @@ fn login_dialog(login: &LoginChallenge) -> iced::widget::Column<'_, Message> {
                 )
                 .on_press(Message::CopyLoginUrl),
             )
-            .add(action_button_row(
+            .row(action_button_row(
                 Icon::Arrow,
                 "Open in your browser",
                 "Sign in there, then paste the requested value below.",
                 "Open",
                 Message::OpenLoginUrl,
             ))
-            .add(
+            .row(
                 TextRow::new("Authorization code", &login.code_draft)
                     .icon(Icon::Checkmark)
                     .on_input(Message::LoginCodeChanged)
