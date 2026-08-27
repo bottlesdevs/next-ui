@@ -4,37 +4,10 @@ use crate::{theme, widgets::Control};
 
 const DIALOG_MAX_WIDTH: f32 = 560.0;
 
-/// The ways a window-modal dialog may be dismissed without using its actions.
-pub(crate) enum Dismissal<Message> {
-    #[allow(dead_code)] // Supported for workflows that must be completed explicitly.
-    Explicit,
-    OutsideAndEscape(Message),
-}
-
-impl<Message> Dismissal<Message> {
-    pub(crate) fn map<Other>(self, map: impl FnOnce(Message) -> Other) -> Dismissal<Other> {
-        match self {
-            Self::Explicit => Dismissal::Explicit,
-            Self::OutsideAndEscape(message) => Dismissal::OutsideAndEscape(map(message)),
-        }
-    }
-
-    pub(crate) fn is_outside_and_escape(&self) -> bool {
-        matches!(self, Self::OutsideAndEscape(_))
-    }
-
-    fn outside_message(&self) -> Option<&Message> {
-        match self {
-            Self::Explicit => None,
-            Self::OutsideAndEscape(message) => Some(message),
-        }
-    }
-}
-
 /// Presents one dialog above a retained, insensitive application window.
 pub(crate) struct WindowModalHost<'a, Message> {
     base: Element<'a, Message>,
-    modal: Option<(Element<'a, Message>, Dismissal<Message>, Message)>,
+    modal: Option<(Element<'a, Message>, Message, Message)>,
 }
 
 impl<'a, Message> WindowModalHost<'a, Message> {
@@ -48,10 +21,10 @@ impl<'a, Message> WindowModalHost<'a, Message> {
     pub(crate) fn modal(
         mut self,
         content: impl Into<Element<'a, Message>>,
-        dismissal: Dismissal<Message>,
+        on_dismiss: Message,
         on_interaction: Message,
     ) -> Self {
-        self.modal = Some((content.into(), dismissal, on_interaction));
+        self.modal = Some((content.into(), on_dismiss, on_interaction));
         self
     }
 }
@@ -67,11 +40,7 @@ impl<'a, Message: Clone + 'a> From<WindowModalHost<'a, Message>> for Element<'a,
             .sensitive(!modal_open);
         let mut layers = stack![base].width(Fill).height(Fill);
 
-        if let Some((content, dismissal, on_interaction)) = host.modal {
-            let outside_press = dismissal
-                .outside_message()
-                .cloned()
-                .unwrap_or_else(|| on_interaction.clone());
+        if let Some((content, on_dismiss, on_interaction)) = host.modal {
             let dialog = Control::new(
                 container(content)
                     .max_width(DIALOG_MAX_WIDTH)
@@ -85,7 +54,7 @@ impl<'a, Message: Clone + 'a> From<WindowModalHost<'a, Message>> for Element<'a,
                 ..container::Style::default()
             });
             let modal = Control::new(scrim)
-                .on_press(outside_press)
+                .on_press(on_dismiss)
                 .focus_first_descendant()
                 .width(Fill)
                 .height(Fill);
@@ -116,12 +85,8 @@ mod tests {
         let host = WindowModalHost::new(base);
 
         if open {
-            host.modal(
-                Space::new(),
-                Dismissal::OutsideAndEscape(Message::Dismiss),
-                Message::Interaction,
-            )
-            .into()
+            host.modal(Space::new(), Message::Dismiss, Message::Interaction)
+                .into()
         } else {
             host.into()
         }
@@ -150,16 +115,5 @@ mod tests {
         tree.diff(&closed);
         assert_eq!(tree.children.len(), 1);
         assert!(base_interaction(&mut tree).is_focused());
-    }
-
-    #[test]
-    fn dismissal_policy_controls_outside_and_escape() {
-        let explicit = Dismissal::<u8>::Explicit;
-        let dismissible = Dismissal::OutsideAndEscape(7);
-
-        assert!(!explicit.is_outside_and_escape());
-        assert_eq!(explicit.outside_message(), None);
-        assert!(dismissible.is_outside_and_escape());
-        assert_eq!(dismissible.outside_message(), Some(&7));
     }
 }

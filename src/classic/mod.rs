@@ -27,7 +27,6 @@ use crate::{
         text_row::TextRow,
         title::Title,
     },
-    window_modal::Dismissal,
 };
 use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
 use iced::{
@@ -213,14 +212,10 @@ impl Message {
 }
 
 impl Modal {
-    fn dismissal(&self) -> Dismissal<Message> {
+    fn cancel_message(&self) -> Message {
         match self {
-            Self::NewProfile(_) => Dismissal::OutsideAndEscape(Message::NewProfileDialog(
-                profiles::NewProfileMessage::Cancel,
-            )),
-            Self::AccountLogin(_) => Dismissal::OutsideAndEscape(Message::AccountLoginDialog(
-                accounts::LoginMessage::Cancel,
-            )),
+            Self::NewProfile(_) => Message::NewProfileDialog(profiles::NewProfileMessage::Cancel),
+            Self::AccountLogin(_) => Message::AccountLoginDialog(accounts::LoginMessage::Cancel),
         }
     }
 }
@@ -286,21 +281,12 @@ impl State {
         self.modal.is_some()
     }
 
-    pub(crate) fn has_dismissible_modal(&self) -> bool {
-        self.modal
-            .as_ref()
-            .is_some_and(|modal| modal.dismissal().is_outside_and_escape())
-    }
-
     pub(crate) fn dismiss_modal(&mut self) -> Task<Message> {
         let Some(modal) = &self.modal else {
             return Task::none();
         };
-        let Dismissal::OutsideAndEscape(message) = modal.dismissal() else {
-            return Task::none();
-        };
 
-        self.update(message)
+        self.update(modal.cancel_message())
     }
 
     pub fn cancel_active_operations(&mut self) {
@@ -638,7 +624,7 @@ impl State {
         container(split).width(Fill).height(Fill).into()
     }
 
-    pub(crate) fn modal_view(&self) -> Option<(Element<'_, Message>, Dismissal<Message>)> {
+    pub(crate) fn modal_view(&self) -> Option<(Element<'_, Message>, Message)> {
         let modal = self.modal.as_ref()?;
         let content = match modal {
             Modal::AccountLogin(dialog) => {
@@ -650,7 +636,7 @@ impl State {
             }
         };
 
-        Some((content, modal.dismissal()))
+        Some((content, modal.cancel_message()))
     }
 
     fn primary_page(&self, context: PaneContext) -> Element<'_, Message> {

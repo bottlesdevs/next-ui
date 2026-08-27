@@ -213,7 +213,7 @@ impl App {
             | Phase::Failed(_) => Subscription::none(),
         };
 
-        let modal_escape = if self.has_dismissible_modal() {
+        let modal_escape = if self.has_modal() {
             iced::event::listen_with(dismiss_modal_on_escape)
         } else {
             Subscription::none()
@@ -307,7 +307,7 @@ impl App {
                 Phase::Booting | Phase::ShuttingDown | Phase::Failed(_) => {}
             },
             AppMessage::DismissModal => {
-                if !self.has_dismissible_modal() {
+                if !self.has_modal() {
                     return Task::none();
                 }
 
@@ -393,11 +393,11 @@ impl App {
         let host = WindowModalHost::new(page);
 
         if let Some(state) = self.visible_classic_modal()
-            && let Some((content, dismissal)) = state.modal_view()
+            && let Some((content, on_dismiss)) = state.modal_view()
         {
             host.modal(
                 content.map(classic_message),
-                dismissal.map(classic_message),
+                classic_message(on_dismiss),
                 AppMessage::ModalInteraction,
             )
             .into()
@@ -612,11 +612,6 @@ impl App {
 
     fn has_modal(&self) -> bool {
         self.visible_classic_modal().is_some()
-    }
-
-    fn has_dismissible_modal(&self) -> bool {
-        self.visible_classic_modal()
-            .is_some_and(classic::State::has_dismissible_modal)
     }
 
     fn visible_classic_modal(&self) -> Option<&classic::State> {
