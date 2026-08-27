@@ -118,7 +118,10 @@ impl State {
             Message::ToggleProfileSwitcher => {
                 self.profile_switcher_open = !self.profile_switcher_open
             }
-            Message::ToggleProfileSettings => output = Some(Output::ToggleSettings),
+            Message::ToggleProfileSettings => {
+                self.profile_switcher_open = false;
+                output = Some(Output::ToggleSettings);
+            }
             Message::ActivateProfile(id) => {
                 if self.request_kind.is_none() {
                     let profiles = self.profiles.clone();
