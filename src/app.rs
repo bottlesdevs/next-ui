@@ -187,25 +187,11 @@ impl App {
     }
 
     pub(crate) fn theme(&self) -> Theme {
-        match &self.phase {
-            Phase::Onboarding { state, .. } => state.theme(),
-            Phase::Workspace {
-                workspace: Workspace::Classic(state),
-                ..
-            } => state.theme(),
-            Phase::Booting
-            | Phase::Workspace {
-                workspace: Workspace::Unavailable(_),
-                ..
-            }
-            | Phase::ShuttingDown
-            | Phase::Failed(_) => theme::BottlesTheme::for_mode(self.system_theme).theme,
-        }
+        theme::BottlesTheme::for_mode(self.system_theme).theme
     }
 
     pub(crate) fn subscription(&self) -> Subscription<AppMessage> {
         let phase = match &self.phase {
-            Phase::Onboarding { state, .. } => state.subscription().map(AppMessage::Onboarding),
             Phase::Workspace {
                 workspace: Workspace::Classic(state),
                 ..
@@ -213,16 +199,18 @@ impl App {
                 .subscription()
                 .map(|message| AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))),
             Phase::Booting
+            | Phase::Onboarding { .. }
             | Phase::Workspace {
                 workspace: Workspace::Unavailable(_),
                 ..
             }
             | Phase::ShuttingDown
-            | Phase::Failed(_) => iced::system::theme_changes().map(AppMessage::SystemThemeChanged),
+            | Phase::Failed(_) => Subscription::none(),
         };
 
         Subscription::batch([
             phase,
+            iced::system::theme_changes().map(AppMessage::SystemThemeChanged),
             iced::window::close_requests().map(|_| AppMessage::CloseRequested),
         ])
     }
@@ -370,14 +358,14 @@ impl App {
 
         match config.experience {
             None => {
-                let (state, task) = onboarding::State::new(core.addons().clone());
+                let state = onboarding::State::new(core.addons().clone());
                 self.phase = Phase::Onboarding {
                     core,
                     state: Box::new(state),
                     saving: None,
                     notice: None,
                 };
-                task.map(AppMessage::Onboarding)
+                Task::none()
             }
             Some(experience) => self.open_workspace(core, experience),
         }

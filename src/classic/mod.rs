@@ -31,9 +31,8 @@ use crate::{
 };
 use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
 use iced::{
-    Background, Element, Fill, Subscription, Task, Theme,
+    Background, Element, Fill, Subscription, Task,
     keyboard::{self, key},
-    theme::Mode as ThemeMode,
     widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
 use layout::{NavigationSplit, PaneContext, PaneMode, Side, SidePanel};
@@ -156,7 +155,6 @@ pub struct State {
     library: library::State,
     accounts: accounts::State,
     settings: settings::State,
-    system_theme: ThemeMode,
     draining: bool,
 }
 
@@ -184,7 +182,6 @@ pub enum Message {
     BottleListChanged(Vec<Bottle>),
     BottleStateChanged(Arc<BottleState>),
     ProfilesChanged(Arc<ProfilesConfig>),
-    SystemThemeChanged(ThemeMode),
 }
 
 impl Message {
@@ -204,8 +201,7 @@ impl Message {
             | Self::Accounts(accounts::Message::ProfileUpdated(_))
             | Self::BottleListChanged(_)
             | Self::BottleStateChanged(_)
-            | Self::ProfilesChanged(_)
-            | Self::SystemThemeChanged(_) => true,
+            | Self::ProfilesChanged(_) => true,
             #[cfg(target_os = "linux")]
             Self::Settings(settings::Message::WrapperUpdated { .. }) => true,
             #[cfg(feature = "fvs")]
@@ -237,12 +233,10 @@ impl State {
             library,
             accounts: accounts::State::new(),
             settings: settings::State::new(),
-            system_theme: ThemeMode::default(),
             draining: false,
         };
-        let theme_boot = iced::system::theme().map(Message::SystemThemeChanged);
 
-        (state, Task::batch([library_boot, theme_boot]))
+        (state, library_boot)
     }
 
     fn reload_library(&mut self) -> Task<Message> {
@@ -257,10 +251,6 @@ impl State {
             Route::Library => PrimaryTab::Library,
             _ => PrimaryTab::Bottles,
         }
-    }
-
-    pub fn theme(&self) -> Theme {
-        theme::BottlesTheme::for_mode(self.system_theme).theme
     }
 
     pub fn experience(&self) -> Experience {
@@ -478,7 +468,6 @@ impl State {
                 self.read_model.profiles = snapshot;
                 return self.reload_library();
             }
-            Message::SystemThemeChanged(mode) => self.system_theme = mode,
             Message::OpenMenu | Message::TogglePower | Message::RequestExperience(_) => {}
         }
 
@@ -512,9 +501,7 @@ impl State {
             _ => None,
         });
 
-        let theme_changes = iced::system::theme_changes().map(Message::SystemThemeChanged);
-
-        let mut subscriptions = vec![keys, theme_changes];
+        let mut subscriptions = vec![keys];
 
         subscriptions.push(
             Subscription::run_with(self.bottles.manager().clone(), bottles::bottle_events)
@@ -870,7 +857,6 @@ mod tests {
     #[test]
     fn draining_accepts_task_messages_but_rejects_new_actions() {
         assert!(Message::Library(library::Message::Loaded(1)).allowed_while_draining());
-        assert!(Message::SystemThemeChanged(ThemeMode::Dark).allowed_while_draining());
         assert!(
             !Message::Library(library::Message::QueryChanged("new search".into()))
                 .allowed_while_draining()

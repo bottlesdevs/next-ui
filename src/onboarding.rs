@@ -22,9 +22,8 @@ use crate::{
 };
 use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Error as CoreError};
 use iced::{
-    Element, Fill, Length, Subscription, Task, Theme,
+    Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
-    theme::Mode as ThemeMode,
     widget::{center, column, container, row, text},
 };
 use tokio_util::sync::CancellationToken;
@@ -120,7 +119,6 @@ pub struct State {
     download_generation: u64,
     setup_phase: SetupPhase,
     catalog_error: Option<Arc<CoreError>>,
-    system_theme: ThemeMode,
 }
 
 #[derive(Clone)]
@@ -135,12 +133,11 @@ pub enum Message {
     Retry,
     Finished(Experience),
     Window(chrome::Action),
-    SystemThemeChanged(ThemeMode),
 }
 
 impl State {
-    pub fn new(addons: Addons) -> (Self, Task<Message>) {
-        let state = Self {
+    pub fn new(addons: Addons) -> Self {
+        Self {
             step: Step::Welcome,
             experience: Experience::Classic,
             addons,
@@ -148,19 +145,7 @@ impl State {
             download_generation: 0,
             setup_phase: SetupPhase::Idle,
             catalog_error: None,
-            system_theme: ThemeMode::default(),
-        };
-        let theme = iced::system::theme().map(Message::SystemThemeChanged);
-
-        (state, theme)
-    }
-
-    pub fn theme(&self) -> Theme {
-        theme::BottlesTheme::for_mode(self.system_theme).theme
-    }
-
-    pub fn subscription(&self) -> Subscription<Message> {
-        iced::system::theme_changes().map(Message::SystemThemeChanged)
+        }
     }
 
     pub fn cancel_active_operations(&self) {
@@ -246,7 +231,6 @@ impl State {
             }
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::Finished(_) => {}
-            Message::SystemThemeChanged(mode) => self.system_theme = mode,
         }
 
         Task::none()
