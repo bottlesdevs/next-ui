@@ -16,10 +16,14 @@ pub fn run() -> iced::Result {
         .theme(app::App::theme)
         .subscription(app::App::subscription)
         .style(|_, theme| theme::application(theme))
-        .window_size((1600.0, 1000.0))
-        .centered()
-        .decorations(false)
-        .transparent(true)
-        .exit_on_close_request(false)
+        .window(iced::window::Settings {
+            size: iced::Size::new(1600.0, 1000.0),
+            position: iced::window::Position::Centered,
+            min_size: Some(iced::Size::new(720.0, 600.0)),
+            decorations: false,
+            transparent: true,
+            exit_on_close_request: false,
+            ..Default::default()
+        })
         .run()
 }
