@@ -27,7 +27,6 @@ pub fn profile_events(
 
 #[derive(Clone)]
 pub enum Message {
-    ToggleProfileSwitcher,
     ToggleProfileSettings,
     ActivateProfile(Uuid),
     ToggleNewProfile,
@@ -64,7 +63,6 @@ enum RequestKind {
 pub struct State {
     profiles: Profiles,
     selected_id: Uuid,
-    profile_switcher_open: bool,
     name_draft: String,
     new_profile_draft: Option<String>,
     last_error: Option<String>,
@@ -77,7 +75,6 @@ impl State {
         Self {
             profiles,
             selected_id: selected.id(),
-            profile_switcher_open: false,
             name_draft: selected.name().to_owned(),
             new_profile_draft: None,
             last_error: None,
@@ -115,11 +112,7 @@ impl State {
     pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
         let mut output = None;
         match message {
-            Message::ToggleProfileSwitcher => {
-                self.profile_switcher_open = !self.profile_switcher_open
-            }
             Message::ToggleProfileSettings => {
-                self.profile_switcher_open = false;
                 output = Some(Output::ToggleSettings);
             }
             Message::ActivateProfile(id) => {
@@ -253,11 +246,9 @@ impl State {
             .diameter(32.0)
             .icon_size(16.0)
             .kind(ButtonKind::Transparent)
-            .on_press(Message::ToggleProfileSwitcher);
+            .on_press(());
 
-        let mut switcher = Popover::new(trigger, self.profile_switcher_open)
-            .on_dismiss(Message::ToggleProfileSwitcher)
-            .footer("Profiles", Message::ToggleProfileSettings);
+        let mut switcher = Popover::new(trigger).footer("Profiles", Message::ToggleProfileSettings);
 
         for profile in snapshot.profiles() {
             switcher = switcher.add(

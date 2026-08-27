@@ -49,7 +49,6 @@ struct Gallery {
     selected_tab: usize,
     switched_on: bool,
     group_switched_on: bool,
-    popover_open: bool,
     status_expanded: bool,
     value: usize,
 }
@@ -63,7 +62,6 @@ impl Default for Gallery {
             selected_tab: 0,
             switched_on: false,
             group_switched_on: false,
-            popover_open: false,
             status_expanded: false,
             value: 1,
         }
@@ -78,7 +76,6 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    PopoverToggled(bool),
     Window(chrome::Action),
     StatusToggled,
     Previous,
@@ -98,7 +95,6 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::PopoverToggled(open) => self.popover_open = open,
             Message::Window(chrome::Action::RequestClose) => return iced::exit(),
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::StatusToggled => self.status_expanded = !self.status_expanded,
@@ -260,15 +256,14 @@ impl Gallery {
         let popover = popover::Popover::new(
             button::Button::new("Open popover")
                 .trailing_icon(Icon::DownCaret)
-                .on_press(Message::PopoverToggled(true)),
-            self.popover_open,
+                .on_press(()),
         )
         .add(
             popover::PopoverItem::new("Current profile")
                 .subtitle("Selected")
                 .icon(Icon::Person)
                 .selected(true)
-                .on_select(Message::PopoverToggled(false)),
+                .on_select(Message::Noop),
         )
         .add(
             popover::PopoverItem::new("Available account")
@@ -280,8 +275,7 @@ impl Gallery {
                 .disabled_action("Taken")
                 .tooltip(text("Already linked to another profile")),
         )
-        .footer("Manage profiles", Message::Noop)
-        .on_dismiss(Message::PopoverToggled(false));
+        .footer("Manage profiles", Message::Noop);
         let fields = column![
             text_row::TextRow::new("Input Name", &self.text_rows[0])
                 .placeholder("Placeholder")

@@ -102,8 +102,6 @@ impl LoginChallenge {
 
 #[derive(Clone)]
 pub enum Message {
-    ToggleLink,
-    Dismiss,
     UnlinkAccount(PluginId),
     BeginLogin(StorefrontProvider),
     LoginRequested(LoginPrompt),
@@ -122,8 +120,6 @@ pub enum Output {
 }
 
 pub struct State {
-    link_popover_open: bool,
-    providers: Vec<StorefrontProvider>,
     login_modal: Option<LoginChallenge>,
     link_cancellation: Option<CancellationToken>,
     mutation_pending: bool,
@@ -139,8 +135,6 @@ impl Default for State {
 impl State {
     pub fn new() -> Self {
         Self {
-            link_popover_open: false,
-            providers: Vec::new(),
             login_modal: None,
             link_cancellation: None,
             mutation_pending: false,
@@ -173,13 +167,6 @@ impl State {
     ) -> (iced::Task<Message>, Option<Output>) {
         let mut output = None;
         match message {
-            Message::ToggleLink => {
-                self.link_popover_open = !self.link_popover_open;
-                if self.link_popover_open {
-                    self.providers = ctx.profiles.account_providers();
-                }
-            }
-            Message::Dismiss => self.link_popover_open = false,
             Message::UnlinkAccount(provider_id) => {
                 if !self.mutation_pending && self.link_cancellation.is_none() {
                     let profiles = ctx.profiles.clone();
@@ -200,7 +187,6 @@ impl State {
                 }
             }
             Message::BeginLogin(provider) => {
-                self.link_popover_open = false;
                 if self.link_cancellation.is_none() && !self.mutation_pending {
                     let (cancellation, task) =
                         link_account(ctx.profiles, ctx.active_profile.id(), provider.id);
@@ -282,12 +268,11 @@ impl State {
 
         let link_trigger = PickerRow::new("Link a storefront account")
             .description("Choose the account provider to connect")
-            .on_press(Message::ToggleLink);
-        let mut link_popover = Popover::new(link_trigger, self.link_popover_open)
-            .on_dismiss(Message::Dismiss)
+            .on_press(());
+        let mut link_popover = Popover::new(link_trigger)
             .footer("Not listed, install a provider plugin", Message::Noop);
 
-        for provider in &self.providers {
+        for provider in ctx.profiles.account_providers() {
             if active
                 .accounts()
                 .iter()
@@ -297,9 +282,9 @@ impl State {
             }
 
             link_popover = link_popover.add(
-                PopoverItem::new(provider.name.as_ref())
-                    .icon(provider_icon(provider))
-                    .action("Link", Message::BeginLogin(provider.clone())),
+                PopoverItem::new(provider.name.clone())
+                    .icon(provider_icon(&provider))
+                    .action("Link", Message::BeginLogin(provider)),
             );
         }
 

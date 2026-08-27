@@ -2,9 +2,9 @@ use iced::{
     Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree},
+        widget::{Operation, Tree, tree},
     },
-    widget::{column, container, scrollable, svg, tooltip},
+    widget::{column, container, scrollable, svg, text::Fragment, text::IntoFragment, tooltip},
 };
 
 use crate::icons::Icon;
@@ -23,7 +23,7 @@ use super::{
 /// trailing action button (e.g. "Install"). Matches the mixed row kinds seen in the
 /// account-linking / storefront-picker mockups.
 pub struct PopoverItem<'a, Message> {
-    title: &'a str,
+    title: Fragment<'a>,
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
     on_select: Option<Message>,
@@ -38,9 +38,9 @@ pub struct PopoverItem<'a, Message> {
 }
 
 impl<'a, Message> PopoverItem<'a, Message> {
-    pub fn new(title: &'a str) -> Self {
+    pub fn new(title: impl IntoFragment<'a>) -> Self {
         Self {
-            title,
+            title: title.into_fragment(),
             subtitle: None,
             icon: None,
             on_select: None,
@@ -96,21 +96,17 @@ impl<'a, Message> PopoverItem<'a, Message> {
 /// optional pinned footer row, used for the account-linking/storefront-picker and profile
 /// switcher flows.
 pub struct Popover<'a, Message> {
-    trigger: Element<'a, Message>,
+    trigger: Element<'a, ()>,
     items: Vec<PopoverItem<'a, Message>>,
     footer: Option<(&'a str, Message)>,
-    open: bool,
-    on_dismiss: Option<Message>,
 }
 
 impl<'a, Message> Popover<'a, Message> {
-    pub fn new(trigger: impl Into<Element<'a, Message>>, open: bool) -> Self {
+    pub fn new(trigger: impl Into<Element<'a, ()>>) -> Self {
         Self {
             trigger: trigger.into(),
             items: Vec::new(),
             footer: None,
-            open,
-            on_dismiss: None,
         }
     }
 
@@ -121,11 +117,6 @@ impl<'a, Message> Popover<'a, Message> {
 
     pub fn footer(mut self, label: &'a str, on_press: Message) -> Self {
         self.footer = Some((label, on_press));
-        self
-    }
-
-    pub fn on_dismiss(mut self, message: Message) -> Self {
-        self.on_dismiss = Some(message);
         self
     }
 }
@@ -151,8 +142,6 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
         Element::new(PopoverWidget {
             trigger: popover.trigger,
             panel: PanelContent::new(scrollable(body).width(Fill), footer),
-            open: popover.open,
-            on_dismiss: popover.on_dismiss,
         })
     }
 }
@@ -197,13 +186,26 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
 }
 
 struct PopoverWidget<'a, Message> {
-    trigger: Element<'a, Message>,
+    trigger: Element<'a, ()>,
     panel: PanelContent<'a, Message>,
-    open: bool,
-    on_dismiss: Option<Message>,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct State {
+    pub(super) open: bool,
+    pub(super) focus_panel: bool,
+    pub(super) focus_trigger: bool,
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<State>()
+    }
+
+    fn state(&self) -> tree::State {
+        tree::State::new(State::default())
+    }
+
     fn children(&self) -> Vec<Tree> {
         vec![Tree::new(&self.trigger), self.panel.tree()]
     }
@@ -256,6 +258,21 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
+        let state = tree.state.downcast_mut::<State>();
+
+        if state.focus_trigger {
+            super::control::focus_first_descendant(
+                &mut self.trigger,
+                &mut tree.children[0],
+                layout,
+                renderer,
+            );
+            state.focus_trigger = false;
+        }
+
+        let mut messages = Vec::new();
+        let mut trigger_shell = Shell::new(&mut messages);
+
         self.trigger.as_widget_mut().update(
             &mut tree.children[0],
             event,
@@ -263,9 +280,19 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
             cursor,
             renderer,
             clipboard,
-            shell,
+            &mut trigger_shell,
             viewport,
         );
+
+        if trigger_shell.is_empty() {
+            shell.merge(trigger_shell, |()| unreachable!("empty trigger shell"));
+        } else {
+            state.open = !state.open;
+            state.focus_panel = state.open;
+            state.focus_trigger = !state.open;
+            shell.capture_event();
+            shell.request_redraw();
+        }
     }
 
     fn mouse_interaction(
@@ -314,7 +341,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        if !self.open {
+        let (state, children) = (&mut tree.state, &mut tree.children);
+        let state = state.downcast_mut::<State>();
+
+        if !state.open {
             return None;
         }
 
@@ -326,8 +356,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
             bounds.width,
             *viewport,
             &mut self.panel,
-            &mut tree.children[1],
-            self.on_dismiss.clone(),
+            &mut children[1],
+            state,
         ))))
     }
 }

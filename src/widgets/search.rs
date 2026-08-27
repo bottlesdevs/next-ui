@@ -203,7 +203,7 @@ fn result_row<'a, Message: Clone + 'a>(
     highlight: Rc<Cell<Option<usize>>>,
     index: usize,
 ) -> Element<'a, Message> {
-    let mut content = row_content(result.title, result.subtitle, result.icon);
+    let mut content = row_content(result.title.into(), result.subtitle, result.icon);
 
     if let Some((label, icon, message)) = result.action {
         content = content.push(

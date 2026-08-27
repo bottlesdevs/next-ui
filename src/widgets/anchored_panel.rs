@@ -5,13 +5,14 @@ use iced::{
         widget::{Operation, Tree},
     },
     keyboard::{self, key},
-    widget::{Space, button, column, row, svg, text},
+    widget::{Space, button, column, row, svg, text, text::Fragment},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    control::{Control, State},
+    control::{Control, State, focus_first_descendant},
+    popover::State as PopoverState,
     spacing,
     surface::{Kind as SurfaceKind, scoped_overlay},
     text::TextExt as _,
@@ -49,7 +50,7 @@ impl<'a, Message> PanelContent<'a, Message> {
 }
 
 pub(super) fn row_content<'a, Message: 'a>(
-    title: &'a str,
+    title: Fragment<'a>,
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
 ) -> iced::widget::Row<'a, Message> {
@@ -134,7 +135,7 @@ where
     content: &'a mut PanelContent<'b, Message>,
     tree: &'a mut Tree,
     placement: Placement,
-    on_dismiss: Option<Message>,
+    popover: Option<&'a mut PopoverState>,
 }
 
 impl<'a, 'b, Message> AnchoredPanel<'a, 'b, Message>
@@ -157,7 +158,7 @@ where
             content,
             tree,
             placement: Placement::Search,
-            on_dismiss: None,
+            popover: None,
         }
     }
 
@@ -168,7 +169,7 @@ where
         viewport: Rectangle,
         content: &'a mut PanelContent<'b, Message>,
         tree: &'a mut Tree,
-        on_dismiss: Option<Message>,
+        state: &'a mut PopoverState,
     ) -> Self {
         Self {
             position,
@@ -178,7 +179,7 @@ where
             content,
             tree,
             placement: Placement::Popover,
-            on_dismiss,
+            popover: Some(state),
         }
     }
 }
@@ -353,13 +354,35 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     ) {
         if matches!(self.placement, Placement::Popover) && dismisses(event, cursor, layout.bounds())
         {
-            if let Some(message) = self.on_dismiss.clone() {
-                shell.publish(message);
-                shell.capture_event();
+            if let Some(state) = &mut self.popover {
+                state.open = false;
+                state.focus_panel = false;
+                state.focus_trigger = true;
             }
+
+            shell.capture_event();
+            shell.request_redraw();
 
             return;
         }
+
+        if let Some(state) = &mut self.popover
+            && state.focus_panel
+        {
+            if let (Some(body), Some(body_tree), Some(body_layout)) = (
+                self.content.children.first_mut(),
+                self.tree.children.first_mut(),
+                layout.children().next(),
+            ) {
+                focus_first_descendant(body, body_tree, body_layout, renderer);
+            }
+
+            state.focus_panel = false;
+            shell.request_redraw();
+        }
+
+        let mut messages = Vec::new();
+        let mut panel_shell = Shell::new(&mut messages);
 
         for ((child, tree), child_layout) in self
             .content
@@ -375,10 +398,20 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
                 cursor,
                 renderer,
                 clipboard,
-                shell,
+                &mut panel_shell,
                 &self.viewport,
             );
         }
+
+        if !panel_shell.is_empty()
+            && let Some(state) = &mut self.popover
+        {
+            state.open = false;
+            state.focus_panel = false;
+            state.focus_trigger = true;
+        }
+
+        shell.merge(panel_shell, std::convert::identity);
     }
 
     fn mouse_interaction(
