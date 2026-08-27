@@ -16,7 +16,7 @@ use crate::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
     },
-    window_modal::WindowModalHost,
+    window_modal,
 };
 
 const APP_CONFIG_FILE: &str = "config.toml";
@@ -390,20 +390,14 @@ impl App {
         };
         let page: Element<'_, AppMessage> =
             chrome::WindowFrame::new(body, AppMessage::Window).into();
-        let host = WindowModalHost::new(page);
+        let modal = self
+            .visible_classic_modal()
+            .and_then(classic::State::modal_view)
+            .map(|(content, on_dismiss)| {
+                (content.map(classic_message), classic_message(on_dismiss))
+            });
 
-        if let Some(state) = self.visible_classic_modal()
-            && let Some((content, on_dismiss)) = state.modal_view()
-        {
-            host.modal(
-                content.map(classic_message),
-                classic_message(on_dismiss),
-                AppMessage::ModalInteraction,
-            )
-            .into()
-        } else {
-            host.into()
-        }
+        window_modal::view(page, modal, AppMessage::ModalInteraction)
     }
 
     fn finish_boot(&mut self, boot: Boot) -> Task<AppMessage> {
