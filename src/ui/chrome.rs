@@ -19,6 +19,8 @@ const PANEL_INSET: [f32; 2] = [6.0, 8.0];
 const WINDOW_CONTROL_INSET: [f32; 2] = [22.0, 20.0];
 pub(crate) const WINDOW_CONTROL_SIZE: f32 = 32.0;
 
+pub(crate) const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
+
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
     Drag,
@@ -95,7 +97,7 @@ impl<'a, Message: Clone + 'a> From<WindowFrame<'a, Message>> for Element<'a, Mes
         let close = container(close)
             .width(Fill)
             .height(Fill)
-            .align_x(if cfg!(target_os = "macos") {
+            .align_x(if WINDOW_CONTROL_AT_START {
                 Horizontal::Left
             } else {
                 Horizontal::Right

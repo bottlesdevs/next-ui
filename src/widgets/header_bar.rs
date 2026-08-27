@@ -3,7 +3,10 @@ use iced::{
     widget::{Row, Space, container, mouse_area, row},
 };
 
-use crate::{theme, ui::chrome::WINDOW_CONTROL_SIZE};
+use crate::{
+    theme,
+    ui::chrome::{WINDOW_CONTROL_AT_START, WINDOW_CONTROL_SIZE},
+};
 
 use super::spacing;
 
@@ -30,6 +33,13 @@ impl<'a, Message> HeaderBar<'a, Message> {
         }
     }
 
+    pub(crate) fn without_window_control(on_drag: Message) -> Self {
+        Self {
+            reserve_window_control: false,
+            ..Self::new(on_drag)
+        }
+    }
+
     pub fn start(mut self, content: impl Into<Element<'a, Message>>) -> Self {
         self.start.push(content.into());
         self
@@ -42,11 +52,6 @@ impl<'a, Message> HeaderBar<'a, Message> {
 
     pub fn end(mut self, content: impl Into<Element<'a, Message>>) -> Self {
         self.end.push(content.into());
-        self
-    }
-
-    pub fn reserve_window_control(mut self, reserve_window_control: bool) -> Self {
-        self.reserve_window_control = reserve_window_control;
         self
     }
 
@@ -73,7 +78,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
                 .height(WINDOW_CONTROL_SIZE)
                 .into();
 
-            if cfg!(target_os = "macos") {
+            if WINDOW_CONTROL_AT_START {
                 start.insert(0, spacer);
             } else {
                 end.push(spacer);

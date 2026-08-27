@@ -13,7 +13,8 @@ use iced::{
 
 use crate::{
     theme::WINDOW,
-    widgets::{event_cursor, spacing},
+    ui::chrome::WINDOW_CONTROL_AT_START,
+    widgets::{event_cursor, header_bar::HeaderBar, spacing},
 };
 
 const BREAKPOINT: f32 = 900.0;
@@ -26,6 +27,22 @@ pub enum PaneMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneContext {
+    pub mode: PaneMode,
+    owns_window_control: bool,
+}
+
+impl PaneContext {
+    pub fn header<'a, Message>(self, on_drag: Message) -> HeaderBar<'a, Message> {
+        if self.owns_window_control {
+            HeaderBar::new(on_drag)
+        } else {
+            HeaderBar::without_window_control(on_drag)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Start,
     End,
@@ -33,13 +50,60 @@ pub enum Side {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
-    Navigation,
+    Navigation(PaneContext),
     SidePanel(Side),
 }
 
 impl Kind {
     fn base_is_blocked(self, show_second: bool, progress: f32) -> bool {
         matches!(self, Self::SidePanel(_)) && (show_second || progress > 0.0)
+    }
+
+    fn contexts(
+        self,
+        wide: bool,
+        show_second: bool,
+        window_control_at_start: bool,
+    ) -> [PaneContext; 2] {
+        let first_mode = if wide && show_second {
+            PaneMode::Split
+        } else {
+            PaneMode::Single
+        };
+        let second_mode = if wide {
+            PaneMode::Split
+        } else {
+            PaneMode::Single
+        };
+
+        let [first_owns_control, second_owns_control] = match self {
+            Self::Navigation(parent) if !show_second => [parent.owns_window_control, false],
+            Self::Navigation(parent) if !wide => [false, parent.owns_window_control],
+            Self::Navigation(parent) if window_control_at_start => {
+                [parent.owns_window_control, false]
+            }
+            Self::Navigation(parent) => [false, parent.owns_window_control],
+            Self::SidePanel(_) if !show_second => [true, false],
+            Self::SidePanel(_) if !wide => [false, true],
+            Self::SidePanel(side) => [false, side.owns(window_control_at_start)],
+        };
+
+        [
+            PaneContext {
+                mode: first_mode,
+                owns_window_control: first_owns_control,
+            },
+            PaneContext {
+                mode: second_mode,
+                owns_window_control: second_owns_control,
+            },
+        ]
+    }
+}
+
+impl Side {
+    fn owns(self, window_control_at_start: bool) -> bool {
+        matches!(self, Self::Start) == window_control_at_start
     }
 }
 
@@ -49,11 +113,12 @@ pub struct NavigationSplit<'a, Message> {
 
 impl<'a, Message> NavigationSplit<'a, Message> {
     pub fn new(
-        master: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
-        detail: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
+        parent: PaneContext,
+        master: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+        detail: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
     ) -> Self {
         Self {
-            split: AdaptiveSplit::new(master, detail, Kind::Navigation),
+            split: AdaptiveSplit::new(master, detail, Kind::Navigation(parent)),
         }
     }
 
@@ -76,8 +141,8 @@ pub struct SidePanel<'a, Message> {
 impl<'a, Message> SidePanel<'a, Message> {
     pub fn new(
         side: Side,
-        base: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
-        panel: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
+        base: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+        panel: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
     ) -> Self {
         Self {
             split: AdaptiveSplit::new(base, panel, Kind::SidePanel(side)),
@@ -97,16 +162,16 @@ impl<'a, Message: 'a> From<SidePanel<'a, Message>> for Element<'a, Message> {
 }
 
 struct AdaptiveSplit<'a, Message> {
-    first: Box<dyn Fn(PaneMode) -> Element<'a, Message> + 'a>,
-    second: Box<dyn Fn(PaneMode) -> Element<'a, Message> + 'a>,
+    first: Box<dyn Fn(PaneContext) -> Element<'a, Message> + 'a>,
+    second: Box<dyn Fn(PaneContext) -> Element<'a, Message> + 'a>,
     show_second: bool,
     kind: Kind,
 }
 
 impl<'a, Message> AdaptiveSplit<'a, Message> {
     fn new(
-        first: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
-        second: impl Fn(PaneMode) -> Element<'a, Message> + 'a,
+        first: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
+        second: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
         kind: Kind,
     ) -> Self {
         Self {
@@ -129,21 +194,11 @@ impl<'a, Message: 'a> From<AdaptiveSplit<'a, Message>> for Element<'a, Message> 
 
         responsive(move |size| {
             let wide = size.width >= BREAKPOINT;
-            let first_mode = if wide && show_second {
-                PaneMode::Split
-            } else {
-                PaneMode::Single
-            };
+            let [first_context, second_context] =
+                kind.contexts(wide, show_second, WINDOW_CONTROL_AT_START);
 
             Element::new(AnimatedSplit {
-                children: [
-                    first(first_mode),
-                    second(if wide {
-                        PaneMode::Split
-                    } else {
-                        PaneMode::Single
-                    }),
-                ],
+                children: [first(first_context), second(second_context)],
                 show_second,
                 wide,
                 kind,
@@ -509,7 +564,7 @@ fn pane_is_interactive(index: usize, wide: bool, progress: f32, base_blocked: bo
 fn pane_bounds(size: Size, wide: bool, progress: f32, kind: Kind) -> [Rectangle; 2] {
     if !wide {
         let side = match kind {
-            Kind::Navigation => Side::End,
+            Kind::Navigation(_) => Side::End,
             Kind::SidePanel(side) => side,
         };
 
@@ -532,7 +587,7 @@ fn pane_bounds(size: Size, wide: bool, progress: f32, kind: Kind) -> [Rectangle;
     let compact_width = (available / 3.0).min(COMPACT_MAX_WIDTH);
 
     match kind {
-        Kind::Navigation => {
+        Kind::Navigation(_) => {
             let detail_width = available - compact_width;
             let master_width = size.width + (compact_width - size.width) * progress;
 
@@ -566,14 +621,64 @@ fn pane_bounds(size: Size, wide: bool, progress: f32, kind: Kind) -> [Rectangle;
 mod tests {
     use super::*;
 
+    fn root_context() -> PaneContext {
+        PaneContext {
+            mode: PaneMode::Single,
+            owns_window_control: true,
+        }
+    }
+
+    fn owners(contexts: [PaneContext; 2]) -> [bool; 2] {
+        contexts.map(|context| context.owns_window_control)
+    }
+
+    #[test]
+    fn navigation_assigns_the_window_control_to_the_visible_platform_edge() {
+        let navigation = Kind::Navigation(root_context());
+
+        assert_eq!(
+            owners(navigation.contexts(true, false, true)),
+            [true, false]
+        );
+        assert_eq!(owners(navigation.contexts(true, true, true)), [true, false]);
+        assert_eq!(
+            owners(navigation.contexts(true, true, false)),
+            [false, true]
+        );
+        assert_eq!(
+            owners(navigation.contexts(false, true, true)),
+            [false, true]
+        );
+
+        let nested = Kind::Navigation(PaneContext {
+            mode: PaneMode::Split,
+            owns_window_control: false,
+        });
+        assert_eq!(owners(nested.contexts(true, true, false)), [false, false]);
+    }
+
+    #[test]
+    fn side_panels_reserve_only_the_window_control_edge_they_cover() {
+        let start = Kind::SidePanel(Side::Start);
+        let end = Kind::SidePanel(Side::End);
+
+        assert_eq!(owners(start.contexts(true, false, true)), [true, false]);
+        assert_eq!(owners(start.contexts(false, true, false)), [false, true]);
+        assert_eq!(owners(start.contexts(true, true, true)), [false, true]);
+        assert_eq!(owners(start.contexts(true, true, false)), [false, false]);
+        assert_eq!(owners(end.contexts(true, true, true)), [false, false]);
+        assert_eq!(owners(end.contexts(true, true, false)), [false, true]);
+    }
+
     #[test]
     fn wide_navigation_uses_a_one_third_master_capped_at_420() {
         let medium = Size::new(1200.0, 1000.0);
         let size = Size::new(1600.0, 1000.0);
 
-        let [medium_master, medium_detail] = pane_bounds(medium, true, 1.0, Kind::Navigation);
-        let [closed_master, closed_detail] = pane_bounds(size, true, 0.0, Kind::Navigation);
-        let [open_master, open_detail] = pane_bounds(size, true, 1.0, Kind::Navigation);
+        let navigation = Kind::Navigation(root_context());
+        let [medium_master, medium_detail] = pane_bounds(medium, true, 1.0, navigation);
+        let [closed_master, closed_detail] = pane_bounds(size, true, 0.0, navigation);
+        let [open_master, open_detail] = pane_bounds(size, true, 1.0, navigation);
 
         assert_eq!(medium_master.size(), Size::new(396.0, 1000.0));
         assert_eq!(medium_detail.position(), Point::new(408.0, 0.0));
@@ -591,8 +696,9 @@ mod tests {
     fn narrow_navigation_endpoints_use_full_window_pages() {
         let size = Size::new(720.0, 600.0);
 
-        let [closed_master, closed_detail] = pane_bounds(size, false, 0.0, Kind::Navigation);
-        let [open_master, open_detail] = pane_bounds(size, false, 1.0, Kind::Navigation);
+        let navigation = Kind::Navigation(root_context());
+        let [closed_master, closed_detail] = pane_bounds(size, false, 0.0, navigation);
+        let [open_master, open_detail] = pane_bounds(size, false, 1.0, navigation);
 
         assert_eq!(closed_master, Rectangle::new(Point::ORIGIN, size));
         assert_eq!(closed_detail, Rectangle::new(Point::new(720.0, 0.0), size));
@@ -635,7 +741,7 @@ mod tests {
         assert!(!side_panel.base_is_blocked(false, 0.0));
         assert!(side_panel.base_is_blocked(true, 0.0));
         assert!(side_panel.base_is_blocked(false, 0.5));
-        assert!(!Kind::Navigation.base_is_blocked(true, 1.0));
+        assert!(!Kind::Navigation(root_context()).base_is_blocked(true, 1.0));
         assert!(!pane_is_interactive(0, true, 1.0, true));
         assert!(pane_is_interactive(1, true, 1.0, true));
     }
@@ -661,7 +767,7 @@ mod tests {
         let now = Instant::now();
         let mut state = State::new(false);
 
-        state.sync(true, false, Kind::Navigation, now);
+        state.sync(true, false, Kind::Navigation(root_context()), now);
 
         assert!(state.transition.value());
         assert!(state.transition.is_animating(now));
