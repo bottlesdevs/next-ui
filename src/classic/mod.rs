@@ -20,7 +20,6 @@ use crate::{
     theme,
     ui::chrome,
     widgets::{
-        Control,
         action_row::{ActionRow, State as ActionRowState},
         button::{Button, ButtonKind},
         row_group::RowGroup,
@@ -31,16 +30,15 @@ use crate::{
 };
 use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
 use iced::{
-    Background, Element, Fill, Subscription, Task,
+    Element, Fill, Subscription, Task,
     keyboard::{self, key},
-    widget::{center, column, container, mouse_area, opaque, scrollable, stack},
+    widget::{column, container, scrollable},
 };
 use layout::{NavigationSplit, PaneContext, PaneMode, Side, SidePanel};
 use uuid::Uuid;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
-const DIALOG_MAX_WIDTH: f32 = 560.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryTab {
@@ -602,23 +600,21 @@ impl State {
         )
         .open(self.panel_open);
 
-        let content = container(split).width(Fill).height(Fill);
+        container(split).width(Fill).height(Fill).into()
+    }
 
-        let page: Element<'_, Message> = chrome::WindowFrame::new(content, Message::Window).into();
-
+    pub(crate) fn modal_view(&self) -> Option<(Element<'_, Message>, Message)> {
         match &self.modal {
-            Some(Modal::AccountLogin(dialog)) => modal(
-                page,
+            Some(Modal::AccountLogin(dialog)) => Some((
                 Element::from(dialog.view()).map(Message::AccountLoginDialog),
                 Message::AccountLoginDialog(accounts::LoginMessage::Cancel),
-            ),
-            Some(Modal::NewProfile(dialog)) => modal(
-                page,
+            )),
+            Some(Modal::NewProfile(dialog)) => Some((
                 Element::from(dialog.view(self.profiles.creating_profile()))
                     .map(Message::NewProfileDialog),
                 Message::NewProfileDialog(profiles::NewProfileMessage::Cancel),
-            ),
-            None => page,
+            )),
+            None => None,
         }
     }
 
@@ -871,30 +867,6 @@ fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Messag
         .icon_size(16.0)
         .kind(ButtonKind::Transparent)
         .on_press(message)
-}
-
-fn modal<'a>(
-    base: impl Into<Element<'a, Message>>,
-    content: impl Into<Element<'a, Message>>,
-    on_dismiss: Message,
-) -> Element<'a, Message> {
-    let base = Control::new(base).width(Fill).height(Fill).sensitive(false);
-    let content = container(content)
-        .max_width(DIALOG_MAX_WIDTH)
-        .padding(24)
-        .style(theme::panel);
-
-    stack![
-        base,
-        opaque(
-            mouse_area(center(opaque(content)).style(|_theme| container::Style {
-                background: Some(Background::Color(theme::SCRIM)),
-                ..container::Style::default()
-            }))
-            .on_press(on_dismiss)
-        ),
-    ]
-    .into()
 }
 
 #[cfg(test)]

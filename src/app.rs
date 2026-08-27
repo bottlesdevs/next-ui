@@ -13,6 +13,7 @@ use crate::{
     classic, onboarding, theme,
     ui::chrome,
     widgets::{
+        Control,
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
     },
@@ -22,6 +23,7 @@ const APP_CONFIG_FILE: &str = "config.toml";
 const COMPONENT_CATALOG_URL: &str = "https://bottles-next-deps.bromb.in/api/v1/catalog/components";
 const DEPENDENCY_CATALOG_URL: &str =
     "https://bottles-next-deps.bromb.in/api/v1/catalog/dependencies";
+const DIALOG_MAX_WIDTH: f32 = 560.0;
 
 #[derive(Clone, Debug)]
 pub(crate) enum AppError {
@@ -230,9 +232,6 @@ impl App {
                 self.phase = Phase::Failed(error);
             }
             AppMessage::Booted(_) => {}
-            AppMessage::Onboarding(onboarding::Message::Window(chrome::Action::RequestClose)) => {
-                return self.request_close();
-            }
             AppMessage::Onboarding(onboarding::Message::Finished(experience)) => {
                 if !matches!(self.phase, Phase::Onboarding { .. }) {
                     return Task::none();
@@ -247,9 +246,6 @@ impl App {
             }
             AppMessage::Workspace(WorkspaceMessage::Classic(message)) => {
                 match message.as_ref() {
-                    classic::Message::Window(chrome::Action::RequestClose) => {
-                        return self.request_close();
-                    }
                     classic::Message::RequestExperience(experience) => {
                         return self.request_experience(*experience);
                     }
@@ -308,7 +304,7 @@ impl App {
     }
 
     pub(crate) fn view(&self) -> Element<'_, AppMessage> {
-        match &self.phase {
+        let body = match &self.phase {
             Phase::Booting => status_view("Starting Bottles", "Loading your workspace.", false),
             Phase::Workspace {
                 workspace,
@@ -350,7 +346,28 @@ impl App {
             Phase::Failed(error) => {
                 status_view("Bottles could not start", error.to_string(), false)
             }
-        }
+        };
+        let page: Element<'_, AppMessage> =
+            chrome::WindowFrame::new(body, AppMessage::Window).into();
+
+        let Phase::Workspace {
+            workspace: Workspace::Classic(state),
+            transition: WorkspaceTransition::Ready,
+            notice: None,
+            ..
+        } = &self.phase
+        else {
+            return page;
+        };
+        let Some((content, on_dismiss)) = state.modal_view() else {
+            return page;
+        };
+
+        modal(
+            page,
+            content.map(classic_message),
+            classic_message(on_dismiss),
+        )
     }
 
     fn finish_boot(&mut self, boot: Boot) -> Task<AppMessage> {
@@ -658,7 +675,7 @@ fn status_view<'a>(
         );
     }
 
-    root_view(status)
+    root_body(status)
 }
 
 fn onboarding_status_view<'a>(
@@ -667,9 +684,9 @@ fn onboarding_status_view<'a>(
 ) -> Element<'a, AppMessage> {
     use iced::widget::{column, text};
 
-    onboarding::frame(
+    onboarding::shell(
         column![text(title).size(32), text(description)].spacing(12),
-        AppMessage::Window,
+        AppMessage::Window(chrome::Action::Drag),
     )
 }
 
@@ -679,7 +696,7 @@ fn onboarding_notice_view<'a>(
 ) -> Element<'a, AppMessage> {
     use iced::widget::{column, text};
 
-    onboarding::frame(
+    onboarding::shell(
         column![
             text(title).size(32),
             text(description),
@@ -688,15 +705,17 @@ fn onboarding_notice_view<'a>(
                 .on_press(AppMessage::DismissNotice),
         ]
         .spacing(12),
-        AppMessage::Window,
+        AppMessage::Window(chrome::Action::Drag),
     )
+}
+
+fn classic_message(message: classic::Message) -> AppMessage {
+    AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))
 }
 
 fn workspace_view(workspace: &Workspace) -> Element<'_, AppMessage> {
     match workspace {
-        Workspace::Classic(state) => state
-            .view()
-            .map(|message| AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))),
+        Workspace::Classic(state) => state.view().map(classic_message),
         Workspace::Unavailable(Experience::Next) => status_view(
             "Next experience is not available yet",
             "Choose Classic to use Bottles today.",
@@ -731,7 +750,7 @@ fn confirmation_view(target: Experience) -> Element<'static, AppMessage> {
     ]
     .spacing(8);
 
-    root_view(
+    root_body(
         column![
             text("Switch experiences?").size(32),
             text(description),
@@ -747,7 +766,7 @@ fn notice_view<'a>(
 ) -> Element<'a, AppMessage> {
     use iced::widget::{column, text};
 
-    root_view(
+    root_body(
         column![
             text(title).size(32),
             text(description),
@@ -759,7 +778,7 @@ fn notice_view<'a>(
     )
 }
 
-fn root_view<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, AppMessage> {
+fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, AppMessage> {
     use iced::widget::{center, column};
 
     let content = column![
@@ -769,7 +788,36 @@ fn root_view<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
     .width(Fill)
     .height(Fill);
 
-    chrome::WindowFrame::new(content, AppMessage::Window).into()
+    content.into()
+}
+
+fn modal<'a>(
+    base: impl Into<Element<'a, AppMessage>>,
+    content: impl Into<Element<'a, AppMessage>>,
+    on_dismiss: AppMessage,
+) -> Element<'a, AppMessage> {
+    use iced::{
+        Background,
+        widget::{center, container, mouse_area, opaque, stack},
+    };
+
+    let base = Control::new(base).width(Fill).height(Fill).sensitive(false);
+    let content = container(content)
+        .max_width(DIALOG_MAX_WIDTH)
+        .padding(24)
+        .style(theme::panel);
+
+    stack![
+        base,
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| container::Style {
+                background: Some(Background::Color(theme::SCRIM)),
+                ..container::Style::default()
+            }))
+            .on_press(on_dismiss)
+        ),
+    ]
+    .into()
 }
 
 #[cfg(test)]

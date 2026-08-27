@@ -322,7 +322,7 @@ impl State {
             Step::Downloads => self.downloads_view(),
         };
 
-        frame(content, Message::Window)
+        shell(content, Message::Window(chrome::Action::Drag))
     }
 
     fn welcome_view(&self) -> Element<'_, Message> {
@@ -505,11 +505,11 @@ impl State {
     }
 }
 
-pub(crate) fn frame<'a, Message: Clone + 'a>(
+pub(crate) fn shell<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
-    on_action: fn(chrome::Action) -> Message,
+    on_drag: Message,
 ) -> Element<'a, Message> {
-    let header = HeaderBar::new(on_action(chrome::Action::Drag)).transparent(true);
+    let header = HeaderBar::new(on_drag).transparent(true);
     let panel = container(
         column![
             header,
@@ -526,7 +526,7 @@ pub(crate) fn frame<'a, Message: Clone + 'a>(
     .style(theme::panel)
     .clip(true);
 
-    chrome::WindowFrame::new(panel, on_action).into()
+    panel.into()
 }
 
 fn experience_available(experience: Experience) -> bool {
