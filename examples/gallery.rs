@@ -448,7 +448,7 @@ impl Gallery {
         ]
         .spacing(18);
 
-        let header = header_bar::HeaderBar::new(Message::Window).middle(
+        let header = header_bar::HeaderBar::new(Message::Window(chrome::Action::Drag)).middle(
             iced::widget::container(
                 search::Search::new(
                     "Search for software and games…",

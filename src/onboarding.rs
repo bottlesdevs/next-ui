@@ -525,9 +525,7 @@ pub(crate) fn frame<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
     on_action: fn(chrome::Action) -> Message,
 ) -> Element<'a, Message> {
-    let header = HeaderBar::new(on_action)
-        .show_window_controls(true)
-        .transparent(true);
+    let header = HeaderBar::new(on_action(chrome::Action::Drag)).transparent(true);
     let panel = container(
         column![
             header,

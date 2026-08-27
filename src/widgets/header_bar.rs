@@ -1,15 +1,11 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
-    widget::{Row, container, mouse_area, row},
+    widget::{Row, Space, container, mouse_area, row},
 };
 
-use crate::{icons::Icon, theme};
+use crate::{theme, ui::chrome::WINDOW_CONTROL_SIZE};
 
-use super::{
-    button::{Button, ButtonKind},
-    spacing,
-};
-use crate::ui::chrome::Action;
+use super::spacing;
 
 const HEIGHT: f32 = 64.0;
 
@@ -17,20 +13,20 @@ pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
-    show_window_controls: bool,
+    reserve_window_control: bool,
     transparent: bool,
-    on_action: Box<dyn Fn(Action) -> Message + 'a>,
+    on_drag: Message,
 }
 
 impl<'a, Message> HeaderBar<'a, Message> {
-    pub fn new(on_action: impl Fn(Action) -> Message + 'a) -> Self {
+    pub fn new(on_drag: Message) -> Self {
         Self {
             start: Vec::new(),
             middle: Vec::new(),
             end: Vec::new(),
-            show_window_controls: true,
+            reserve_window_control: true,
             transparent: false,
-            on_action: Box::new(on_action),
+            on_drag,
         }
     }
 
@@ -49,8 +45,8 @@ impl<'a, Message> HeaderBar<'a, Message> {
         self
     }
 
-    pub fn show_window_controls(mut self, show_window_controls: bool) -> Self {
-        self.show_window_controls = show_window_controls;
+    pub fn reserve_window_control(mut self, reserve_window_control: bool) -> Self {
+        self.reserve_window_control = reserve_window_control;
         self
     }
 
@@ -66,18 +62,21 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             mut start,
             middle,
             mut end,
-            show_window_controls,
+            reserve_window_control,
             transparent,
-            on_action,
+            on_drag,
         } = header;
 
-        if show_window_controls {
-            let close = window_control(on_action(Action::RequestClose));
+        if reserve_window_control {
+            let spacer: Element<'a, Message> = Space::new()
+                .width(WINDOW_CONTROL_SIZE)
+                .height(WINDOW_CONTROL_SIZE)
+                .into();
 
             if cfg!(target_os = "macos") {
-                start.insert(0, close);
+                start.insert(0, spacer);
             } else {
-                end.push(close);
+                end.push(spacer);
             }
         }
 
@@ -105,7 +104,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             content = content.style(style);
         }
 
-        mouse_area(content).on_press(on_action(Action::Drag)).into()
+        mouse_area(content).on_press(on_drag).into()
     }
 }
 
@@ -113,15 +112,6 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
     Row::with_children(children)
         .spacing(spacing::SM)
         .align_y(Center)
-}
-
-fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Message> {
-    Button::icon_only("Close window", Icon::Cross)
-        .diameter(32.0)
-        .icon_size(16.0)
-        .kind(ButtonKind::Transparent)
-        .on_press(message)
-        .into()
 }
 
 fn style(current_theme: &Theme) -> container::Style {

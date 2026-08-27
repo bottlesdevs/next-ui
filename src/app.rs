@@ -765,7 +765,7 @@ fn root_view<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
     use iced::widget::{center, column};
 
     let content = column![
-        HeaderBar::new(AppMessage::Window).show_window_controls(true),
+        HeaderBar::new(AppMessage::Window(chrome::Action::Drag)),
         center(content).width(Fill).height(Fill),
     ]
     .width(Fill)

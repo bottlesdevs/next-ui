@@ -541,11 +541,11 @@ impl State {
                 .show_detail(matches!(self.route, Route::Bottle { .. }))
                 .into()
             },
-            |_| {
+            |mode| {
                 if self.panel == Panel::Profiles {
-                    self.profile_settings_page()
+                    self.profile_settings_page(mode)
                 } else {
-                    self.new_bottle_page()
+                    self.new_bottle_page(mode)
                 }
             },
         )
@@ -571,8 +571,8 @@ impl State {
             Some(self.primary_tab()),
             Message::PrimaryTabSelected,
         );
-        let header = HeaderBar::new(Message::Window)
-            .show_window_controls(
+        let header = HeaderBar::new(Message::Window(chrome::Action::Drag))
+            .reserve_window_control(
                 !self.panel_open
                     && if cfg!(target_os = "macos") {
                         mode == PaneMode::Split || !matches!(self.route, Route::Bottle { .. })
@@ -600,9 +600,9 @@ impl State {
             .into()
     }
 
-    fn profile_settings_page(&self) -> Element<'_, Message> {
-        let header = HeaderBar::new(Message::Window)
-            .show_window_controls(true)
+    fn profile_settings_page(&self, mode: PaneMode) -> Element<'_, Message> {
+        let header = HeaderBar::new(Message::Window(chrome::Action::Drag))
+            .reserve_window_control(mode == PaneMode::Single || !cfg!(target_os = "macos"))
             .start(header_button("Cancel", Icon::Arrow, Message::Back))
             .middle(
                 container(
@@ -707,9 +707,9 @@ impl State {
         page
     }
 
-    fn new_bottle_page(&self) -> Element<'_, Message> {
-        let header = HeaderBar::new(Message::Window)
-            .show_window_controls(true)
+    fn new_bottle_page(&self, mode: PaneMode) -> Element<'_, Message> {
+        let header = HeaderBar::new(Message::Window(chrome::Action::Drag))
+            .reserve_window_control(mode == PaneMode::Single || cfg!(target_os = "macos"))
             .start(header_button(
                 "Cancel bottle creation",
                 Icon::Arrow,
@@ -752,14 +752,15 @@ impl State {
             }),
             Message::DetailTabSelected,
         );
-        let mut header = HeaderBar::new(Message::Window).show_window_controls(
-            !self.panel_open
-                && if cfg!(target_os = "macos") {
-                    matches!(self.route, Route::Bottle { .. }) && mode == PaneMode::Single
-                } else {
-                    matches!(self.route, Route::Bottle { .. })
-                },
-        );
+        let mut header = HeaderBar::new(Message::Window(chrome::Action::Drag))
+            .reserve_window_control(
+                !self.panel_open
+                    && if cfg!(target_os = "macos") {
+                        matches!(self.route, Route::Bottle { .. }) && mode == PaneMode::Single
+                    } else {
+                        matches!(self.route, Route::Bottle { .. })
+                    },
+            );
 
         if mode == PaneMode::Single {
             header = header.start(
