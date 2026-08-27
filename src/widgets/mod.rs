@@ -3,11 +3,11 @@ mod control;
 mod style;
 mod surface;
 
-pub(crate) use control::Control;
+pub(crate) use control::{Control, event_cursor};
 
 use iced::{ContentFit, Point, Rectangle, Size, advanced::svg::Renderer as _};
 
-mod spacing {
+pub(crate) mod spacing {
     pub(crate) const XS: f32 = 6.0;
     pub(crate) const SM: f32 = 12.0;
     pub(crate) const MD: f32 = 18.0;
@@ -65,7 +65,6 @@ pub mod progress_ring;
 pub mod row_group;
 pub mod search;
 pub mod selector_row;
-pub mod split_view;
 pub mod status_bar;
 pub mod switcher;
 pub mod switcher_row;

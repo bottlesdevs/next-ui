@@ -11,8 +11,10 @@ use iced::{
     window,
 };
 
-use super::{control::event_cursor, spacing};
-use crate::theme::WINDOW;
+use crate::{
+    theme::WINDOW,
+    widgets::{event_cursor, spacing},
+};
 
 const BREAKPOINT: f32 = 900.0;
 const COMPACT_MAX_WIDTH: f32 = 420.0;

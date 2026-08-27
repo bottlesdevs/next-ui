@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 mod accounts;
 mod bottles;
+mod layout;
 mod library;
 mod profiles;
 mod settings;
@@ -24,7 +25,6 @@ use crate::{
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
         row_group::RowGroup,
-        split_view::{Pane, PaneMode, PaneSide, SplitView},
         tabs::{Tab, Tabs},
         text_row::TextRow,
         title::Title,
@@ -37,6 +37,7 @@ use iced::{
     theme::Mode as ThemeMode,
     widget::{center, column, container, mouse_area, opaque, scrollable, stack},
 };
+use layout::{Pane, PaneMode, PaneSide, SplitView};
 use uuid::Uuid;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
