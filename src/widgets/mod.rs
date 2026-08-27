@@ -3,6 +3,8 @@ mod control;
 mod style;
 mod surface;
 
+pub(crate) use control::Control;
+
 use iced::{ContentFit, Point, Rectangle, Size, advanced::svg::Renderer as _};
 
 mod spacing {

@@ -19,6 +19,7 @@ use crate::{
     theme,
     ui::chrome,
     widgets::{
+        Control,
         action_row::{ActionRow, State as ActionRowState},
         button::{Button, ButtonKind},
         header_bar::HeaderBar,
@@ -275,6 +276,10 @@ impl State {
         #[cfg(feature = "fvs")]
         let active = active || self.snapshots.has_active_operation();
         active
+    }
+
+    pub(crate) fn has_modal(&self) -> bool {
+        self.dialog.is_some()
     }
 
     pub fn cancel_active_operations(&mut self) {
@@ -559,7 +564,29 @@ impl State {
 
         let content = container(split).width(Fill).height(Fill);
 
-        chrome::WindowFrame::new(content, Message::Window).into()
+        let page: Element<'_, Message> = chrome::WindowFrame::new(content, Message::Window).into();
+
+        if self.dialog == Some(Dialog::AccountLogin)
+            && let Some(login) = self.accounts.login_dialog()
+        {
+            return modal(
+                page,
+                Element::from(login).map(Message::Accounts),
+                Message::Accounts(accounts::Message::CancelLogin),
+            );
+        }
+
+        if self.dialog == Some(Dialog::NewProfile)
+            && let Some(draft) = self.profiles.new_profile_draft()
+        {
+            return modal(
+                page,
+                Element::from(profiles::new_profile_dialog(draft)).map(Message::Profiles),
+                Message::Profiles(profiles::Message::CancelNewProfile),
+            );
+        }
+
+        page
     }
 
     fn primary_page(&self, mode: PaneMode) -> Element<'_, Message> {
@@ -683,26 +710,6 @@ impl State {
             .width(Fill)
             .height(Fill)
             .into();
-
-        if self.dialog == Some(Dialog::AccountLogin)
-            && let Some(login) = self.accounts.login_dialog()
-        {
-            return modal(
-                page,
-                Element::from(login).map(Message::Accounts),
-                Message::Accounts(accounts::Message::CancelLogin),
-            );
-        }
-
-        if self.dialog == Some(Dialog::NewProfile)
-            && let Some(draft) = self.profiles.new_profile_draft()
-        {
-            return modal(
-                page,
-                Element::from(profiles::new_profile_dialog(draft)).map(Message::Profiles),
-                Message::Profiles(profiles::Message::CancelNewProfile),
-            );
-        }
 
         page
     }
@@ -853,13 +860,14 @@ fn modal<'a>(
     content: impl Into<Element<'a, Message>>,
     on_dismiss: Message,
 ) -> Element<'a, Message> {
+    let base = Control::new(base).width(Fill).height(Fill).sensitive(false);
     let content = container(content)
         .max_width(DIALOG_MAX_WIDTH)
         .padding(24)
         .style(theme::panel);
 
     stack![
-        base.into(),
+        base,
         opaque(
             mouse_area(center(opaque(content)).style(|_theme| container::Style {
                 background: Some(Background::Color(theme::SCRIM)),

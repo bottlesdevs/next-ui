@@ -323,7 +323,7 @@ impl State {
 }
 
 fn login_dialog(login: &LoginChallenge) -> iced::widget::Column<'_, Message> {
-    use iced::widget::{column, row};
+    use iced::widget::{column, container, row};
 
     let submit_label = if login.submitting {
         "Submitting…"
@@ -332,7 +332,7 @@ fn login_dialog(login: &LoginChallenge) -> iced::widget::Column<'_, Message> {
     };
 
     let mut content = column![
-        Title::new("Sign in").subtitle(&login.prompt.instructions),
+        container(Title::new("Sign in").subtitle(&login.prompt.instructions)).center_x(iced::Fill),
         RowGroup::new()
             .add(
                 ListRow::from(

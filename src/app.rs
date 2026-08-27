@@ -528,6 +528,16 @@ impl App {
     }
 
     fn request_close(&mut self) -> Task<AppMessage> {
+        if matches!(
+            &self.phase,
+            Phase::Workspace {
+                workspace: Workspace::Classic(state),
+                ..
+            } if state.has_modal()
+        ) {
+            return Task::none();
+        }
+
         let core = match &mut self.phase {
             Phase::Onboarding { core, state, .. } => {
                 state.cancel_active_operations();

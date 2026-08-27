@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bottles_core::{Profile, Profiles, ProfilesConfig, error::Error as CoreError};
 use iced::{
     Element, Task,
-    widget::{column, row},
+    widget::{column, container, row},
 };
 use uuid::Uuid;
 
@@ -271,7 +271,8 @@ impl State {
 
 pub fn new_profile_dialog(name: &str) -> iced::widget::Column<'_, Message> {
     column![
-        Title::new("New profile").subtitle("Give this profile a name."),
+        container(Title::new("New profile").subtitle("Give this profile a name."))
+            .center_x(iced::Fill),
         TextRow::new("Profile name", name)
             .icon(Icon::Person)
             .on_input(Message::NewProfileNameChanged)
