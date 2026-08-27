@@ -194,6 +194,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
             tree.state.downcast_ref::<State>().progress(Instant::now()),
             self.detail_side,
             self.compact,
+            self.master_blocked,
         );
         let nodes = self
             .children
@@ -476,15 +477,31 @@ fn pane_bounds(
     progress: f32,
     detail_side: PaneSide,
     compact: Pane,
+    master_blocked: bool,
 ) -> [Rectangle; 2] {
     if wide {
         let available = (size.width - spacing::SM).max(0.0);
         let compact_width = (available / 3.0).min(COMPACT_MAX_WIDTH);
         let fill_width = available - compact_width;
-        let (master_width, detail_width) = match compact {
-            Pane::Master => (compact_width, fill_width),
-            Pane::Detail => (fill_width, compact_width),
-        };
+
+        if compact == Pane::Detail && master_blocked {
+            let offset = (compact_width + spacing::SM) * progress;
+            let (master_x, detail_x) = match detail_side {
+                PaneSide::Start => (offset, offset - compact_width - spacing::SM),
+                PaneSide::End => (-offset, size.width + spacing::SM - offset),
+            };
+
+            return [
+                Rectangle::new(Point::new(master_x, 0.0), size),
+                Rectangle::new(
+                    Point::new(detail_x, 0.0),
+                    Size::new(compact_width, size.height),
+                ),
+            ];
+        }
+
+        let master_width = compact_width;
+        let detail_width = fill_width;
 
         match detail_side {
             PaneSide::End => {

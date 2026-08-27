@@ -60,9 +60,13 @@ pub enum DetailTab {
 pub enum Route {
     Bottles,
     Bottle { id: Uuid, tab: DetailTab },
-    NewBottle,
     Library,
-    Profiles { return_to: PrimaryTab },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Panel {
+    NewBottle,
+    Profiles,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,6 +144,8 @@ impl ReadModel {
 
 pub struct State {
     route: Route,
+    panel: Panel,
+    panel_open: bool,
     dialog: Option<Dialog>,
     read_model: ReadModel,
     bottles: bottles::State,
@@ -219,6 +225,8 @@ impl State {
 
         let state = Self {
             route: Route::Bottles,
+            panel: Panel::NewBottle,
+            panel_open: false,
             dialog: None,
             read_model,
             bottles: bottles::State::new(bottle_manager, core.addons()),
@@ -245,10 +253,7 @@ impl State {
 
     fn primary_tab(&self) -> PrimaryTab {
         match self.route {
-            Route::Library
-            | Route::Profiles {
-                return_to: PrimaryTab::Library,
-            } => PrimaryTab::Library,
+            Route::Library => PrimaryTab::Library,
             _ => PrimaryTab::Bottles,
         }
     }
@@ -327,21 +332,20 @@ impl State {
             Message::Back => {
                 self.dialog = None;
                 self.accounts.close_login();
-                self.route = match self.route {
-                    Route::Profiles { return_to } => match return_to {
-                        PrimaryTab::Bottles => Route::Bottles,
-                        PrimaryTab::Library => Route::Library,
-                    },
-                    _ => Route::Bottles,
-                };
+                if self.panel_open && self.panel == Panel::Profiles {
+                    self.panel_open = false;
+                } else {
+                    self.route = Route::Bottles;
+                }
             }
             Message::AddBottle => {
-                self.route = Route::NewBottle;
+                self.panel = Panel::NewBottle;
+                self.panel_open = true;
                 self.bottles.reset_creation();
             }
             Message::CancelBottle => {
                 self.bottles.cancel_creation();
-                self.route = Route::Bottles;
+                self.panel_open = false;
             }
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::MoveFocus(previous) => {
@@ -356,8 +360,8 @@ impl State {
                 let task = task.map(Message::Bottles);
                 return match output {
                     Some(bottles::Output::Created) => {
-                        if self.route == Route::NewBottle {
-                            self.route = Route::Bottles;
+                        if self.panel_open && self.panel == Panel::NewBottle {
+                            self.panel_open = false;
                         }
                         task
                     }
@@ -388,16 +392,12 @@ impl State {
                 let task = task.map(Message::Profiles);
                 return match output {
                     Some(profiles::Output::ToggleSettings) => {
-                        self.route = if let Route::Profiles { return_to } = self.route {
-                            match return_to {
-                                PrimaryTab::Bottles => Route::Bottles,
-                                PrimaryTab::Library => Route::Library,
-                            }
+                        if self.panel_open && self.panel == Panel::Profiles {
+                            self.panel_open = false;
                         } else {
-                            Route::Profiles {
-                                return_to: self.primary_tab(),
-                            }
-                        };
+                            self.panel = Panel::Profiles;
+                            self.panel_open = true;
+                        }
                         task
                     }
                     Some(profiles::Output::OpenDialog) => {
@@ -541,23 +541,20 @@ impl State {
                 .show_detail(matches!(self.route, Route::Bottle { .. }))
                 .into()
             },
-            |mode| {
-                if matches!(self.route, Route::Profiles { .. }) {
-                    self.profile_settings_page(mode)
+            |_| {
+                if self.panel == Panel::Profiles {
+                    self.profile_settings_page()
                 } else {
-                    self.new_bottle_page(mode)
+                    self.new_bottle_page()
                 }
             },
         )
-        .detail_side(match self.route {
-            Route::Profiles { .. } => PaneSide::End,
-            _ => PaneSide::Start,
+        .detail_side(match self.panel {
+            Panel::Profiles => PaneSide::End,
+            Panel::NewBottle => PaneSide::Start,
         })
         .compact(Pane::Detail)
-        .show_detail(matches!(
-            self.route,
-            Route::NewBottle | Route::Profiles { .. }
-        ))
+        .show_detail(self.panel_open)
         .block_master();
 
         let content = container(split).width(Fill).height(Fill);
@@ -575,12 +572,14 @@ impl State {
             Message::PrimaryTabSelected,
         );
         let header = HeaderBar::new(Message::Window)
-            .show_window_controls(if cfg!(target_os = "macos") {
-                mode == PaneMode::Split
-                    || !matches!(self.route, Route::Bottle { .. } | Route::NewBottle)
-            } else {
-                !matches!(self.route, Route::Bottle { .. } | Route::Profiles { .. })
-            })
+            .show_window_controls(
+                !self.panel_open
+                    && if cfg!(target_os = "macos") {
+                        mode == PaneMode::Split || !matches!(self.route, Route::Bottle { .. })
+                    } else {
+                        !matches!(self.route, Route::Bottle { .. })
+                    },
+            )
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
             .middle(tabs)
             .end(
@@ -601,9 +600,9 @@ impl State {
             .into()
     }
 
-    fn profile_settings_page(&self, mode: PaneMode) -> Element<'_, Message> {
+    fn profile_settings_page(&self) -> Element<'_, Message> {
         let header = HeaderBar::new(Message::Window)
-            .show_window_controls(mode == PaneMode::Single || !cfg!(target_os = "macos"))
+            .show_window_controls(true)
             .start(header_button("Cancel", Icon::Arrow, Message::Back))
             .middle(
                 container(
@@ -708,9 +707,9 @@ impl State {
         page
     }
 
-    fn new_bottle_page(&self, mode: PaneMode) -> Element<'_, Message> {
+    fn new_bottle_page(&self) -> Element<'_, Message> {
         let header = HeaderBar::new(Message::Window)
-            .show_window_controls(mode == PaneMode::Single || cfg!(target_os = "macos"))
+            .show_window_controls(true)
             .start(header_button(
                 "Cancel bottle creation",
                 Icon::Arrow,
@@ -753,13 +752,14 @@ impl State {
             }),
             Message::DetailTabSelected,
         );
-        let mut header =
-            HeaderBar::new(Message::Window).show_window_controls(if cfg!(target_os = "macos") {
-                matches!(self.route, Route::Bottle { .. } | Route::NewBottle)
-                    && mode == PaneMode::Single
-            } else {
-                matches!(self.route, Route::Bottle { .. })
-            });
+        let mut header = HeaderBar::new(Message::Window).show_window_controls(
+            !self.panel_open
+                && if cfg!(target_os = "macos") {
+                    matches!(self.route, Route::Bottle { .. }) && mode == PaneMode::Single
+                } else {
+                    matches!(self.route, Route::Bottle { .. })
+                },
+        );
 
         if mode == PaneMode::Single {
             header = header.start(
