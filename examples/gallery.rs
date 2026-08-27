@@ -49,6 +49,8 @@ struct Gallery {
     selected_tab: usize,
     switched_on: bool,
     group_switched_on: bool,
+    running_status_expanded: bool,
+    stopped_status_expanded: bool,
     value: usize,
 }
 
@@ -61,6 +63,8 @@ impl Default for Gallery {
             selected_tab: 0,
             switched_on: false,
             group_switched_on: false,
+            running_status_expanded: false,
+            stopped_status_expanded: false,
             value: 1,
         }
     }
@@ -75,6 +79,8 @@ enum Message {
     Switched(bool),
     GroupSwitched(bool),
     Window(chrome::Action),
+    RunningStatusToggled,
+    StoppedStatusToggled,
     Previous,
     Next,
     MoveFocus(bool),
@@ -94,6 +100,12 @@ impl Gallery {
             Message::GroupSwitched(value) => self.group_switched_on = value,
             Message::Window(chrome::Action::RequestClose) => return iced::exit(),
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
+            Message::RunningStatusToggled => {
+                self.running_status_expanded = !self.running_status_expanded;
+            }
+            Message::StoppedStatusToggled => {
+                self.stopped_status_expanded = !self.stopped_status_expanded;
+            }
             Message::Previous => self.value = self.value.saturating_sub(1),
             Message::Next => self.value = (self.value + 1).min(DLSS_LEVELS.len() - 1),
             Message::MoveFocus(previous) => {
@@ -420,9 +432,17 @@ impl Gallery {
 
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)
-                .log(LOG),
+                .log(
+                    LOG,
+                    self.running_status_expanded,
+                    Message::RunningStatusToggled,
+                ),
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Stopped,)
-                .log(LOG),
+                .log(
+                    LOG,
+                    self.stopped_status_expanded,
+                    Message::StoppedStatusToggled,
+                ),
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Starting,),
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Failed,),
         ]
