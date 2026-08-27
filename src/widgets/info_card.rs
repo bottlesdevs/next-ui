@@ -1,12 +1,12 @@
 use iced::{
     Center, ContentFit, Element, Length, Theme,
     theme::palette::Pair,
-    widget::{column, row, svg, text, text::Fragment, text::IntoFragment},
+    widget::{column, container, row, svg, text, text::Fragment, text::IntoFragment},
 };
 
 use crate::{icons::Icon, theme};
 
-use super::{card::Card, spacing, text::TextExt as _};
+use super::{spacing, text::TextExt as _};
 
 const TITLE_SIZE: f32 = 17.0;
 
@@ -59,7 +59,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
             height,
         } = card;
 
-        Card::new(
+        container(
             column![
                 row![icon(kind), text(title).size(TITLE_SIZE).medium(),]
                     .spacing(8)
@@ -71,7 +71,8 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
         .width(width)
         .height(height)
         .padding(16)
-        .style(move |current_theme| theme::surface(colors(current_theme, kind)))
+        .clip(true)
+        .style(move |theme| theme::surface(colors(theme, kind)))
         .into()
     }
 }

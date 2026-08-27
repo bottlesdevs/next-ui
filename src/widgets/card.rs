@@ -16,7 +16,6 @@ pub struct Card<'a, Message> {
     width: Length,
     height: Length,
     padding: Padding,
-    style: Option<container::StyleFn<'a, Theme>>,
 }
 
 impl<'a, Message> Card<'a, Message> {
@@ -26,7 +25,6 @@ impl<'a, Message> Card<'a, Message> {
             width: Length::Shrink,
             height: Length::Shrink,
             padding: Padding::ZERO,
-            style: None,
         }
     }
 
@@ -44,25 +42,19 @@ impl<'a, Message> Card<'a, Message> {
         self.padding = padding.into();
         self
     }
-
-    pub(crate) fn style(mut self, style: impl Fn(&Theme) -> container::Style + 'a) -> Self {
-        self.style = Some(Box::new(style));
-        self
-    }
 }
 
 impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
     fn from(card: Card<'a, Message>) -> Self {
-        let content = container(card.content)
-            .padding(card.padding)
-            .width(card.width)
-            .height(card.height)
-            .clip(true);
-
-        match card.style {
-            Some(style) => content.class(style).into(),
-            None => Surface::new(SurfaceKind::Card, content).into(),
-        }
+        Surface::new(
+            SurfaceKind::Card,
+            container(card.content)
+                .padding(card.padding)
+                .width(card.width)
+                .height(card.height)
+                .clip(true),
+        )
+        .into()
     }
 }
 
