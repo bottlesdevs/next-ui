@@ -5,6 +5,7 @@ use iced::{
         widget::{Operation, Tree},
     },
     keyboard::{self, key},
+    touch,
     widget::{Space, button, column, row, svg, text, text::Fragment},
 };
 
@@ -83,7 +84,6 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
             .spacing(spacing::SM)
             .align_y(Alignment::Center),
     )
-    .width(Fill)
     .padding(spacing::MD)
     .on_press(message)
     .style(footer_style)
@@ -135,6 +135,7 @@ where
     content: &'a mut PanelContent<'b, Message>,
     tree: &'a mut Tree,
     placement: Placement,
+    search_dismissed: Option<&'a mut bool>,
     popover: Option<&'a mut PopoverState>,
 }
 
@@ -149,6 +150,7 @@ where
         viewport: Rectangle,
         content: &'a mut PanelContent<'b, Message>,
         tree: &'a mut Tree,
+        dismissed: &'a mut bool,
     ) -> Self {
         Self {
             position,
@@ -158,6 +160,7 @@ where
             content,
             tree,
             placement: Placement::Search,
+            search_dismissed: Some(dismissed),
             popover: None,
         }
     }
@@ -174,24 +177,38 @@ where
         Self {
             position,
             target_height,
-            width: width.max(240.0),
+            width,
             viewport,
             content,
             tree,
             placement: Placement::Popover,
+            search_dismissed: None,
             popover: Some(state),
+        }
+    }
+
+    fn dismiss(&mut self) {
+        if let Some(dismissed) = &mut self.search_dismissed {
+            **dismissed = true;
+        }
+
+        if let Some(state) = &mut self.popover {
+            state.open = false;
+            state.focus_panel = false;
+            state.focus_trigger = true;
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Geometry {
-    width: f32,
-    x: f32,
+    min_width: f32,
+    max_width: f32,
     below: f32,
     above: f32,
     open_below: Option<bool>,
     inset: f32,
+    viewport: Rectangle,
 }
 
 fn geometry(
@@ -199,41 +216,31 @@ fn geometry(
     position: Point,
     target_height: f32,
     width: f32,
-    bounds: Size,
+    viewport: Rectangle,
 ) -> Geometry {
     let gap = spacing::XS;
+    let inset = if matches!(placement, Placement::Popover) {
+        spacing::SM
+    } else {
+        0.0
+    };
+    let max_width = (viewport.width - inset * 2.0).max(0.0);
+    let min_width = width.min(max_width);
+    let below = viewport.y + viewport.height - inset - (position.y + target_height + gap);
+    let above = position.y - gap - (viewport.y + inset);
 
-    match placement {
-        Placement::Search => {
-            let below = bounds.height - (position.y + target_height + gap);
-            let above = position.y - gap;
-
-            Geometry {
-                width,
-                x: position.x,
-                below,
-                above,
-                open_below: None,
-                inset: 0.0,
-            }
-        }
-        Placement::Popover => {
-            let inset = spacing::SM;
-            let width = width.min((bounds.width - inset * 2.0).max(0.0));
-            let below = bounds.height - (position.y + target_height + gap) - inset;
-            let above = position.y - gap - inset;
-
-            Geometry {
-                width,
-                x: position
-                    .x
-                    .clamp(inset, (bounds.width - width - inset).max(inset)),
-                below,
-                above,
-                open_below: Some(below >= above),
-                inset,
-            }
-        }
+    Geometry {
+        min_width,
+        max_width: if matches!(placement, Placement::Search) {
+            min_width
+        } else {
+            max_width
+        },
+        below,
+        above,
+        open_below: matches!(placement, Placement::Popover).then_some(below >= above),
+        inset,
+        viewport,
     }
 }
 
@@ -242,6 +249,7 @@ fn dismisses(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
         Event::Mouse(mouse::Event::ButtonPressed(_)) => {
             !cursor.is_over(bounds) && cursor.position().is_some()
         }
+        Event::Touch(touch::Event::FingerPressed { position, .. }) => !bounds.contains(*position),
         Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Escape),
             ..
@@ -254,23 +262,12 @@ fn body_height_limit(max_height: f32, footer_height: f32) -> f32 {
     (max_height - footer_height).max(0.0)
 }
 
-fn panel_height(
-    placement: Placement,
-    max_height: f32,
-    body_height: f32,
-    footer_height: f32,
-) -> f32 {
-    let height = body_height + footer_height;
-
-    if matches!(placement, Placement::Popover) {
-        height.min(max_height)
-    } else {
-        height
-    }
+fn panel_width(geometry: Geometry, measured: f32) -> f32 {
+    measured.clamp(geometry.min_width, geometry.max_width)
 }
 
 impl Geometry {
-    fn position(self, anchor: Point, target_height: f32, bounds: Size, height: f32) -> Point {
+    fn position(self, anchor: Point, target_height: f32, width: f32, height: f32) -> Point {
         let gap = spacing::XS;
         let open_below = self
             .open_below
@@ -280,16 +277,18 @@ impl Geometry {
         } else {
             anchor.y - height - gap
         };
-        let y = if self.inset > 0.0 {
-            y.clamp(
-                self.inset,
-                (bounds.height - height - self.inset).max(self.inset),
-            )
-        } else {
-            y
-        };
+        let left = self.viewport.x + self.inset;
+        let top = self.viewport.y + self.inset;
+        let x = anchor.x.clamp(
+            left,
+            (self.viewport.x + self.viewport.width - width - self.inset).max(left),
+        );
+        let y = y.clamp(
+            top,
+            (self.viewport.y + self.viewport.height - height - self.inset).max(top),
+        );
 
-        Point::new(self.x, y)
+        Point::new(x, y)
     }
 }
 
@@ -297,18 +296,16 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     for AnchoredPanel<'_, '_, Message>
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
+        let bounds = Rectangle::with_size(bounds);
+        let viewport = self.viewport.intersection(&bounds).unwrap_or(bounds);
         let geometry = geometry(
             self.placement,
             self.position,
             self.target_height,
             self.width,
-            bounds,
+            viewport,
         );
         let max_height = geometry.below.max(geometry.above).max(0.0);
-        let limits = layout::Limits::new(
-            Size::new(geometry.width, 0.0),
-            Size::new(geometry.width, max_height),
-        );
         let (body, footer) = self
             .content
             .children
@@ -319,28 +316,61 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             .children
             .split_first_mut()
             .expect("anchored panel body tree");
+
+        let width = if matches!(self.placement, Placement::Popover) {
+            let probe_limits = layout::Limits::with_compression(
+                Size::ZERO,
+                Size::new(geometry.max_width, max_height),
+                Size::new(true, false),
+            );
+            let footer_width =
+                footer
+                    .first_mut()
+                    .zip(footer_trees.first_mut())
+                    .map_or(0.0, |(footer, tree)| {
+                        footer
+                            .as_widget_mut()
+                            .layout(tree, renderer, &probe_limits)
+                            .size()
+                            .width
+                    });
+            let body_width = body
+                .as_widget_mut()
+                .layout(body_tree, renderer, &probe_limits)
+                .size()
+                .width;
+
+            panel_width(geometry, body_width.max(footer_width))
+        } else {
+            geometry.min_width
+        };
+        let limits = layout::Limits::new(Size::new(width, 0.0), Size::new(width, max_height));
         let footer = footer
             .first_mut()
             .zip(footer_trees.first_mut())
             .map(|(footer, tree)| footer.as_widget_mut().layout(tree, renderer, &limits));
         let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
         let body_limits = layout::Limits::new(
-            Size::new(geometry.width, 0.0),
-            Size::new(geometry.width, body_height_limit(max_height, footer_height)),
+            Size::new(width, 0.0),
+            Size::new(width, body_height_limit(max_height, footer_height)),
         );
         let body = body
             .as_widget_mut()
             .layout(body_tree, renderer, &body_limits);
         let body_height = body.size().height;
-        let height = panel_height(self.placement, max_height, body_height, footer_height);
+        let height = (body_height + footer_height).min(max_height);
         let mut children = vec![body];
 
         if let Some(footer) = footer {
             children.push(footer.move_to(Point::new(0.0, body_height)));
         }
 
-        layout::Node::with_children(Size::new(geometry.width, height), children)
-            .move_to(geometry.position(self.position, self.target_height, bounds, height))
+        layout::Node::with_children(Size::new(width, height), children).move_to(geometry.position(
+            self.position,
+            self.target_height,
+            width,
+            height,
+        ))
     }
 
     fn update(
@@ -352,14 +382,8 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
     ) {
-        if matches!(self.placement, Placement::Popover) && dismisses(event, cursor, layout.bounds())
-        {
-            if let Some(state) = &mut self.popover {
-                state.open = false;
-                state.focus_panel = false;
-                state.focus_trigger = true;
-            }
-
+        if dismisses(event, cursor, layout.bounds()) {
+            self.dismiss();
             shell.capture_event();
             shell.request_redraw();
 
@@ -403,12 +427,8 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             );
         }
 
-        if !panel_shell.is_empty()
-            && let Some(state) = &mut self.popover
-        {
-            state.open = false;
-            state.focus_panel = false;
-            state.focus_trigger = true;
+        if !panel_shell.is_empty() {
+            self.dismiss();
         }
 
         shell.merge(panel_shell, std::convert::identity);
@@ -508,5 +528,53 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             Vector::ZERO,
         )
         .map(|content| scoped_overlay(SurfaceKind::Overlay, content))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn popover_width_uses_anchor_floor_and_viewport_cap() {
+        let geometry = geometry(
+            Placement::Popover,
+            Point::new(20.0, 20.0),
+            32.0,
+            80.0,
+            Rectangle::new(Point::new(10.0, 10.0), Size::new(300.0, 200.0)),
+        );
+
+        assert_eq!(panel_width(geometry, 40.0), 80.0);
+        assert_eq!(panel_width(geometry, 140.0), 140.0);
+        assert_eq!(panel_width(geometry, 500.0), 276.0);
+    }
+
+    #[test]
+    fn search_position_is_clamped_to_the_viewport() {
+        let anchor = Point::new(280.0, 50.0);
+        let geometry = geometry(
+            Placement::Search,
+            anchor,
+            30.0,
+            100.0,
+            Rectangle::new(Point::new(20.0, 10.0), Size::new(300.0, 200.0)),
+        );
+
+        assert_eq!(geometry.position(anchor, 30.0, 100.0, 50.0).x, 220.0);
+    }
+
+    #[test]
+    fn touch_outside_panel_dismisses_it() {
+        let event = Event::Touch(touch::Event::FingerPressed {
+            id: touch::Finger(0),
+            position: Point::new(5.0, 5.0),
+        });
+
+        assert!(dismisses(
+            &event,
+            mouse::Cursor::Unavailable,
+            Rectangle::new(Point::new(10.0, 10.0), Size::new(100.0, 100.0)),
+        ));
     }
 }

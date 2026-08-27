@@ -1,5 +1,5 @@
 use iced::{
-    Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
+    Element, Event, Length, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
@@ -126,13 +126,13 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
         let body: Element<'a, Message> = if popover.items.is_empty() {
             column![].into()
         } else {
-            let mut rows = column![].width(Fill);
+            let mut rows = column![];
 
             for item in popover.items {
                 rows = rows.push(item_row(item));
             }
 
-            container(rows).width(Fill).padding(spacing::MD).into()
+            container(rows).padding(spacing::MD).into()
         };
 
         let footer = popover
@@ -141,7 +141,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
 
         Element::new(PopoverWidget {
             trigger: popover.trigger,
-            panel: PanelContent::new(scrollable(body).width(Fill), footer),
+            panel: PanelContent::new(scrollable(body), footer),
         })
     }
 }
@@ -169,7 +169,6 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
     }
 
     let row: Element<'a, Message> = Control::new(content)
-        .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press_maybe(item.on_select)
         .selected(item.selected)
@@ -188,6 +187,10 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
 struct PopoverWidget<'a, Message> {
     trigger: Element<'a, ()>,
     panel: PanelContent<'a, Message>,
+}
+
+fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
+    unreachable!("popover trigger overlays are presentational")
 }
 
 #[derive(Debug, Default)]
@@ -337,18 +340,22 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         &'a mut self,
         tree: &'a mut Tree,
         layout: Layout<'a>,
-        _renderer: &iced::Renderer,
+        renderer: &iced::Renderer,
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         let (state, children) = (&mut tree.state, &mut tree.children);
         let state = state.downcast_mut::<State>();
 
-        if !state.open {
-            return None;
-        }
-
         let bounds = layout.bounds();
+
+        if !state.open {
+            return self
+                .trigger
+                .as_widget_mut()
+                .overlay(&mut children[0], layout, renderer, viewport, translation)
+                .map(|content| content.map(&unexpected_trigger_overlay_message::<Message>));
+        }
 
         Some(overlay::Element::new(Box::new(AnchoredPanel::popover(
             bounds.position() + translation,

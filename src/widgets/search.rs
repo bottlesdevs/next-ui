@@ -359,8 +359,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
                 }
                 keyboard::Key::Named(key::Named::Enter) => {
                     if let Some(index) = state.highlighted {
+                        state.dismissed = true;
                         shell.publish(self.selections[index].clone());
                     } else if let Some(message) = &self.on_submit {
+                        state.dismissed = true;
                         shell.publish(message.clone());
                     }
                     true
@@ -463,6 +465,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             *viewport,
             &mut self.panel,
             &mut children[1],
+            &mut state.dismissed,
         ))))
     }
 }
