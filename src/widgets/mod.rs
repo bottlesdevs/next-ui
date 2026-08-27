@@ -3,6 +3,8 @@ mod control;
 mod style;
 mod surface;
 
+#[cfg(test)]
+pub(crate) use control::Interaction;
 pub(crate) use control::{Control, event_cursor};
 
 use iced::{ContentFit, Point, Rectangle, Size, advanced::svg::Renderer as _};

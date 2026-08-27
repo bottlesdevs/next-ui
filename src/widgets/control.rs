@@ -429,6 +429,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
             );
 
             if self.focus_first_descendant
+                && !shell.is_event_captured()
                 && event_cursor(event, cursor).is_over(layout.bounds())
                 && matches!(
                     event,
