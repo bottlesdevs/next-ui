@@ -9,11 +9,6 @@ use iced::{
     widget::button,
     window,
 };
-use std::{cell::Cell, rc::Rc};
-
-/// A one-shot signal for composite widgets that own their state internally.
-pub(crate) type Activation = Rc<Cell<bool>>;
-
 /// The independent states used to resolve a control's appearance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct State {
@@ -266,7 +261,6 @@ impl operation::Focusable for Interaction {
 pub(crate) struct Control<'a, Message> {
     content: Element<'a, Message>,
     on_press: Option<Message>,
-    activation: Option<Activation>,
     sensitive: bool,
     selected: bool,
     focus_first_descendant: bool,
@@ -281,7 +275,6 @@ impl<'a, Message> Control<'a, Message> {
         Self {
             content: content.into(),
             on_press: None,
-            activation: None,
             sensitive: true,
             selected: false,
             focus_first_descendant: false,
@@ -302,11 +295,6 @@ impl<'a, Message> Control<'a, Message> {
 
     pub(crate) fn on_press_maybe(mut self, message: Option<Message>) -> Self {
         self.on_press = message;
-        self
-    }
-
-    pub(crate) fn activate_with(mut self, activation: Activation) -> Self {
-        self.activation = Some(activation);
         self
     }
 
@@ -349,7 +337,7 @@ impl<'a, Message> Control<'a, Message> {
     }
 
     fn actionable(&self) -> bool {
-        self.on_press.is_some() || self.activation.is_some()
+        self.on_press.is_some()
     }
 }
 
@@ -483,10 +471,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
             shell,
         ) == Outcome::Activated
         {
-            if let Some(activation) = &self.activation {
-                activation.set(true);
-            }
-
             if let Some(message) = &self.on_press {
                 shell.publish(message.clone());
             }
