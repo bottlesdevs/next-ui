@@ -22,6 +22,7 @@ use crate::{
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
         button::{Button, ButtonKind},
+        dialog::Dialog,
         row_group::RowGroup,
         tabs::{Tab, Tabs},
         text_row::TextRow,
@@ -277,18 +278,6 @@ impl State {
         active
     }
 
-    pub(crate) fn has_modal(&self) -> bool {
-        self.modal.is_some()
-    }
-
-    pub(crate) fn dismiss_modal(&mut self) -> Task<Message> {
-        let Some(modal) = &self.modal else {
-            return Task::none();
-        };
-
-        self.update(modal.cancel_message())
-    }
-
     pub fn cancel_active_operations(&mut self) {
         self.draining = true;
         self.modal = None;
@@ -412,9 +401,6 @@ impl State {
                 self.panel_open = false;
             }
             Message::Window(action) => {
-                if self.modal.is_some() {
-                    return Task::none();
-                }
                 return action.task().unwrap_or_else(Task::none);
             }
             Message::MoveFocus(previous) => {
@@ -624,7 +610,7 @@ impl State {
         container(split).width(Fill).height(Fill).into()
     }
 
-    pub(crate) fn modal_view(&self) -> Option<(Element<'_, Message>, Message)> {
+    pub(crate) fn dialog(&self) -> Option<Dialog<'_, Message>> {
         let modal = self.modal.as_ref()?;
         let content = match modal {
             Modal::AccountLogin(dialog) => {
@@ -636,7 +622,7 @@ impl State {
             }
         };
 
-        Some((content, modal.cancel_message()))
+        Some(Dialog::new(content, modal.cancel_message()))
     }
 
     fn primary_page(&self, context: PaneContext) -> Element<'_, Message> {

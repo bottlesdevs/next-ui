@@ -5,7 +5,7 @@ use std::{
 };
 
 use bottles_core::{Bottles, Config as CoreConfig, error::Error as CoreError};
-use iced::{Element, Fill, Subscription, Task, Theme, keyboard, theme::Mode as ThemeMode};
+use iced::{Element, Fill, Subscription, Task, Theme, theme::Mode as ThemeMode};
 use next_config::Config;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +14,9 @@ use crate::{
     ui::chrome,
     widgets::{
         button::{Button, ButtonKind},
+        dialog::WindowModal,
         header_bar::HeaderBar,
     },
-    window_modal,
 };
 
 const APP_CONFIG_FILE: &str = "config.toml";
@@ -137,8 +137,6 @@ pub(crate) enum AppMessage {
     ConfirmExperienceSwitch,
     CancelExperienceSwitch,
     DismissNotice,
-    DismissModal,
-    ModalInteraction,
     CloseRequested,
     ShutdownFinished(AppResult<()>),
     Window(chrome::Action),
@@ -156,8 +154,6 @@ impl std::fmt::Debug for AppMessage {
             Self::ConfirmExperienceSwitch => "ConfirmExperienceSwitch",
             Self::CancelExperienceSwitch => "CancelExperienceSwitch",
             Self::DismissNotice => "DismissNotice",
-            Self::DismissModal => "DismissModal",
-            Self::ModalInteraction => "ModalInteraction",
             Self::CloseRequested => "CloseRequested",
             Self::ShutdownFinished(_) => "ShutdownFinished",
             Self::Window(_) => "Window",
@@ -213,17 +209,10 @@ impl App {
             | Phase::Failed(_) => Subscription::none(),
         };
 
-        let modal_escape = if self.has_modal() {
-            iced::event::listen_with(dismiss_modal_on_escape)
-        } else {
-            Subscription::none()
-        };
-
         Subscription::batch([
             phase,
-            modal_escape,
             iced::system::theme_changes().map(AppMessage::SystemThemeChanged),
-            iced::window::close_requests().map(|_| AppMessage::CloseRequested),
+            iced::event::listen_with(ignored_close_request),
         ])
     }
 
@@ -262,7 +251,6 @@ impl App {
                     _ => {}
                 }
 
-                let modal_was_visible = self.has_modal();
                 let task = {
                     let Phase::Workspace {
                         workspace: Workspace::Classic(state),
@@ -276,14 +264,8 @@ impl App {
                         AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))
                     })
                 };
-                let modal_opened = !modal_was_visible && self.has_modal();
-                let focus = if modal_opened {
-                    iced::widget::operation::focus_next()
-                } else {
-                    Task::none()
-                };
 
-                return Task::batch([task, self.advance_experience_switch(), focus]);
+                return Task::batch([task, self.advance_experience_switch()]);
             }
             AppMessage::RequestExperience(experience) => {
                 return self.request_experience(experience);
@@ -306,24 +288,6 @@ impl App {
                 }
                 Phase::Booting | Phase::ShuttingDown | Phase::Failed(_) => {}
             },
-            AppMessage::DismissModal => {
-                if !self.has_modal() {
-                    return Task::none();
-                }
-
-                let Phase::Workspace {
-                    workspace: Workspace::Classic(state),
-                    ..
-                } = &mut self.phase
-                else {
-                    return Task::none();
-                };
-
-                return state.dismiss_modal().map(|message| {
-                    AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))
-                });
-            }
-            AppMessage::ModalInteraction => {}
             AppMessage::CloseRequested => return self.request_close(),
             AppMessage::ShutdownFinished(result) => {
                 if !matches!(self.phase, Phase::ShuttingDown) {
@@ -333,9 +297,6 @@ impl App {
                 return iced::exit();
             }
             AppMessage::Window(action) => {
-                if self.has_modal() {
-                    return Task::none();
-                }
                 return action.task().unwrap_or_else(|| self.request_close());
             }
             AppMessage::SystemThemeChanged(mode) => self.system_theme = mode,
@@ -390,14 +351,17 @@ impl App {
         };
         let page: Element<'_, AppMessage> =
             chrome::WindowFrame::new(body, AppMessage::Window).into();
-        let modal = self
-            .visible_classic_modal()
-            .and_then(classic::State::modal_view)
-            .map(|(content, on_dismiss)| {
-                (content.map(classic_message), classic_message(on_dismiss))
-            });
+        let dialog = match &self.phase {
+            Phase::Workspace {
+                workspace: Workspace::Classic(state),
+                transition: WorkspaceTransition::Ready,
+                notice: None,
+                ..
+            } => state.dialog().map(|dialog| dialog.map(classic_message)),
+            _ => None,
+        };
 
-        window_modal::view(page, modal, AppMessage::ModalInteraction)
+        WindowModal::new(page).dialog(dialog).into()
     }
 
     fn finish_boot(&mut self, boot: Boot) -> Task<AppMessage> {
@@ -563,10 +527,6 @@ impl App {
     }
 
     fn request_close(&mut self) -> Task<AppMessage> {
-        if self.has_modal() {
-            return Task::none();
-        }
-
         let core = match &mut self.phase {
             Phase::Onboarding { core, state, .. } => {
                 state.cancel_active_operations();
@@ -602,22 +562,6 @@ impl App {
             },
             AppMessage::ShutdownFinished,
         )
-    }
-
-    fn has_modal(&self) -> bool {
-        self.visible_classic_modal().is_some()
-    }
-
-    fn visible_classic_modal(&self) -> Option<&classic::State> {
-        match &self.phase {
-            Phase::Workspace {
-                workspace: Workspace::Classic(state),
-                transition: WorkspaceTransition::Ready,
-                notice: None,
-                ..
-            } if state.has_modal() => Some(state.as_ref()),
-            _ => None,
-        }
     }
 }
 
@@ -831,20 +775,17 @@ fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
     content.into()
 }
 
-fn dismiss_modal_on_escape(
+fn ignored_close_request(
     event: iced::Event,
-    _status: iced::event::Status,
+    status: iced::event::Status,
     _window: iced::window::Id,
 ) -> Option<AppMessage> {
-    matches!(
-        event,
-        iced::Event::Keyboard(keyboard::Event::KeyPressed {
-            key: keyboard::Key::Named(keyboard::key::Named::Escape),
-            repeat: false,
-            ..
-        })
-    )
-    .then_some(AppMessage::DismissModal)
+    (status == iced::event::Status::Ignored
+        && matches!(
+            event,
+            iced::Event::Window(iced::window::Event::CloseRequested)
+        ))
+    .then_some(AppMessage::CloseRequested)
 }
 
 #[cfg(test)]
@@ -852,42 +793,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn modal_escape_observes_captured_and_ignored_events() {
-        for status in [iced::event::Status::Captured, iced::event::Status::Ignored] {
-            assert!(matches!(
-                dismiss_modal_on_escape(
-                    key_pressed(keyboard::key::Named::Escape, false),
-                    status,
-                    iced::window::Id::unique(),
-                ),
-                Some(AppMessage::DismissModal)
-            ));
-        }
+    fn close_requests_only_reach_app_when_ignored() {
+        let event = iced::Event::Window(iced::window::Event::CloseRequested);
 
-        assert!(
-            dismiss_modal_on_escape(
-                key_pressed(keyboard::key::Named::Escape, true),
+        assert!(matches!(
+            ignored_close_request(
+                event.clone(),
                 iced::event::Status::Ignored,
+                iced::window::Id::unique(),
+            ),
+            Some(AppMessage::CloseRequested)
+        ));
+        assert!(
+            ignored_close_request(
+                event,
+                iced::event::Status::Captured,
                 iced::window::Id::unique(),
             )
             .is_none()
         );
-    }
-
-    fn key_pressed(named: keyboard::key::Named, repeat: bool) -> iced::Event {
-        let key = keyboard::Key::Named(named);
-
-        iced::Event::Keyboard(keyboard::Event::KeyPressed {
-            modified_key: key.clone(),
-            physical_key: keyboard::key::Physical::Unidentified(
-                keyboard::key::NativeCode::Unidentified,
-            ),
-            location: keyboard::Location::Standard,
-            modifiers: keyboard::Modifiers::default(),
-            text: None,
-            key,
-            repeat,
-        })
     }
 
     #[test]

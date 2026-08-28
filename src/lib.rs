@@ -6,7 +6,6 @@ mod operation;
 pub mod theme;
 pub mod ui;
 pub mod widgets;
-mod window_modal;
 
 pub(crate) use app::Experience;
 
