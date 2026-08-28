@@ -188,10 +188,10 @@ impl Message {
                 | library::Message::Launched(_),
             )
             | Self::Profiles(
-                profiles::Message::ProfileUpdated { .. } | profiles::Message::ProfileDeleted { .. },
+                profiles::Message::ProfileUpdated(_) | profiles::Message::ProfileDeleted(_),
             )
             | Self::Accounts(
-                accounts::Message::ProfileUpdated(_) | accounts::Message::LinkFinished { .. },
+                accounts::Message::ProfileUpdated(_) | accounts::Message::LinkFinished(_),
             )
             | Self::BottleListChanged(_)
             | Self::BottleStateChanged(_)
@@ -224,7 +224,7 @@ impl State {
             snapshots: snapshots::State::new(),
             profiles,
             library,
-            accounts: accounts::State::new(),
+            accounts: accounts::State::default(),
             settings: settings::State::new(),
             draining: false,
         };
@@ -375,7 +375,9 @@ impl State {
                 return self.settings.update(message, &ctx).map(Message::Settings);
             }
             Message::Profiles(message) => {
-                if matches!(message, profiles::Message::OpenCreate) {
+                if matches!(message, profiles::Message::OpenCreate)
+                    && !self.profiles.has_active_operation()
+                {
                     self.accounts.cancel_active_operation();
                 }
                 let (task, output) = self.profiles.update(message);

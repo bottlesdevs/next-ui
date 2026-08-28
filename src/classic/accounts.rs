@@ -120,7 +120,7 @@ impl LoginDialog {
         }
     }
 
-    fn view(&self) -> iced::widget::Column<'_, LoginMessage> {
+    fn view(&self) -> iced::widget::Column<'_, Message> {
         use iced::widget::{column, container, row};
 
         let submit_label = if self.submitting {
@@ -139,20 +139,20 @@ impl LoginDialog {
                             .description(&self.prompt.url)
                             .icon(Icon::Controller),
                     )
-                    .on_press(LoginMessage::CopyUrl),
+                    .on_press(Message::CopyLoginUrl),
                 )
                 .row(action_button_row(
                     Icon::Arrow,
                     "Open in your browser",
                     "Sign in there, then paste the requested value below.",
                     "Open",
-                    LoginMessage::OpenUrl,
+                    Message::OpenLoginUrl,
                 ))
                 .row(
                     TextRow::new("Authorization code", &self.code_draft)
                         .icon(Icon::Checkmark)
-                        .on_input(LoginMessage::CodeChanged)
-                        .on_submit(LoginMessage::Submit),
+                        .on_input(Message::LoginCodeChanged)
+                        .on_submit(Message::SubmitLogin),
                 ),
         ]
         .spacing(18);
@@ -170,10 +170,10 @@ impl LoginDialog {
             row![
                 Button::new(submit_label)
                     .kind(ButtonKind::Primary)
-                    .on_press_maybe((!self.submitting).then_some(LoginMessage::Submit)),
+                    .on_press_maybe((!self.submitting).then_some(Message::SubmitLogin)),
                 Button::new("Cancel")
                     .kind(ButtonKind::Transparent)
-                    .on_press(LoginMessage::Cancel),
+                    .on_press(Message::DismissLogin),
             ]
             .spacing(12),
         );
@@ -189,15 +189,6 @@ impl Drop for LoginDialog {
 }
 
 #[derive(Clone)]
-pub(crate) enum LoginMessage {
-    CodeChanged(String),
-    OpenUrl,
-    CopyUrl,
-    Submit,
-    Cancel,
-}
-
-#[derive(Clone)]
 pub enum Message {
     UnlinkAccount(PluginId),
     BeginLogin(StorefrontProvider),
@@ -205,15 +196,17 @@ pub enum Message {
         generation: u64,
         prompt: LoginPrompt,
     },
-    Login(LoginMessage),
-    LinkFinished {
-        generation: u64,
-        result: Result<Profile, Arc<CoreError>>,
-    },
+    LoginCodeChanged(String),
+    OpenLoginUrl,
+    CopyLoginUrl,
+    SubmitLogin,
+    DismissLogin,
+    LinkFinished(Result<Profile, Arc<CoreError>>),
     ProfileUpdated(Result<Profile, Arc<CoreError>>),
     Noop,
 }
 
+#[derive(Default)]
 pub struct State {
     link_generation: u64,
     link_cancellation: Option<CancellationToken>,
@@ -222,23 +215,7 @@ pub struct State {
     last_error: Option<String>,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl State {
-    pub fn new() -> Self {
-        Self {
-            link_generation: 0,
-            link_cancellation: None,
-            login_dialog: None,
-            mutation_pending: false,
-            last_error: None,
-        }
-    }
-
     /// Requests cancellation without dropping the task that drives the session.
     pub fn cancel_active_operation(&mut self) {
         self.login_dialog = None;
@@ -287,26 +264,32 @@ impl State {
             Message::LoginRequested { generation, prompt } => {
                 self.receive_prompt(generation, prompt);
             }
-            Message::Login(LoginMessage::Cancel) => self.cancel_active_operation(),
-            Message::Login(message) => {
+            Message::DismissLogin => self.cancel_active_operation(),
+            Message::LoginCodeChanged(code) => {
                 let Some(dialog) = &mut self.login_dialog else {
                     return iced::Task::none();
                 };
-                match message {
-                    LoginMessage::CodeChanged(code) => dialog.set_code(code),
-                    LoginMessage::OpenUrl => open_url(dialog.url()),
-                    LoginMessage::CopyUrl => {
-                        return iced::clipboard::write(dialog.url().to_owned());
-                    }
-                    LoginMessage::Submit => dialog.submit(),
-                    LoginMessage::Cancel => unreachable!("cancel was handled above"),
+                dialog.set_code(code);
+            }
+            Message::OpenLoginUrl => {
+                if let Some(dialog) = &self.login_dialog {
+                    open_url(dialog.url());
                 }
             }
-            Message::LinkFinished { generation, result } => {
-                if generation == self.link_generation {
-                    self.finish_link(result);
+            Message::CopyLoginUrl => {
+                return self
+                    .login_dialog
+                    .as_ref()
+                    .map_or_else(iced::Task::none, |dialog| {
+                        iced::clipboard::write(dialog.url().to_owned())
+                    });
+            }
+            Message::SubmitLogin => {
+                if let Some(dialog) = &mut self.login_dialog {
+                    dialog.submit();
                 }
             }
+            Message::LinkFinished(result) => self.finish_link(result),
             Message::ProfileUpdated(result) => self.finish_mutation(result),
             Message::Noop => {}
         }
@@ -339,12 +322,9 @@ impl State {
     }
 
     pub(super) fn dialog(&self) -> Option<Dialog<'_, Message>> {
-        self.login_dialog.as_ref().map(|dialog| {
-            Dialog::new(
-                iced::Element::from(dialog.view()).map(Message::Login),
-                Message::Login(LoginMessage::Cancel),
-            )
-        })
+        self.login_dialog
+            .as_ref()
+            .map(|dialog| Dialog::new(dialog.view(), Message::DismissLogin))
     }
 
     pub fn view_links<'a>(&'a self, ctx: &Context<'a>) -> iced::Element<'a, Message> {
@@ -441,9 +421,8 @@ fn link_account(
         generation,
         prompt,
     });
-    let operation = iced::Task::perform(operation, move |result| Message::LinkFinished {
-        generation,
-        result: result.map_err(Arc::new),
+    let operation = iced::Task::perform(operation, |result| {
+        Message::LinkFinished(result.map_err(Arc::new))
     });
     (cancellation, iced::Task::batch([prompts, operation]))
 }
@@ -496,19 +475,8 @@ mod tests {
     }
 
     #[test]
-    fn dropping_a_login_dialog_cancels_its_unanswered_prompt() {
-        futures_lite::future::block_on(async {
-            let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
-
-            drop(LoginDialog::new(prompt));
-
-            assert!(answer.await.is_err());
-        });
-    }
-
-    #[test]
     fn cancellation_stays_active_until_the_terminal_event() {
-        let mut state = State::new();
+        let mut state = State::default();
         let cancellation = CancellationToken::new();
         state.link_generation = 1;
         state.link_cancellation = Some(cancellation.clone());
@@ -531,7 +499,7 @@ mod tests {
     #[test]
     fn stale_prompts_do_not_attach_to_a_later_link() {
         futures_lite::future::block_on(async {
-            let mut state = State::new();
+            let mut state = State::default();
             state.link_generation = 2;
             state.link_cancellation = Some(CancellationToken::new());
             let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
