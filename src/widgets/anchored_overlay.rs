@@ -92,7 +92,7 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     )
     .padding(spacing::MD)
     .on_press(message)
-    .style(footer_style)
+    .style(row_style)
     .into()
 }
 
@@ -110,21 +110,6 @@ pub(super) fn row_style(theme: &Theme, state: State) -> button::Style {
             theme.extended_palette().secondary.weak.text
         },
         border: Border::default().rounded(6),
-        ..button::Style::default()
-    }
-}
-
-fn footer_style(theme: &Theme, state: State) -> button::Style {
-    let colors = if state.hovered || state.pressed {
-        theme.extended_palette().background.strongest
-    } else {
-        theme.extended_palette().background.stronger
-    };
-
-    button::Style {
-        background: Some(Background::Color(colors.color)),
-        text_color: theme.extended_palette().secondary.weak.text,
-        border: Border::default().rounded(iced::border::bottom(6)),
         ..button::Style::default()
     }
 }
