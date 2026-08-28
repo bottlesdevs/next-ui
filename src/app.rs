@@ -212,7 +212,13 @@ impl App {
         Subscription::batch([
             phase,
             iced::system::theme_changes().map(AppMessage::SystemThemeChanged),
-            iced::event::listen_with(ignored_close_request),
+            iced::event::listen().filter_map(|event| {
+                matches!(
+                    event,
+                    iced::Event::Window(iced::window::Event::CloseRequested)
+                )
+                .then_some(AppMessage::CloseRequested)
+            }),
         ])
     }
 
@@ -775,44 +781,9 @@ fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
     content.into()
 }
 
-fn ignored_close_request(
-    event: iced::Event,
-    status: iced::event::Status,
-    _window: iced::window::Id,
-) -> Option<AppMessage> {
-    (status == iced::event::Status::Ignored
-        && matches!(
-            event,
-            iced::Event::Window(iced::window::Event::CloseRequested)
-        ))
-    .then_some(AppMessage::CloseRequested)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn close_requests_only_reach_app_when_ignored() {
-        let event = iced::Event::Window(iced::window::Event::CloseRequested);
-
-        assert!(matches!(
-            ignored_close_request(
-                event.clone(),
-                iced::event::Status::Ignored,
-                iced::window::Id::unique(),
-            ),
-            Some(AppMessage::CloseRequested)
-        ));
-        assert!(
-            ignored_close_request(
-                event,
-                iced::event::Status::Captured,
-                iced::window::Id::unique(),
-            )
-            .is_none()
-        );
-    }
 
     #[test]
     fn production_catalogs_are_configured() {
