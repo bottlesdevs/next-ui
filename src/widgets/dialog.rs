@@ -1,7 +1,7 @@
 use iced::{
-    Background, Element, Event, Fill, Length, Point, Rectangle, Size, Theme,
+    Element, Event, Fill, Length, Rectangle, Size, Theme,
     advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
+        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
     },
     event, keyboard, touch,
@@ -11,7 +11,11 @@ use iced::{
 
 use crate::theme;
 
-use super::{Control, control::focus_first_descendant, event_cursor};
+use super::{
+    Control,
+    control::{descendant_is_focused, focus_first_descendant},
+    event_cursor,
+};
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
 
@@ -77,8 +81,12 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
         let mut layers = stack![base].width(Fill).height(Fill);
 
         if let Some(dialog) = modal.dialog {
+            let content = container(dialog.content)
+                .center(Fill)
+                .style(|_| container::Style::default().background(theme::SCRIM));
+
             layers = layers.push(Element::new(ModalLayer {
-                content: dialog.content,
+                content: content.into(),
                 on_dismiss: dialog.on_dismiss,
             }));
         }
@@ -92,19 +100,13 @@ struct ModalLayer<'a, Message> {
     on_dismiss: Message,
 }
 
-struct State {
-    focus_pending: bool,
-}
-
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, Message> {
     fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
+        tree::Tag::of::<bool>()
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State {
-            focus_pending: true,
-        })
+        tree::State::new(true)
     }
 
     fn children(&self) -> Vec<Tree> {
@@ -116,7 +118,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
     }
 
     fn size(&self) -> Size<Length> {
-        Size::new(Length::Fill, Length::Fill)
+        self.content.as_widget().size()
     }
 
     fn layout(
@@ -125,20 +127,13 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let size = limits.resolve(Length::Fill, Length::Fill, Size::ZERO);
-        let content = self.content.as_widget_mut().layout(
-            &mut tree.children[0],
-            renderer,
-            &layout::Limits::new(Size::ZERO, size).loose(),
-        );
-        let content_size = content.size();
-        let content = content.move_to(Point::new(
-            (size.width - content_size.width) / 2.0,
-            (size.height - content_size.height) / 2.0,
-        ));
-        let node = layout::Node::with_children(size, vec![content]);
+        let content = self
+            .content
+            .as_widget_mut()
+            .layout(&mut tree.children[0], renderer, limits);
+        let node = layout::Node::with_children(content.size(), vec![content]);
 
-        if tree.state.downcast_ref::<State>().focus_pending {
+        if *tree.state.downcast_ref::<bool>() {
             let content_layout = Layout::new(&node)
                 .children()
                 .next()
@@ -149,7 +144,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
                 content_layout,
                 renderer,
             );
-            tree.state.downcast_mut::<State>().focus_pending = false;
+            *tree.state.downcast_mut::<bool>() = false;
         }
 
         node
@@ -162,9 +157,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
+        let content_layout = layout.children().next().expect("modal content layout");
+
         self.content.as_widget_mut().operate(
             &mut tree.children[0],
-            layout.children().next().expect("dialog content layout"),
+            content_layout,
             renderer,
             operation,
         );
@@ -181,7 +178,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        let content_layout = layout.children().next().expect("dialog content layout");
+        let content_layout = layout.children().next().expect("modal content layout");
+        let dialog_layout = content_layout
+            .children()
+            .next()
+            .expect("dialog content layout");
         let cursor = event_cursor(event, cursor);
 
         self.content.as_widget_mut().update(
@@ -195,7 +196,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
             viewport,
         );
 
-        if requests_dismissal(event, shell.event_status(), content_layout.bounds(), cursor) {
+        if requests_dismissal(event, shell.event_status(), dialog_layout.bounds(), cursor) {
             shell.publish(self.on_dismiss.clone());
             shell.capture_event();
             return;
@@ -206,13 +207,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         }
 
         match event {
-            Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(keyboard::key::Named::Escape),
-                ..
-            }) => {
-                // Repeated Escape presses are still captured while the dismissal message is routed.
-                shell.capture_event();
-            }
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(keyboard::key::Named::Tab),
                 modifiers,
@@ -229,8 +223,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
                 shell.capture_event();
                 shell.request_redraw();
             }
-            Event::Mouse(iced::mouse::Event::ButtonPressed(_))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => shell.capture_event(),
             Event::Window(window::Event::CloseRequested) => shell.capture_event(),
             Event::Keyboard(_) | Event::Mouse(_) | Event::Touch(_) | Event::InputMethod(_) => {
                 shell.capture_event();
@@ -247,9 +239,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
+        let content_layout = layout.children().next().expect("modal content layout");
         let interaction = self.content.as_widget().mouse_interaction(
             &tree.children[0],
-            layout.children().next().expect("dialog content layout"),
+            content_layout,
             cursor,
             viewport,
             renderer,
@@ -272,19 +265,14 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: layout.bounds(),
-                ..renderer::Quad::default()
-            },
-            Background::Color(theme::SCRIM),
-        );
+        let content_layout = layout.children().next().expect("modal content layout");
+
         self.content.as_widget().draw(
             &tree.children[0],
             renderer,
             theme,
             style,
-            layout.children().next().expect("dialog content layout"),
+            content_layout,
             cursor,
             viewport,
         );
@@ -298,14 +286,47 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
         viewport: &Rectangle,
         translation: iced::Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
+        let content_layout = layout.children().next().expect("modal content layout");
+
         self.content.as_widget_mut().overlay(
             &mut tree.children[0],
-            layout.children().next().expect("dialog content layout"),
+            content_layout,
             renderer,
             viewport,
             translation,
         )
     }
+}
+
+fn cycle_focus<Message>(
+    content: &mut Element<'_, Message>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    previous: bool,
+) {
+    move_focus_once(content, tree, layout, renderer, previous);
+
+    if !descendant_is_focused(content, tree, layout, renderer) {
+        move_focus_once(content, tree, layout, renderer, previous);
+    }
+}
+
+fn move_focus_once<Message>(
+    content: &mut Element<'_, Message>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    previous: bool,
+) {
+    let mut operation: Box<dyn Operation> = if previous {
+        Box::new(operation::focusable::focus_previous::<()>())
+    } else {
+        Box::new(operation::focusable::focus_next::<()>())
+    };
+    content
+        .as_widget_mut()
+        .operate(tree, layout, renderer, &mut operation);
 }
 
 fn requests_dismissal(
@@ -334,72 +355,9 @@ fn requests_dismissal(
     }
 }
 
-fn cycle_focus<Message>(
-    content: &mut Element<'_, Message>,
-    tree: &mut Tree,
-    layout: Layout<'_>,
-    renderer: &iced::Renderer,
-    previous: bool,
-) {
-    let mut count = operation::focusable::count();
-    content.as_widget_mut().operate(
-        tree,
-        layout,
-        renderer,
-        &mut operation::black_box(&mut count),
-    );
-    let operation::Outcome::Some(count) = Operation::finish(&count) else {
-        return;
-    };
-    if count.total == 0 {
-        return;
-    }
-
-    let target = if previous {
-        count.focused.map_or(count.total - 1, |focused| {
-            (focused + count.total - 1) % count.total
-        })
-    } else {
-        count
-            .focused
-            .map_or(0, |focused| (focused + 1) % count.total)
-    };
-    content.as_widget_mut().operate(
-        tree,
-        layout,
-        renderer,
-        &mut FocusIndex { current: 0, target },
-    );
-}
-
-struct FocusIndex {
-    current: usize,
-    target: usize,
-}
-
-impl Operation for FocusIndex {
-    fn focusable(
-        &mut self,
-        _id: Option<&iced::widget::Id>,
-        _bounds: Rectangle,
-        state: &mut dyn operation::Focusable,
-    ) {
-        if self.current == self.target {
-            state.focus();
-        } else {
-            state.unfocus();
-        }
-        self.current += 1;
-    }
-
-    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
-        operate(self);
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use iced::{advanced::widget::Tree, widget::Space};
+    use iced::{Point, advanced::widget::Tree, widget::Space};
 
     use super::*;
     use crate::widgets::Interaction;
