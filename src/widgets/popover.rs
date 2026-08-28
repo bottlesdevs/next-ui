@@ -11,13 +11,41 @@ use crate::icons::Icon;
 
 use super::{
     anchored_overlay::{
-        AnchoredOverlay, PanelContent, Width, footer as panel_footer, row_content,
+        AnchoredOverlay, Dismissal, PanelContent, Width, footer as panel_footer, row_content,
         row_style as panel_row_style,
     },
     button::{Button, ButtonKind},
     control::Control,
     spacing,
 };
+
+/// Arbitrary content anchored to a trigger.
+pub struct Popover<'a, Message> {
+    trigger: Element<'a, ()>,
+    content: Element<'a, Message>,
+}
+
+impl<'a, Message> Popover<'a, Message> {
+    pub fn new(
+        trigger: impl Into<Element<'a, ()>>,
+        content: impl Into<Element<'a, Message>>,
+    ) -> Self {
+        Self {
+            trigger: trigger.into(),
+            content: content.into(),
+        }
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
+    fn from(popover: Popover<'a, Message>) -> Self {
+        Element::new(PopoverWidget {
+            trigger: popover.trigger,
+            panel: PanelContent::new(popover.content, None),
+            close_on_content_message: false,
+        })
+    }
+}
 
 /// A row in a [`PopoverMenu`], optionally containing a trailing action.
 pub struct PopoverMenuItem<'a, Message> {
@@ -135,9 +163,10 @@ impl<'a, Message: Clone + 'a> From<PopoverMenu<'a, Message>> for Element<'a, Mes
             .footer
             .map(|(label, message)| panel_footer(label, message));
 
-        Element::new(PopoverMenuWidget {
+        Element::new(PopoverWidget {
             trigger: menu.trigger,
             panel: PanelContent::new(scrollable(body), footer),
+            close_on_content_message: true,
         })
     }
 }
@@ -180,9 +209,10 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverMenuItem<'a, Message>) -> Elem
     }
 }
 
-struct PopoverMenuWidget<'a, Message> {
+struct PopoverWidget<'a, Message> {
     trigger: Element<'a, ()>,
     panel: PanelContent<'a, Message>,
+    close_on_content_message: bool,
 }
 
 fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
@@ -192,11 +222,15 @@ fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
 #[derive(Debug, Default)]
 struct State {
     open: bool,
-    focus_panel: bool,
+    focus_content: bool,
     focus_trigger: bool,
 }
 
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverMenuWidget<'_, Message> {
+fn closes_on(reason: Dismissal, close_on_content_message: bool) -> bool {
+    reason != Dismissal::ContentMessage || close_on_content_message
+}
+
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }
@@ -287,7 +321,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverMenuWidge
             shell.merge(trigger_shell, |()| unreachable!("empty trigger shell"));
         } else {
             state.open = !state.open;
-            state.focus_panel = state.open;
+            state.focus_content = state.open;
             state.focus_trigger = !state.open;
             shell.capture_event();
             shell.request_redraw();
@@ -355,10 +389,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverMenuWidge
 
         let State {
             open,
-            focus_panel,
+            focus_content,
             focus_trigger,
         } = state;
         let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
+        let close_on_content_message = self.close_on_content_message;
 
         Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
             anchor,
@@ -367,8 +402,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverMenuWidge
             &mut children[1],
             Width::NaturalAtLeastAnchor,
             spacing::SM,
-            Some(focus_panel),
-            move |_| {
+            Some(focus_content),
+            move |reason| {
+                if !closes_on(reason, close_on_content_message) {
+                    return false;
+                }
+
                 *open = false;
                 *focus_trigger = true;
                 true
@@ -379,4 +418,44 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverMenuWidge
 
 fn tooltip_style(theme: &Theme) -> container::Style {
     crate::theme::surface(theme.extended_palette().background.strongest)
+}
+
+#[cfg(test)]
+mod tests {
+    use iced::{advanced::widget::Tree, widget::Space};
+
+    use super::*;
+
+    #[derive(Clone)]
+    enum Message {
+        Content,
+    }
+
+    fn popover() -> Element<'static, Message> {
+        Popover::new(
+            Button::new("Open").on_press(()),
+            Control::new(Space::new()).on_press(Message::Content),
+        )
+        .into()
+    }
+
+    #[test]
+    fn rebuilding_retains_local_disclosure_state() {
+        let popover = popover();
+        let mut tree = Tree::new(&popover);
+        tree.state.downcast_mut::<State>().open = true;
+
+        tree.diff(&self::popover());
+
+        assert!(tree.state.downcast_ref::<State>().open);
+        assert_eq!(tree.children.len(), 2);
+    }
+
+    #[test]
+    fn only_menus_close_for_content_messages() {
+        assert!(!closes_on(Dismissal::ContentMessage, false));
+        assert!(closes_on(Dismissal::ContentMessage, true));
+        assert!(closes_on(Dismissal::OutsidePress, false));
+        assert!(closes_on(Dismissal::Escape, false));
+    }
 }
