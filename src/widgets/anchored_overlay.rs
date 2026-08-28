@@ -213,10 +213,6 @@ fn dismissal(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> Option<
     }
 }
 
-fn body_height_limit(max_height: f32, footer_height: f32) -> f32 {
-    (max_height - footer_height).max(0.0)
-}
-
 fn panel_width(geometry: Geometry, measured: f32) -> f32 {
     measured.clamp(geometry.min_width, geometry.max_width)
 }
@@ -299,7 +295,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
         let body_limits = layout::Limits::new(
             Size::new(width, 0.0),
-            Size::new(width, body_height_limit(max_height, footer_height)),
+            Size::new(width, (max_height - footer_height).max(0.0)),
         );
         let body = body
             .as_widget_mut()

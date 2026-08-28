@@ -259,12 +259,6 @@ struct SearchLocal {
     query: String,
 }
 
-impl SearchLocal {
-    fn popup_open(&self, visible: bool) -> bool {
-        visible && self.focused && !self.dismissed
-    }
-}
-
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<SearchLocal>()
@@ -333,7 +327,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_mut::<SearchLocal>();
-        let popup_open = state.popup_open(self.visible);
+        let popup_open = self.visible && state.focused && !state.dismissed;
 
         if state.focused
             && let Event::Keyboard(keyboard::Event::KeyPressed {
@@ -492,25 +486,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
 
 #[cfg(test)]
 mod tests {
-    use super::{SearchLocal, reconcile_index};
-
-    #[test]
-    fn popup_is_open_only_while_visible_focused_and_not_dismissed() {
-        let mut state = SearchLocal {
-            focused: true,
-            ..SearchLocal::default()
-        };
-
-        assert!(state.popup_open(true));
-        assert!(!state.popup_open(false));
-
-        state.dismissed = true;
-        assert!(!state.popup_open(true));
-
-        state.dismissed = false;
-        state.focused = false;
-        assert!(!state.popup_open(true));
-    }
+    use super::reconcile_index;
 
     #[test]
     fn preserves_highlight_across_result_changes() {
