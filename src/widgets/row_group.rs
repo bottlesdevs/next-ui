@@ -513,7 +513,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                         | Event::Touch(iced::touch::Event::FingerPressed { .. })
                 )
             {
-                focus_first_descendant(child, child_tree, child_layout, renderer);
+                focus_first_descendant(child.as_widget_mut(), child_tree, child_layout, renderer);
                 shell.request_redraw();
             }
 

@@ -139,7 +139,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
                 .next()
                 .expect("dialog content layout");
             focus_first_descendant(
-                &mut self.content,
+                self.content.as_widget_mut(),
                 &mut tree.children[0],
                 content_layout,
                 renderer,

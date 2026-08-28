@@ -1,20 +1,23 @@
 use iced::{
-    Element, Event, Length, Rectangle, Size, Theme, Vector,
+    Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
-    widget::{container, scrollable, svg, text::Fragment, text::IntoFragment, tooltip},
+    widget::{column, container, scrollable, svg, text::Fragment, text::IntoFragment, tooltip},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{AnchoredOverlay, PanelContent, Width},
+    anchored_overlay::AnchoredOverlay,
     button::{Button, ButtonKind},
-    menu::{MenuRows, item as menu_item, row_content},
+    menu::{item as menu_item, row_content},
     spacing,
+    surface::{Kind as SurfaceKind, Surface},
 };
+
+const WIDTH: f32 = 240.0;
 
 /// A trigger that opens an anchored menu of [`PopoverItem`]s.
 pub struct Popover<'a, Message> {
@@ -39,10 +42,13 @@ impl<'a, Message> Popover<'a, Message> {
 impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
     fn from(popover: Popover<'a, Message>) -> Self {
         let rows = popover.items.into_iter().map(item_row);
+        let content = container(scrollable(container(column(rows).width(Fill)).width(Fill)))
+            .width(Length::Fixed(WIDTH))
+            .padding(spacing::MD);
 
         Element::new(PopoverWidget {
             trigger: popover.trigger,
-            panel: PanelContent::new(scrollable(MenuRows::new(rows)), None),
+            panel: Surface::new(SurfaceKind::Overlay, content).into(),
         })
     }
 }
@@ -153,7 +159,7 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
 
 struct PopoverWidget<'a, Message> {
     trigger: Element<'a, ()>,
-    panel: PanelContent<'a, Message>,
+    panel: Element<'a, Message>,
 }
 
 fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
@@ -177,7 +183,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
     }
 
     fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.trigger), self.panel.tree()]
+        vec![Tree::new(&self.trigger), Tree::new(&self.panel)]
     }
 
     fn diff(&self, tree: &mut Tree) {
@@ -187,7 +193,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         }
 
         tree.children[0].diff(&self.trigger);
-        self.panel.diff(&mut tree.children[1]);
+        tree.children[1].diff(&self.panel);
     }
 
     fn size(&self) -> Size<Length> {
@@ -232,7 +238,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
 
         if state.focus_trigger {
             super::control::focus_first_descendant(
-                &mut self.trigger,
+                self.trigger.as_widget_mut(),
                 &mut tree.children[0],
                 layout,
                 renderer,
@@ -334,9 +340,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
             anchor,
             *viewport,
-            &mut self.panel,
+            self.panel.as_widget_mut(),
             &mut children[1],
-            Width::NaturalAtLeastAnchor,
             spacing::SM,
             Some(focus_content),
             move |_| {

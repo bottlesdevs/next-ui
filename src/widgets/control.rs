@@ -438,7 +438,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
                 )
             {
                 focus_first_descendant(
-                    &mut self.content,
+                    self.content.as_widget_mut(),
                     &mut tree.children[0],
                     content_layout,
                     renderer,
@@ -613,14 +613,12 @@ pub(crate) fn descendant_is_focused<Message>(
 }
 
 pub(crate) fn focus_first_descendant<Message>(
-    content: &mut Element<'_, Message>,
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
     tree: &mut Tree,
     layout: Layout<'_>,
     renderer: &iced::Renderer,
 ) {
-    content
-        .as_widget_mut()
-        .operate(tree, layout, renderer, &mut FocusFirst(false));
+    content.operate(tree, layout, renderer, &mut FocusFirst(false));
 }
 
 struct FocusFirst(bool);
