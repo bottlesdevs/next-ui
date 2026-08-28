@@ -9,8 +9,7 @@ use iced::{
 
 use super::{
     control::{
-        Control, Interaction, Outcome, State as ControlState, Style as ControlStyle,
-        descendant_is_focused, event_cursor, focus_first_descendant,
+        ActivationSignal, Control, Interaction, State as ControlState, Style as ControlStyle,
     },
     draw_caret,
     expander_row::{ExpanderRow, header_row},
@@ -159,6 +158,15 @@ fn group_line<'a, Message: Clone + 'a>(
                     disclosure_index,
                     ..
                 } = header_row(header, expander_enabled).into_disclosure_content();
+                let activation = ActivationSignal::default();
+                let mut header = Control::new(header)
+                    .width(Length::Fill)
+                    .sensitive(enabled && expander_enabled)
+                    .activation_signal(activation.clone());
+
+                if focus_first {
+                    header = header.focus_first_descendant();
+                }
                 let content_columns = if standalone {
                     requested_columns
                 } else {
@@ -181,7 +189,7 @@ fn group_line<'a, Message: Clone + 'a>(
                     .style(disabled_subtree_style)
                     .into();
 
-                headers.push(header);
+                headers.push(header.into());
                 expansions.push(Expansion {
                     header_index,
                     content_index: bodies.len(),
@@ -197,8 +205,8 @@ fn group_line<'a, Message: Clone + 'a>(
                     ),
                     sensitive: enabled && expander_enabled,
                     selected,
-                    focus_first,
                     disclosure_index: disclosure_index.expect("expander header has a caret slot"),
+                    activation,
                 });
                 bodies.push(body);
             }
@@ -258,8 +266,8 @@ struct Expansion {
     footprint: Footprint,
     sensitive: bool,
     selected: bool,
-    focus_first: bool,
     disclosure_index: usize,
+    activation: ActivationSignal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,7 +296,6 @@ struct GroupLine<'a, Message> {
 #[derive(Default)]
 struct State {
     open: Vec<usize>,
-    interactions: Vec<Interaction>,
     signature: Vec<(usize, usize, usize, usize, usize)>,
 }
 
@@ -299,11 +306,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 
     fn state(&self) -> tree::State {
         tree::State::new(State {
-            interactions: self
-                .expansions
-                .iter()
-                .map(|_| Interaction::default())
-                .collect(),
             signature: self.signature(),
             ..State::default()
         })
@@ -320,11 +322,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 
         if state.signature != signature {
             state.open.clear();
-            state.interactions = self
-                .expansions
-                .iter()
-                .map(|_| Interaction::default())
-                .collect();
             state.signature = signature;
         }
 
@@ -421,40 +418,19 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        let state = tree.state.downcast_mut::<State>();
-
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
-            for (index, ((child, child_tree), child_layout)) in self
+            for ((child, child_tree), child_layout) in self
                 .children
                 .iter_mut()
                 .zip(&mut tree.children)
                 .zip(layout.children())
-                .enumerate()
             {
-                if !is_visible(child_layout) {
-                    continue;
+                if is_visible(child_layout) {
+                    child
+                        .as_widget_mut()
+                        .operate(child_tree, child_layout, renderer, operation);
                 }
-
-                if let Some((expansion_index, expansion)) =
-                    expansion_at_header(&self.expansions, index)
-                {
-                    if !expansion.sensitive {
-                        continue;
-                    }
-
-                    if !expansion.focus_first {
-                        operation.focusable(
-                            None,
-                            child_layout.bounds(),
-                            &mut state.interactions[expansion_index],
-                        );
-                    }
-                }
-
-                child
-                    .as_widget_mut()
-                    .operate(child_tree, child_layout, renderer, operation);
             }
         });
     }
@@ -470,24 +446,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        let state = tree.state.downcast_mut::<State>();
-        let mut activated = None;
-
-        for (index, ((child, child_tree), child_layout)) in self
+        for ((child, child_tree), child_layout) in self
             .children
             .iter_mut()
             .zip(&mut tree.children)
             .zip(layout.children())
-            .enumerate()
         {
-            if !is_visible(child_layout) {
-                continue;
-            }
-
-            let expansion = expansion_at_header(&self.expansions, index);
-            let sensitive = expansion.is_none_or(|(_, expansion)| expansion.sensitive);
-
-            if sensitive {
+            if is_visible(child_layout) {
                 child.as_widget_mut().update(
                     child_tree,
                     event,
@@ -499,58 +464,10 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                     viewport,
                 );
             }
-
-            let Some((expansion_index, expansion)) = expansion else {
-                continue;
-            };
-
-            if expansion.focus_first
-                && sensitive
-                && event_cursor(event, cursor).is_over(child_layout.bounds())
-                && matches!(
-                    event,
-                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                        | Event::Touch(iced::touch::Event::FingerPressed { .. })
-                )
-            {
-                focus_first_descendant(child.as_widget_mut(), child_tree, child_layout, renderer);
-                shell.request_redraw();
-            }
-
-            let interaction = &mut state.interactions[expansion_index];
-
-            if matches!(
-                event,
-                Event::Window(iced::window::Event::RedrawRequested(_))
-            ) {
-                interaction.set_descendant_focused(
-                    sensitive && descendant_is_focused(child, child_tree, child_layout, renderer),
-                );
-            }
-
-            if interaction.update(
-                event,
-                child_layout.bounds(),
-                cursor,
-                sensitive,
-                true,
-                shell.is_event_captured(),
-                shell,
-            ) == Outcome::Activated
-            {
-                activated = Some(expansion_index);
-            }
         }
 
-        if let Some(target) = activated {
-            let footprints: Vec<_> = self
-                .expansions
-                .iter()
-                .map(|expansion| expansion.footprint)
-                .collect();
-
-            toggle_open(&mut state.open, target, &footprints);
-
+        let state = tree.state.downcast_mut::<State>();
+        if self.apply_activations(&mut state.open) {
             shell.invalidate_layout();
             shell.request_redraw();
         }
@@ -565,42 +482,22 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         let mut result = mouse::Interaction::default();
-        let widget_state = tree.state.downcast_ref::<State>();
 
-        for (index, ((child, child_tree), child_layout)) in self
+        for ((child, child_tree), child_layout) in self
             .children
             .iter()
             .zip(&tree.children)
             .zip(layout.children())
-            .enumerate()
         {
-            if !is_visible(child_layout) {
-                continue;
+            if is_visible(child_layout) {
+                result = result.max(child.as_widget().mouse_interaction(
+                    child_tree,
+                    child_layout,
+                    cursor,
+                    viewport,
+                    renderer,
+                ));
             }
-
-            let child_interaction = child.as_widget().mouse_interaction(
-                child_tree,
-                child_layout,
-                cursor,
-                viewport,
-                renderer,
-            );
-            let interaction = match expansion_at_header(&self.expansions, index) {
-                Some((_, expansion)) if !expansion.sensitive => continue,
-                Some((expansion_index, _))
-                    if child_interaction == mouse::Interaction::default() =>
-                {
-                    widget_state.interactions[expansion_index].mouse_interaction(
-                        true,
-                        true,
-                        child_layout.bounds(),
-                        cursor,
-                    )
-                }
-                _ => child_interaction,
-            };
-
-            result = result.max(interaction);
         }
 
         result
@@ -656,9 +553,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
 
         for (index, expansion) in self.expansions.iter().enumerate() {
             let bounds = children[expansion.header_index].bounds();
+            let interaction = tree.children[expansion.header_index]
+                .state
+                .downcast_ref::<Interaction>();
             let style = expander_header_style(
                 theme,
-                &state.interactions[index],
+                interaction,
                 expansion.sensitive,
                 expansion.selected,
                 state.open.contains(&index),
@@ -731,12 +631,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
             .iter_mut()
             .zip(&mut tree.children)
             .zip(layout.children())
-            .enumerate()
-            .filter_map(|(index, ((child, state), child_layout))| {
-                if !is_visible(child_layout)
-                    || expansion_at_header(&self.expansions, index)
-                        .is_some_and(|(_, expansion)| !expansion.sensitive)
-                {
+            .filter_map(|((child, state), child_layout)| {
+                if !is_visible(child_layout) {
                     return None;
                 }
 
@@ -765,16 +661,24 @@ impl<Message> GroupLine<'_, Message> {
             })
             .collect()
     }
-}
 
-fn expansion_at_header(
-    expansions: &[Expansion],
-    header_index: usize,
-) -> Option<(usize, &Expansion)> {
-    expansions
-        .iter()
-        .enumerate()
-        .find(|(_, expansion)| expansion.header_index == header_index)
+    fn apply_activations(&self, open: &mut Vec<usize>) -> bool {
+        let footprints: Vec<_> = self
+            .expansions
+            .iter()
+            .map(|expansion| expansion.footprint)
+            .collect();
+        let mut changed = false;
+
+        for (target, expansion) in self.expansions.iter().enumerate() {
+            if expansion.activation.replace(false) {
+                toggle_open(open, target, &footprints);
+                changed = true;
+            }
+        }
+
+        changed
+    }
 }
 
 fn is_visible(layout: Layout<'_>) -> bool {
@@ -784,6 +688,9 @@ fn is_visible(layout: Layout<'_>) -> bool {
 
 fn disclosure_bounds(header: Layout<'_>, index: usize) -> Rectangle {
     header
+        .children()
+        .next()
+        .expect("expander control content")
         .children()
         .next()
         .expect("list row content")
@@ -868,15 +775,7 @@ fn toggle_open(open: &mut Vec<usize>, target: usize, footprints: &[Footprint]) {
 
 #[cfg(test)]
 mod tests {
-    use iced::{
-        Event, Point, Rectangle, Size,
-        advanced::{Shell, widget::operation::Focusable as _},
-        keyboard::{self, key},
-        mouse,
-    };
-
     use super::{Footprint, RowGroup, toggle_open};
-    use crate::widgets::control::{Interaction, Outcome};
 
     #[test]
     fn opening_evicts_only_overlapping_expansions() {
@@ -903,96 +802,5 @@ mod tests {
         let group = RowGroup::<'static, ()>::new().columns(0);
 
         assert_eq!(group.columns, 1);
-    }
-
-    #[test]
-    fn header_interaction_defers_to_children_and_supports_keyboard_activation() {
-        let bounds = Rectangle::new(Point::ORIGIN, Size::new(100.0, 40.0));
-        let cursor = mouse::Cursor::Available(Point::new(10.0, 10.0));
-        let mut messages = Vec::<()>::new();
-        let mut shell = Shell::new(&mut messages);
-        let mut interaction = Interaction::default();
-
-        assert_eq!(
-            interaction.update(
-                &Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-                bounds,
-                cursor,
-                true,
-                true,
-                true,
-                &mut shell,
-            ),
-            Outcome::Ignored
-        );
-        assert_eq!(
-            interaction.update(
-                &Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
-                bounds,
-                cursor,
-                true,
-                true,
-                false,
-                &mut shell,
-            ),
-            Outcome::Ignored
-        );
-
-        for key in [key::Named::Enter, key::Named::Space] {
-            interaction.focus();
-
-            assert_eq!(
-                interaction.update(
-                    &keyboard_event(key, true),
-                    bounds,
-                    cursor,
-                    true,
-                    true,
-                    false,
-                    &mut shell,
-                ),
-                Outcome::Captured
-            );
-            assert_eq!(
-                interaction.update(
-                    &keyboard_event(key, false),
-                    bounds,
-                    cursor,
-                    true,
-                    true,
-                    false,
-                    &mut shell,
-                ),
-                Outcome::Activated
-            );
-        }
-    }
-
-    fn keyboard_event(named: key::Named, pressed: bool) -> Event {
-        let key = keyboard::Key::Named(named);
-        let modified_key = key.clone();
-        let physical_key = key::Physical::Unidentified(key::NativeCode::Unidentified);
-        let location = keyboard::Location::Standard;
-        let modifiers = keyboard::Modifiers::default();
-
-        Event::Keyboard(if pressed {
-            keyboard::Event::KeyPressed {
-                key,
-                modified_key,
-                physical_key,
-                location,
-                modifiers,
-                text: None,
-                repeat: false,
-            }
-        } else {
-            keyboard::Event::KeyReleased {
-                key,
-                modified_key,
-                physical_key,
-                location,
-                modifiers,
-            }
-        })
     }
 }
