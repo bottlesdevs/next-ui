@@ -5,7 +5,8 @@ use iced::{
 };
 use next_ui::widgets::text::TextExt as _;
 use next_ui::widgets::{
-    action_row, artwork_card, button, card, cycle_row, drop_target, expander_row, header_bar,
+    action_row, artwork_card, button, card, cycle_row, dialog, drop_target, expander_row,
+    header_bar,
     info_card::{self, Kind},
     info_row, picker_row, popover, row_group, search, selector_row, status_bar, switcher_row, tabs,
     text_row, title,
@@ -51,6 +52,7 @@ struct Gallery {
     group_switched_on: bool,
     running_status_expanded: bool,
     stopped_status_expanded: bool,
+    dialog_open: bool,
     value: usize,
 }
 
@@ -65,6 +67,7 @@ impl Default for Gallery {
             group_switched_on: false,
             running_status_expanded: false,
             stopped_status_expanded: false,
+            dialog_open: false,
             value: 1,
         }
     }
@@ -81,6 +84,8 @@ enum Message {
     Window(chrome::Action),
     RunningStatusToggled,
     StoppedStatusToggled,
+    OpenDialog,
+    DismissDialog,
     Previous,
     Next,
     MoveFocus(bool),
@@ -106,6 +111,8 @@ impl Gallery {
             Message::StoppedStatusToggled => {
                 self.stopped_status_expanded = !self.stopped_status_expanded;
             }
+            Message::OpenDialog => self.dialog_open = true,
+            Message::DismissDialog => self.dialog_open = false,
             Message::Previous => self.value = self.value.saturating_sub(1),
             Message::Next => self.value = (self.value + 1).min(DLSS_LEVELS.len() - 1),
             Message::MoveFocus(previous) => {
@@ -159,6 +166,7 @@ impl Gallery {
             button::Button::new("Loading")
                 .on_press(Message::Noop)
                 .loading(true),
+            button::Button::new("Open dialog").on_press(Message::OpenDialog),
         ]
         .spacing(12);
 
@@ -494,7 +502,22 @@ impl Gallery {
         .width(Fill)
         .height(Fill);
 
-        chrome::WindowFrame::new(column![header, gallery], Message::Window).into()
+        let page: Element<'_, Message> =
+            chrome::WindowFrame::new(column![header, gallery], Message::Window).into();
+        let dialog = self.dialog_open.then(|| {
+            dialog::Dialog::new(
+                column![
+                    title::Title::new("Dialog").subtitle("Modal content can use any widget."),
+                    button::Button::new("Close")
+                        .kind(button::ButtonKind::Primary)
+                        .on_press(Message::DismissDialog),
+                ]
+                .spacing(18),
+                Message::DismissDialog,
+            )
+        });
+
+        dialog::WindowModal::new(page).dialog(dialog).into()
     }
 
     fn search_state(&self) -> search::SearchState<'_, Message> {
