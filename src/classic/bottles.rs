@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use bottles_core::{Addons, Bottle, BottleManager, BottleState, Progress, Slot, Storage};
 use iced::{
-    Element, Length, Task,
-    widget::{Column, column, image, responsive, row},
+    Center, ContentFit, Element, Length, Task, Theme,
+    widget::{Grid, column, container, image, responsive, row, svg, text},
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -17,10 +17,13 @@ use crate::{
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
         artwork_card::{ArtworkCard, CardAction},
+        drop_target::DropTarget,
         picker_row::PickerRow,
         row_group::RowGroup,
         selector_row::SelectorRow,
+        spacing,
         status_bar::{StatusBar, StatusState},
+        text::TextExt as _,
         text_row::TextRow,
     },
 };
@@ -301,21 +304,53 @@ impl State {
 
         responsive(move |size| {
             let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
-
-            Column::with_children(programs.chunks(columns).map(|chunk| {
-                row(chunk
+            let items = std::iter::once(new_program_target().into()).chain(
+                programs
                     .iter()
                     .copied()
-                    .map(|program| program_card(bottle.clone(), program)))
+                    .map(|program| program_card(bottle.clone(), program)),
+            );
+
+            Grid::with_children(items)
+                .columns(columns)
                 .spacing(12)
+                .height(Length::Shrink)
                 .into()
-            }))
-            .spacing(12)
-            .into()
         })
         .height(Length::Shrink)
         .into()
     }
+}
+
+fn new_program_target<'a>() -> DropTarget<'a, Message> {
+    const ICON_CONTAINER_SIZE: f32 = 44.0;
+
+    let icon = container(
+        svg(Icon::Plus.handle())
+            .width(16)
+            .height(16)
+            .content_fit(ContentFit::Contain),
+    )
+    .width(ICON_CONTAINER_SIZE)
+    .height(ICON_CONTAINER_SIZE)
+    .align_x(Center)
+    .align_y(Center)
+    .style(|theme: &Theme| {
+        container::Style::default()
+            .background(theme.extended_palette().background.weak.color)
+            .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
+    });
+    let labels = column![
+        text("New Program").size(17).medium(),
+        text("Install or add a program.").size(14),
+    ]
+    .spacing(spacing::XS);
+
+    let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Length::Fill);
+
+    DropTarget::new(content, Message::Noop)
+        .width(Length::Fill)
+        .padding([72.0, spacing::LG])
 }
 
 fn program_card(bottle: Bottle, program: &bottles_core::Program) -> Element<'_, Message> {

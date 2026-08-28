@@ -2,7 +2,7 @@ use iced::{Background, Element, Fill};
 
 use crate::{theme, widgets::Control};
 
-const DIALOG_MAX_WIDTH: f32 = 560.0;
+const DIALOG_MAX_WIDTH: f32 = 360.0;
 
 /// Presents one dialog above a retained, insensitive application window.
 pub(crate) fn view<'a, Message: Clone + 'a>(

@@ -56,6 +56,7 @@ pub mod artwork_card;
 pub mod button;
 pub mod card;
 pub mod cycle_row;
+pub mod drop_target;
 pub mod expander_row;
 pub mod header_bar;
 pub mod info_card;

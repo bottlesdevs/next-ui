@@ -1,11 +1,11 @@
 use iced::{
-    Element, Fill, Subscription, Task, Theme,
+    Center, ContentFit, Element, Fill, Subscription, Task, Theme,
     keyboard::{self, key},
-    widget::{Space, column, container, image, row, scrollable, text},
+    widget::{Space, column, container, image, row, scrollable, svg, text},
 };
 use next_ui::widgets::text::TextExt as _;
 use next_ui::widgets::{
-    action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
+    action_row, artwork_card, button, card, cycle_row, drop_target, expander_row, header_bar,
     info_card::{self, Kind},
     info_row, picker_row, popover, row_group, search, selector_row, status_bar, switcher_row, tabs,
     text_row, title,
@@ -163,6 +163,7 @@ impl Gallery {
         .spacing(12);
 
         let cards = column![
+            drop_target_example(),
             row![
                 card::Card::new(
                     column![
@@ -519,6 +520,37 @@ impl Gallery {
             search::SearchState::Results(results)
         }
     }
+}
+
+fn drop_target_example<'a>() -> drop_target::DropTarget<'a, Message> {
+    const ICON_CONTAINER_SIZE: f32 = 44.0;
+
+    let icon = container(
+        svg(Icon::Plus.handle())
+            .width(16)
+            .height(16)
+            .content_fit(ContentFit::Contain),
+    )
+    .width(ICON_CONTAINER_SIZE)
+    .height(ICON_CONTAINER_SIZE)
+    .align_x(Center)
+    .align_y(Center)
+    .style(|theme: &Theme| {
+        container::Style::default()
+            .background(theme.extended_palette().background.weak.color)
+            .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
+    });
+    let labels = column![
+        text("New Program").size(17).medium(),
+        text("Install or add a program.").size(14),
+    ]
+    .spacing(6);
+
+    let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Fill);
+
+    drop_target::DropTarget::new(content, Message::Noop)
+        .width(Fill)
+        .padding([72.0, 24.0])
 }
 
 fn action_grid_expander(title: &'static str) -> expander_row::ExpanderRow<'static, Message> {
