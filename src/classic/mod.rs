@@ -68,10 +68,6 @@ enum Panel {
     Profiles,
 }
 
-enum Modal {
-    AccountLogin(accounts::LoginDialog),
-}
-
 struct ReadModel {
     bottles: Vec<Bottle>,
     bottle_states: Vec<Arc<BottleState>>,
@@ -143,7 +139,6 @@ pub struct State {
     route: Route,
     panel: Panel,
     panel_open: bool,
-    modal: Option<Modal>,
     read_model: ReadModel,
     bottles: bottles::State,
     #[cfg(feature = "fvs")]
@@ -161,7 +156,6 @@ pub enum Message {
     DetailTabSelected(DetailTab),
     BottleSelected(Uuid),
     Back,
-    AccountLoginDialog(accounts::LoginMessage),
     AddBottle,
     CancelBottle,
     OpenMenu,
@@ -196,7 +190,9 @@ impl Message {
             | Self::Profiles(
                 profiles::Message::ProfileUpdated { .. } | profiles::Message::ProfileDeleted { .. },
             )
-            | Self::Accounts(accounts::Message::ProfileUpdated(_))
+            | Self::Accounts(
+                accounts::Message::ProfileUpdated(_) | accounts::Message::LinkFinished { .. },
+            )
             | Self::BottleListChanged(_)
             | Self::BottleStateChanged(_)
             | Self::ProfilesChanged(_) => true,
@@ -205,14 +201,6 @@ impl Message {
             #[cfg(feature = "fvs")]
             Self::Snapshots(snapshots::Message::Loaded { .. }) => true,
             _ => false,
-        }
-    }
-}
-
-impl Modal {
-    fn cancel_message(&self) -> Message {
-        match self {
-            Self::AccountLogin(_) => Message::AccountLoginDialog(accounts::LoginMessage::Cancel),
         }
     }
 }
@@ -230,7 +218,6 @@ impl State {
             route: Route::Bottles,
             panel: Panel::NewBottle,
             panel_open: false,
-            modal: None,
             read_model,
             bottles: bottles::State::new(bottle_manager, core.addons()),
             #[cfg(feature = "fvs")]
@@ -276,7 +263,6 @@ impl State {
 
     pub fn cancel_active_operations(&mut self) {
         self.draining = true;
-        self.modal = None;
         self.profiles.dismiss_dialog();
         self.bottles.cancel_creation();
         self.accounts.cancel_active_operation();
@@ -329,33 +315,12 @@ impl State {
                 }
             }
             Message::Back => {
-                self.modal = None;
                 self.profiles.dismiss_dialog();
                 self.accounts.cancel_active_operation();
                 if self.panel_open && self.panel == Panel::Profiles {
                     self.panel_open = false;
                 } else {
                     self.route = Route::Bottles;
-                }
-            }
-            Message::AccountLoginDialog(accounts::LoginMessage::Cancel) => {
-                if matches!(self.modal, Some(Modal::AccountLogin(_))) {
-                    self.modal = None;
-                    self.accounts.cancel_active_operation();
-                }
-            }
-            Message::AccountLoginDialog(message) => {
-                let Some(Modal::AccountLogin(dialog)) = &mut self.modal else {
-                    return Task::none();
-                };
-                match message {
-                    accounts::LoginMessage::CodeChanged(code) => dialog.set_code(code),
-                    accounts::LoginMessage::OpenUrl => accounts::open_url(dialog.url()),
-                    accounts::LoginMessage::CopyUrl => {
-                        return iced::clipboard::write(dialog.url().to_owned());
-                    }
-                    accounts::LoginMessage::Submit => dialog.submit(),
-                    accounts::LoginMessage::Cancel => {}
                 }
             }
             Message::AddBottle => {
@@ -412,7 +377,6 @@ impl State {
             Message::Profiles(message) => {
                 if matches!(message, profiles::Message::OpenCreate) {
                     self.accounts.cancel_active_operation();
-                    self.modal = None;
                 }
                 let (task, output) = self.profiles.update(message);
                 let task = task.map(Message::Profiles);
@@ -421,7 +385,6 @@ impl State {
                         if self.panel_open && self.panel == Panel::Profiles {
                             self.panel_open = false;
                             self.profiles.dismiss_dialog();
-                            self.modal = None;
                             self.accounts.cancel_active_operation();
                         } else {
                             self.panel = Panel::Profiles;
@@ -437,21 +400,7 @@ impl State {
                     active_profile: self.read_model.profiles.selected(),
                     profiles: self.profiles.manager(),
                 };
-                let (task, output) = self.accounts.update(message, &ctx);
-                let task = task.map(Message::Accounts);
-                return match output {
-                    Some(accounts::Output::LoginRequested(dialog)) => {
-                        self.modal = Some(Modal::AccountLogin(dialog));
-                        task
-                    }
-                    Some(accounts::Output::LinkFinished) => {
-                        if matches!(self.modal, Some(Modal::AccountLogin(_))) {
-                            self.modal = None;
-                        }
-                        task
-                    }
-                    None => task,
-                };
+                return self.accounts.update(message, &ctx).map(Message::Accounts);
             }
             Message::Library(message) => {
                 let (task, output) = self.library.update(message);
@@ -581,15 +530,12 @@ impl State {
             .profiles
             .dialog()
             .map(|dialog| dialog.map(Message::Profiles));
-        let account = self.modal.as_ref().map(|modal| match modal {
-            Modal::AccountLogin(dialog) => Dialog::new(
-                Element::from(dialog.view()).map(Message::AccountLoginDialog),
-                modal.cancel_message(),
-            ),
-        });
-        debug_assert!(profile.is_none() || account.is_none());
+        let account = self
+            .accounts
+            .dialog()
+            .map(|dialog| dialog.map(Message::Accounts));
 
-        profile.or(account)
+        exclusive_dialog(profile, account)
     }
 
     fn primary_page(&self, context: PaneContext) -> Element<'_, Message> {
@@ -812,6 +758,17 @@ impl State {
     }
 }
 
+fn exclusive_dialog<'a>(
+    profile: Option<Dialog<'a, Message>>,
+    account: Option<Dialog<'a, Message>>,
+) -> Option<Dialog<'a, Message>> {
+    assert!(
+        profile.is_none() || account.is_none(),
+        "Classic workflows presented more than one dialog"
+    );
+    profile.or(account)
+}
+
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     let content = container(content).width(Fill).max_width(CONTENT_MAX_WIDTH);
     let content = container(content).padding(24).center_x(Fill);
@@ -855,5 +812,15 @@ mod tests {
                 .allowed_while_draining()
         );
         assert!(!Message::AddBottle.allowed_while_draining());
+    }
+
+    #[test]
+    #[should_panic(expected = "more than one dialog")]
+    fn workflows_cannot_present_two_dialogs() {
+        use iced::widget::Space;
+
+        let dialog = || Dialog::new(Space::new(), Message::OpenMenu);
+
+        let _ = exclusive_dialog(Some(dialog()), Some(dialog()));
     }
 }

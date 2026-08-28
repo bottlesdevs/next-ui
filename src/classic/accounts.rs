@@ -14,6 +14,7 @@ use crate::{
     icons::Icon,
     widgets::{
         button::{Button, ButtonKind},
+        dialog::Dialog,
         info_row::InfoRow,
         list_row::ListRow,
         picker_row::PickerRow,
@@ -87,7 +88,7 @@ impl AccountLinkInteraction for LoginInteraction {
     }
 }
 
-pub(crate) struct LoginDialog {
+struct LoginDialog {
     code_draft: String,
     prompt: LoginPrompt,
     submitting: bool,
@@ -104,22 +105,22 @@ impl LoginDialog {
         }
     }
 
-    pub(super) fn set_code(&mut self, code: String) {
+    fn set_code(&mut self, code: String) {
         self.code_draft = code;
     }
 
-    pub(super) fn url(&self) -> &str {
+    fn url(&self) -> &str {
         &self.prompt.url
     }
 
-    pub(super) fn submit(&mut self) {
+    fn submit(&mut self) {
         match self.prompt.submit(self.code_draft.trim()) {
             Ok(()) => self.submitting = true,
             Err(error) => self.error = Some(error.to_string()),
         }
     }
 
-    pub(super) fn view(&self) -> iced::widget::Column<'_, LoginMessage> {
+    fn view(&self) -> iced::widget::Column<'_, LoginMessage> {
         use iced::widget::{column, container, row};
 
         let submit_label = if self.submitting {
@@ -200,18 +201,23 @@ pub(crate) enum LoginMessage {
 pub enum Message {
     UnlinkAccount(PluginId),
     BeginLogin(StorefrontProvider),
-    LoginRequested(LoginPrompt),
+    LoginRequested {
+        generation: u64,
+        prompt: LoginPrompt,
+    },
+    Login(LoginMessage),
+    LinkFinished {
+        generation: u64,
+        result: Result<Profile, Arc<CoreError>>,
+    },
     ProfileUpdated(Result<Profile, Arc<CoreError>>),
     Noop,
 }
 
-pub enum Output {
-    LoginRequested(LoginDialog),
-    LinkFinished,
-}
-
 pub struct State {
+    link_generation: u64,
     link_cancellation: Option<CancellationToken>,
+    login_dialog: Option<LoginDialog>,
     mutation_pending: bool,
     last_error: Option<String>,
 }
@@ -225,7 +231,9 @@ impl Default for State {
 impl State {
     pub fn new() -> Self {
         Self {
+            link_generation: 0,
             link_cancellation: None,
+            login_dialog: None,
             mutation_pending: false,
             last_error: None,
         }
@@ -233,6 +241,7 @@ impl State {
 
     /// Requests cancellation without dropping the task that drives the session.
     pub fn cancel_active_operation(&mut self) {
+        self.login_dialog = None;
         if let Some(cancellation) = &self.link_cancellation {
             cancellation.cancel();
         }
@@ -242,70 +251,100 @@ impl State {
         self.link_cancellation.is_some() || self.mutation_pending
     }
 
-    pub fn update(
-        &mut self,
-        message: Message,
-        ctx: &Context<'_>,
-    ) -> (iced::Task<Message>, Option<Output>) {
-        let mut output = None;
+    pub fn update(&mut self, message: Message, ctx: &Context<'_>) -> iced::Task<Message> {
         match message {
             Message::UnlinkAccount(provider_id) => {
                 if !self.mutation_pending && self.link_cancellation.is_none() {
                     let profiles = ctx.profiles.clone();
                     let profile_id = ctx.active_profile.id();
                     self.mutation_pending = true;
-                    return (
-                        iced::Task::perform(
-                            async move {
-                                profiles
-                                    .unlink_account(profile_id, provider_id)
-                                    .await
-                                    .map_err(Arc::new)
-                            },
-                            Message::ProfileUpdated,
-                        ),
-                        None,
+                    return iced::Task::perform(
+                        async move {
+                            profiles
+                                .unlink_account(profile_id, provider_id)
+                                .await
+                                .map_err(Arc::new)
+                        },
+                        Message::ProfileUpdated,
                     );
                 }
             }
             Message::BeginLogin(provider) => {
                 if self.link_cancellation.is_none() && !self.mutation_pending {
-                    let (cancellation, task) =
-                        link_account(ctx.profiles, ctx.active_profile.id(), provider.id);
+                    self.link_generation = self.link_generation.wrapping_add(1);
+                    let generation = self.link_generation;
+                    let (cancellation, task) = link_account(
+                        ctx.profiles,
+                        ctx.active_profile.id(),
+                        provider.id,
+                        generation,
+                    );
                     self.link_cancellation = Some(cancellation);
                     self.last_error = None;
-                    return (task, None);
+                    return task;
                 }
             }
-            Message::LoginRequested(prompt) => {
-                if self
-                    .link_cancellation
-                    .as_ref()
-                    .is_some_and(|cancellation| !cancellation.is_cancelled())
-                {
-                    output = Some(Output::LoginRequested(LoginDialog::new(prompt)));
-                } else {
-                    prompt.cancel();
+            Message::LoginRequested { generation, prompt } => {
+                self.receive_prompt(generation, prompt);
+            }
+            Message::Login(LoginMessage::Cancel) => self.cancel_active_operation(),
+            Message::Login(message) => {
+                let Some(dialog) = &mut self.login_dialog else {
+                    return iced::Task::none();
+                };
+                match message {
+                    LoginMessage::CodeChanged(code) => dialog.set_code(code),
+                    LoginMessage::OpenUrl => open_url(dialog.url()),
+                    LoginMessage::CopyUrl => {
+                        return iced::clipboard::write(dialog.url().to_owned());
+                    }
+                    LoginMessage::Submit => dialog.submit(),
+                    LoginMessage::Cancel => unreachable!("cancel was handled above"),
                 }
             }
-            Message::ProfileUpdated(result) => {
-                if self.finish_update(result) {
-                    output = Some(Output::LinkFinished);
+            Message::LinkFinished { generation, result } => {
+                if generation == self.link_generation {
+                    self.finish_link(result);
                 }
             }
+            Message::ProfileUpdated(result) => self.finish_mutation(result),
             Message::Noop => {}
         }
 
-        (iced::Task::none(), output)
+        iced::Task::none()
     }
 
-    fn finish_update(&mut self, result: Result<Profile, Arc<CoreError>>) -> bool {
-        let linked = self.link_cancellation.take().is_some();
+    fn receive_prompt(&mut self, generation: u64, prompt: LoginPrompt) {
+        if generation == self.link_generation
+            && self
+                .link_cancellation
+                .as_ref()
+                .is_some_and(|cancellation| !cancellation.is_cancelled())
+        {
+            self.login_dialog = Some(LoginDialog::new(prompt));
+        } else {
+            prompt.cancel();
+        }
+    }
+
+    fn finish_link(&mut self, result: Result<Profile, Arc<CoreError>>) {
+        self.login_dialog = None;
+        self.link_cancellation = None;
+        self.last_error = presentation_error(result);
+    }
+
+    fn finish_mutation(&mut self, result: Result<Profile, Arc<CoreError>>) {
         self.mutation_pending = false;
-        self.last_error = result.err().and_then(|error| {
-            (!matches!(error.as_ref(), CoreError::Cancelled)).then(|| error.to_string())
-        });
-        linked
+        self.last_error = presentation_error(result);
+    }
+
+    pub(super) fn dialog(&self) -> Option<Dialog<'_, Message>> {
+        self.login_dialog.as_ref().map(|dialog| {
+            Dialog::new(
+                iced::Element::from(dialog.view()).map(Message::Login),
+                Message::Login(LoginMessage::Cancel),
+            )
+        })
     }
 
     pub fn view_links<'a>(&'a self, ctx: &Context<'a>) -> iced::Element<'a, Message> {
@@ -390,6 +429,7 @@ fn link_account(
     profiles: &Profiles,
     profile_id: Uuid,
     provider_id: PluginId,
+    generation: u64,
 ) -> (CancellationToken, iced::Task<Message>) {
     let (send_prompt, prompts) = mpsc::unbounded();
     let interaction = Arc::new(LoginInteraction {
@@ -397,14 +437,24 @@ fn link_account(
     });
     let operation = profiles.link_account(profile_id, provider_id, interaction);
     let cancellation = operation.cancellation_token();
-    let prompts = iced::Task::run(prompts, Message::LoginRequested);
-    let operation = iced::Task::perform(operation, |result| {
-        Message::ProfileUpdated(result.map_err(Arc::new))
+    let prompts = iced::Task::run(prompts, move |prompt| Message::LoginRequested {
+        generation,
+        prompt,
+    });
+    let operation = iced::Task::perform(operation, move |result| Message::LinkFinished {
+        generation,
+        result: result.map_err(Arc::new),
     });
     (cancellation, iced::Task::batch([prompts, operation]))
 }
 
-pub fn open_url(url: &str) {
+fn presentation_error(result: Result<Profile, Arc<CoreError>>) -> Option<String> {
+    result.err().and_then(|error| {
+        (!matches!(error.as_ref(), CoreError::Cancelled)).then(|| error.to_string())
+    })
+}
+
+fn open_url(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
@@ -460,16 +510,36 @@ mod tests {
     fn cancellation_stays_active_until_the_terminal_event() {
         let mut state = State::new();
         let cancellation = CancellationToken::new();
+        state.link_generation = 1;
         state.link_cancellation = Some(cancellation.clone());
+        let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
+        state.login_dialog = Some(LoginDialog::new(prompt));
 
         state.cancel_active_operation();
 
         assert!(cancellation.is_cancelled());
+        assert!(state.login_dialog.is_none());
         assert!(state.has_active_operation());
+        assert!(futures_lite::future::block_on(answer).is_err());
 
-        assert!(state.finish_update(Err(Arc::new(CoreError::Cancelled))));
+        state.finish_link(Err(Arc::new(CoreError::Cancelled)));
 
         assert!(!state.has_active_operation());
         assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn stale_prompts_do_not_attach_to_a_later_link() {
+        futures_lite::future::block_on(async {
+            let mut state = State::new();
+            state.link_generation = 2;
+            state.link_cancellation = Some(CancellationToken::new());
+            let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
+
+            state.receive_prompt(1, prompt);
+
+            assert!(state.login_dialog.is_none());
+            assert!(answer.await.is_err());
+        });
     }
 }
