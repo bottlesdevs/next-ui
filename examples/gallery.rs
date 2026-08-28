@@ -271,39 +271,29 @@ impl Gallery {
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
         let popover = popover::Popover::new(
-            button::Button::new("Open content")
-                .trailing_icon(Icon::DownCaret)
-                .on_press(()),
-            container(column![
-                text("Arbitrary popover content"),
-                button::Button::new("Keep open").on_press(Message::Noop),
-            ])
-            .padding(18),
-        );
-        let popover_menu = popover::PopoverMenu::new(
             button::Button::new("Open menu")
                 .trailing_icon(Icon::DownCaret)
                 .on_press(()),
         )
         .item(
-            popover::PopoverMenuItem::new("Current profile")
+            popover::PopoverItem::new("Current profile")
                 .subtitle("Selected")
                 .icon(Icon::Person)
                 .selected(true)
                 .on_select(Message::Noop),
         )
         .item(
-            popover::PopoverMenuItem::new("Available account")
+            popover::PopoverItem::new("Available account")
                 .subtitle("Child action captures the row click")
                 .action("Link", Message::Noop),
         )
         .item(
-            popover::PopoverMenuItem::new("Unavailable account")
+            popover::PopoverItem::new("Unavailable account")
                 .disabled_action("Taken")
                 .tooltip(text("Already linked to another profile")),
         )
-        .footer("Manage profiles", Message::Noop);
-        let popovers = column![popover, popover_menu].spacing(12);
+        .item(popover::PopoverItem::new("Manage profiles").on_select(Message::Noop));
+        let popovers = column![popover].spacing(12);
         let fields = column![
             text_row::TextRow::new("Input Name", &self.text_rows[0])
                 .placeholder("Placeholder")

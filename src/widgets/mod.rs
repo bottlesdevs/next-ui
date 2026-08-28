@@ -1,5 +1,6 @@
 mod anchored_overlay;
 mod control;
+mod menu;
 mod style;
 mod surface;
 

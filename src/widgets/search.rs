@@ -14,12 +14,10 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{
-        AnchoredOverlay, Dismissal, PanelContent, Width, footer as panel_footer, row_content,
-        row_style as panel_row_style,
-    },
+    anchored_overlay::{AnchoredOverlay, Dismissal, PanelContent, Width},
     button::{Button, ButtonKind},
-    control::{Control, descendant_is_focused},
+    control::descendant_is_focused,
+    menu::{MenuRows, footer as panel_footer, item as menu_item, row_content},
     reconcile_index, spacing,
     text::TextExt as _,
 };
@@ -169,15 +167,15 @@ fn panel<'a, Message: Clone + 'a>(
     let visible = !matches!(state, SearchState::Hidden);
     let body: Element<'a, Message> = match state {
         SearchState::Results(results) => {
-            let mut rows = column![].width(Fill);
+            let mut rows = Vec::with_capacity(results.len());
 
             for (index, result) in results.into_iter().enumerate() {
                 keys.push(result.key.clone());
                 selections.push(result.on_select.clone());
-                rows = rows.push(result_row(result, Rc::clone(&highlight), index));
+                rows.push(result_row(result, Rc::clone(&highlight), index));
             }
 
-            container(rows).width(Fill).padding(spacing::MD).into()
+            MenuRows::new(rows).into()
         }
         SearchState::Loading => status_row("Searching…", None),
         SearchState::Empty => status_row("No results", None),
@@ -219,15 +217,9 @@ fn result_row<'a, Message: Clone + 'a>(
         );
     }
 
-    Control::new(content)
-        .width(Fill)
-        .padding([spacing::XS, spacing::MD])
-        .on_press(result.on_select)
-        .style(move |theme, mut state| {
-            state.keyboard_highlighted = highlight.get() == Some(index);
-            panel_row_style(theme, state)
-        })
-        .into()
+    menu_item(content, Some(result.on_select), false, move || {
+        highlight.get() == Some(index)
+    })
 }
 
 fn status_row<'a, Message: 'a>(label: &'a str, color: Option<Color>) -> Element<'a, Message> {

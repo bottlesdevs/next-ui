@@ -1,21 +1,17 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Point, Rectangle, Size, Theme, Vector,
+    Element, Event, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, layout, mouse, overlay, renderer,
         widget::{Operation, Tree},
     },
     keyboard::{self, key},
     touch,
-    widget::{Space, button, column, row, svg, text, text::Fragment},
 };
 
-use crate::icons::Icon;
-
 use super::{
-    control::{Control, State, focus_first_descendant},
+    control::focus_first_descendant,
     spacing,
     surface::{Kind as SurfaceKind, scoped_overlay},
-    text::TextExt as _,
 };
 
 #[derive(Clone, Copy)]
@@ -53,64 +49,6 @@ impl<'a, Message> PanelContent<'a, Message> {
 
     pub(super) fn diff(&self, tree: &mut Tree) {
         tree.diff_children(&self.children);
-    }
-}
-
-pub(super) fn row_content<'a, Message: 'a>(
-    title: Fragment<'a>,
-    subtitle: Option<&'a str>,
-    icon: Option<Icon>,
-) -> iced::widget::Row<'a, Message> {
-    let mut labels = column![text(title).label()].spacing(spacing::XS);
-
-    if let Some(subtitle) = subtitle {
-        labels = labels.push(text(subtitle).detail().muted());
-    }
-
-    let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
-
-    if let Some(icon) = icon {
-        content = content.push(
-            svg(icon.handle())
-                .width(20)
-                .height(20)
-                .content_fit(iced::ContentFit::Contain),
-        );
-    }
-
-    content.push(labels).push(Space::new().width(Fill))
-}
-
-pub(super) fn footer<'a, Message: Clone + 'a>(
-    label: &'a str,
-    message: Message,
-) -> Element<'a, Message> {
-    Control::new(
-        row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
-            .spacing(spacing::SM)
-            .align_y(Alignment::Center),
-    )
-    .padding(spacing::MD)
-    .on_press(message)
-    .style(row_style)
-    .into()
-}
-
-pub(super) fn row_style(theme: &Theme, state: State) -> button::Style {
-    let highlighted = state.actionable
-        && (state.keyboard_highlighted || state.hovered || state.pressed || state.focused);
-
-    button::Style {
-        background: highlighted.then_some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
-        text_color: if highlighted {
-            theme.palette().text
-        } else {
-            theme.extended_palette().secondary.weak.text
-        },
-        border: Border::default().rounded(6),
-        ..button::Style::default()
     }
 }
 

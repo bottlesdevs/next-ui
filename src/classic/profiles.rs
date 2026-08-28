@@ -15,7 +15,7 @@ use crate::{
         button::{Button, ButtonKind},
         dialog::Dialog,
         info_card::{InfoCard, Kind as InfoCardKind},
-        popover::{PopoverMenu, PopoverMenuItem},
+        popover::{Popover, PopoverItem},
         text_row::TextRow,
         title::Title,
     },
@@ -280,17 +280,19 @@ impl State {
             .kind(ButtonKind::Transparent)
             .on_press(());
 
-        let mut switcher =
-            PopoverMenu::new(trigger).footer("Profiles", Message::ToggleProfileSettings);
+        let mut switcher = Popover::new(trigger);
 
         for profile in snapshot.profiles() {
             switcher = switcher.item(
-                PopoverMenuItem::new(profile.name())
+                PopoverItem::new(profile.name())
                     .icon(Icon::Person)
                     .selected(selected.id() == profile.id())
                     .on_select(Message::ActivateProfile(profile.id())),
             );
         }
+
+        switcher =
+            switcher.item(PopoverItem::new("Profiles").on_select(Message::ToggleProfileSettings));
 
         switcher.into()
     }
