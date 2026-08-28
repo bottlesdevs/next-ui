@@ -23,6 +23,7 @@ use super::{
 pub struct Popover<'a, Message> {
     trigger: Element<'a, ()>,
     content: Element<'a, Message>,
+    close_on_content_message: bool,
 }
 
 impl<'a, Message> Popover<'a, Message> {
@@ -33,7 +34,13 @@ impl<'a, Message> Popover<'a, Message> {
         Self {
             trigger: trigger.into(),
             content: content.into(),
+            close_on_content_message: false,
         }
+    }
+
+    fn close_on_content_message(mut self) -> Self {
+        self.close_on_content_message = true;
+        self
     }
 }
 
@@ -42,7 +49,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
         Element::new(PopoverWidget {
             trigger: popover.trigger,
             panel: PanelContent::new(popover.content, None),
-            close_on_content_message: false,
+            close_on_content_message: popover.close_on_content_message,
         })
     }
 }
@@ -147,27 +154,25 @@ impl<'a, Message> PopoverMenu<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<PopoverMenu<'a, Message>> for Element<'a, Message> {
     fn from(menu: PopoverMenu<'a, Message>) -> Self {
-        let body: Element<'a, Message> = if menu.items.is_empty() {
-            column![].into()
-        } else {
+        let mut content = column![];
+
+        if !menu.items.is_empty() {
             let mut rows = column![];
 
             for item in menu.items {
                 rows = rows.push(item_row(item));
             }
 
-            container(rows).padding(spacing::MD).into()
-        };
+            content = content.push(container(rows).padding(spacing::MD));
+        }
 
-        let footer = menu
-            .footer
-            .map(|(label, message)| panel_footer(label, message));
+        if let Some((label, message)) = menu.footer {
+            content = content.push(panel_footer(label, message));
+        }
 
-        Element::new(PopoverWidget {
-            trigger: menu.trigger,
-            panel: PanelContent::new(scrollable(body), footer),
-            close_on_content_message: true,
-        })
+        Popover::new(menu.trigger, scrollable(content))
+            .close_on_content_message()
+            .into()
     }
 }
 
@@ -224,10 +229,6 @@ struct State {
     open: bool,
     focus_content: bool,
     focus_trigger: bool,
-}
-
-fn closes_on(reason: Dismissal, close_on_content_message: bool) -> bool {
-    reason != Dismissal::ContentMessage || close_on_content_message
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
@@ -404,7 +405,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
             spacing::SM,
             Some(focus_content),
             move |reason| {
-                if !closes_on(reason, close_on_content_message) {
+                if reason == Dismissal::ContentMessage && !close_on_content_message {
                     return false;
                 }
 
@@ -449,13 +450,5 @@ mod tests {
 
         assert!(tree.state.downcast_ref::<State>().open);
         assert_eq!(tree.children.len(), 2);
-    }
-
-    #[test]
-    fn only_menus_close_for_content_messages() {
-        assert!(!closes_on(Dismissal::ContentMessage, false));
-        assert!(closes_on(Dismissal::ContentMessage, true));
-        assert!(closes_on(Dismissal::OutsidePress, false));
-        assert!(closes_on(Dismissal::Escape, false));
     }
 }
