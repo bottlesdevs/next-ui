@@ -6,7 +6,7 @@ use iced::{
 
 use crate::{icons::Icon, theme};
 
-use super::{button::Button, spacing, style, text::TextExt as _};
+use super::{button::Button, spacing, text::TextExt as _};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusState {
@@ -41,9 +41,7 @@ pub struct StatusBar<'a, Message> {
     architecture: &'a str,
     runner: &'a str,
     state: StatusState,
-    log: Option<&'a str>,
-    expanded: bool,
-    on_toggle: Option<Message>,
+    log: Option<(&'a str, bool, Message)>,
 }
 
 impl<'a, Message> StatusBar<'a, Message> {
@@ -53,23 +51,11 @@ impl<'a, Message> StatusBar<'a, Message> {
             runner,
             state,
             log: None,
-            expanded: false,
-            on_toggle: None,
         }
     }
 
-    pub fn log(mut self, log: &'a str) -> Self {
-        self.log = Some(log);
-        self
-    }
-
-    pub fn expanded(mut self, expanded: bool) -> Self {
-        self.expanded = expanded;
-        self
-    }
-
-    pub fn on_toggle(mut self, on_toggle: Message) -> Self {
-        self.on_toggle = Some(on_toggle);
+    pub fn log(mut self, log: &'a str, expanded: bool, on_toggle: Message) -> Self {
+        self.log = Some((log, expanded, on_toggle));
         self
     }
 }
@@ -105,20 +91,18 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         .spacing(spacing::LG)
         .align_y(Vertical::Center);
 
-        if status.log.is_some() && status.on_toggle.is_some() {
+        if let Some((_, _, on_toggle)) = &status.log {
             header = header.push(
                 Button::icon_only("Toggle log", Icon::Computer)
                     .diameter(32.0)
-                    .on_press_maybe(status.on_toggle),
+                    .on_press(on_toggle.clone()),
             );
         }
 
         let mut content =
             column![container(header).padding([spacing::XS, spacing::LG])].width(Fill);
 
-        if status.expanded
-            && let Some(log) = status.log
-        {
+        if let Some((log, true, _)) = status.log {
             content = content.push(
                 container(scrollable(text(log).supporting()).height(Fill))
                     .padding([spacing::MD, spacing::LG])
@@ -133,7 +117,7 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a, Message>> for Element<'a, Messa
         container(content)
             .width(Fill)
             .clip(true)
-            .style(style::panel)
+            .style(theme::panel)
             .into()
     }
 }

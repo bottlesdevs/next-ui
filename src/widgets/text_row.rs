@@ -5,7 +5,11 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, spacing, text::TextExt as _};
+use super::{
+    list_row::{self, ListRow},
+    spacing,
+    text::TextExt as _,
+};
 
 pub struct TextRow<'a, Message> {
     title: &'a str,
@@ -83,17 +87,17 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         let mut value = row![].spacing(spacing::SM).align_y(Center);
 
         if let Some(icon) = text_row.icon {
-            value = value.push(icon_view(icon, 12.0, error));
+            value = value.push(icon_view(icon, list_row::BODY_SIZE, error));
         }
 
         let mut input = text_input(text_row.placeholder, text_row.value)
             .width(Fill)
             .padding(0)
-            .size(16)
+            .size(list_row::BODY_SIZE)
             .secure(text_row.secure)
             .on_input_maybe(text_row.on_input)
             .on_submit_maybe(text_row.on_submit)
-            .style(move |theme, status| input_style(theme, status, error));
+            .style(move |theme, _| input_style(theme, error));
 
         if let Some(id) = text_row.id {
             input = input.id(id);
@@ -101,29 +105,33 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
 
         value = value.push(input);
 
-        let mut labels = column![text(text_row.title).label(), value]
+        let mut labels = column![text(text_row.title).label().medium(), value]
             .width(Fill)
             .spacing(spacing::XS);
 
         if let Some(error) = text_row.error {
-            labels = labels.push(text(error).detail().style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().danger),
-            }));
+            labels = labels.push(
+                text(error)
+                    .size(list_row::BODY_SIZE)
+                    .style(|theme: &Theme| text::Style {
+                        color: Some(theme.palette().danger),
+                    }),
+            );
         }
 
         let mut row = ListRow::new(labels);
 
         if editable {
             row = row
-                .trailing(icon_view(Icon::Pencil, 16.0, false))
-                .focus_content_on_press();
+                .trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false))
+                .focus_first();
         }
 
         row
     }
 }
 
-fn input_style(theme: &Theme, status: text_input::Status, error: bool) -> text_input::Style {
+fn input_style(theme: &Theme, error: bool) -> text_input::Style {
     let muted = theme.extended_palette().secondary.base.text;
 
     text_input::Style {
@@ -135,11 +143,7 @@ fn input_style(theme: &Theme, status: text_input::Status, error: bool) -> text_i
         }),
         icon: muted,
         placeholder: muted,
-        value: if matches!(status, text_input::Status::Disabled) {
-            muted
-        } else {
-            theme.palette().text
-        },
+        value: muted,
         selection: theme.palette().primary,
     }
 }

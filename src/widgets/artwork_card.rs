@@ -3,7 +3,7 @@ use iced::{
     widget::{Space, column, container, image, row, stack},
 };
 
-use crate::{widgets::button::ButtonKind, icons::Icon};
+use crate::{icons::Icon, widgets::button::ButtonKind};
 
 use super::{
     button::Button,
@@ -140,6 +140,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             card.banner,
             actions.into(),
         ))
+        .width(Fill)
         .into()
     }
 }

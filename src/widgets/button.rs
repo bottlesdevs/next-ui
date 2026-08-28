@@ -7,7 +7,7 @@ use iced::{
 use crate::icons::{self, Icon};
 
 use super::{
-    pressable::{Pressable, Status},
+    control::{Control, State},
     spacing,
     text::TextExt as _,
 };
@@ -141,7 +141,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .center(Fill)
             .into()
         } else {
-            let mut row = Row::new().spacing(spacing::XS).align_y(Center);
+            let mut row = Row::new()
+                .spacing(if button.kind == ButtonKind::Primary {
+                    16.0
+                } else {
+                    spacing::XS
+                })
+                .align_y(Center);
 
             if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
                 row = row.push(icon_element(
@@ -170,25 +176,30 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
         let shape = button.shape;
         let kind = button.kind;
-        let mut pressable = Pressable::new(content)
+        let mut control = Control::new(content)
+            .sensitive(!disabled)
             .on_press_maybe(button.on_press.filter(|_| !button.loading))
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
-        pressable = match shape {
-            Shape::Rectangular | Shape::Pill => pressable.padding([
-                if kind == ButtonKind::Surface {
-                    spacing::XS
-                } else {
-                    spacing::SM
-                },
-                spacing::MD,
-            ]),
-            Shape::IconOnly => pressable
+        control = match shape {
+            Shape::Rectangular | Shape::Pill => control.padding(if kind == ButtonKind::Primary {
+                [spacing::MD, spacing::XG]
+            } else {
+                [
+                    if kind == ButtonKind::Surface {
+                        spacing::XS
+                    } else {
+                        spacing::SM
+                    },
+                    spacing::MD,
+                ]
+            }),
+            Shape::IconOnly => control
                 .width(Length::Fixed(button.diameter))
                 .height(Length::Fixed(button.diameter)),
         };
 
-        let element: Element<'a, Message> = pressable.into();
+        let element: Element<'a, Message> = control.into();
 
         if shape == Shape::IconOnly {
             if let Some(tooltip_text) = button.tooltip {
@@ -219,8 +230,10 @@ fn icon_element<'a, Message: 'a>(
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if disabled {
                 theme.extended_palette().secondary.weak.text
+            } else if kind == ButtonKind::Primary {
+                theme.extended_palette().primary.base.color
             } else {
-                colors(theme, Status::Active, kind).text
+                colors(theme, false, false, false, kind).text
             }),
         })
         .into()
@@ -228,39 +241,47 @@ fn icon_element<'a, Message: 'a>(
 
 fn appearance(
     theme: &Theme,
-    status: Status,
+    state: State,
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
-    let colors = colors(theme, status, kind);
+    let colors = colors(
+        theme,
+        !state.sensitive,
+        state.hovered || state.focused,
+        state.pressed,
+        kind,
+    );
 
     iced::widget::button::Style {
         background: if kind == ButtonKind::Transparent {
-            match status {
-                Status::Pressed => Some(Background::Color(
+            if state.pressed {
+                Some(Background::Color(
                     theme.extended_palette().background.stronger.color,
-                )),
-                Status::Focused => Some(Background::Color(
+                ))
+            } else if state.focused && !state.hovered {
+                Some(Background::Color(
                     theme.extended_palette().background.strong.color,
-                )),
-                _ => None,
+                ))
+            } else {
+                None
             }
         } else {
             Some(Background::Color(colors.color))
         },
         text_color: colors.text,
         border: Border::default().rounded(match (shape, kind) {
-            (Shape::IconOnly, ButtonKind::Transparent) | (Shape::Rectangular, _) => 8,
-            (Shape::Pill | Shape::IconOnly, _) => 999,
+            (Shape::Rectangular, _) | (Shape::IconOnly, ButtonKind::Transparent) => 6.0,
+            (Shape::Pill | Shape::IconOnly, _) => 999.0,
         }),
         ..iced::widget::button::Style::default()
     }
 }
 
-fn colors(theme: &Theme, status: Status, kind: ButtonKind) -> Pair {
+fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
     let palette = theme.extended_palette();
 
-    if status == Status::Disabled {
+    if disabled {
         return Pair {
             color: palette.background.weaker.color,
             text: palette.secondary.weak.text,
@@ -268,21 +289,31 @@ fn colors(theme: &Theme, status: Status, kind: ButtonKind) -> Pair {
     }
 
     match kind {
-        ButtonKind::Primary => match status {
-            Status::Hovered | Status::Focused => palette.primary.strong,
-            Status::Pressed => palette.primary.weak,
-            _ => palette.primary.base,
-        },
-        ButtonKind::Secondary => match status {
-            Status::Hovered | Status::Focused => palette.secondary.strong,
-            Status::Pressed => palette.secondary.weak,
-            _ => palette.secondary.base,
-        },
+        ButtonKind::Primary => {
+            if pressed {
+                palette.background.weakest
+            } else if active {
+                palette.background.strongest
+            } else {
+                crate::theme::BottlesTheme::from(theme).hint
+            }
+        }
+        ButtonKind::Secondary => {
+            if pressed {
+                palette.secondary.weak
+            } else if active {
+                palette.secondary.strong
+            } else {
+                palette.secondary.base
+            }
+        }
         ButtonKind::Surface => {
-            let background = match status {
-                Status::Hovered | Status::Focused => palette.background.strong,
-                Status::Pressed => palette.background.stronger,
-                _ => palette.background.weak,
+            let background = if pressed {
+                palette.background.stronger
+            } else if active {
+                palette.background.strong
+            } else {
+                palette.background.weak
             };
 
             Pair {

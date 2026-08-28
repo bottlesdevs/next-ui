@@ -1,15 +1,14 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
-    widget::{Row, container, mouse_area, row},
+    widget::{Row, Space, container, mouse_area, row},
 };
 
-use crate::{icons::Icon, theme};
-
-use super::{
-    button::{Button, ButtonKind},
-    spacing,
-    window_frame::Action,
+use crate::{
+    theme,
+    ui::chrome::{WINDOW_CONTROL_AT_START, WINDOW_CONTROL_SIZE},
 };
+
+use super::spacing;
 
 const HEIGHT: f32 = 64.0;
 
@@ -17,18 +16,27 @@ pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
-    show_window_controls: bool,
-    on_action: Box<dyn Fn(Action) -> Message + 'a>,
+    reserve_window_control: bool,
+    transparent: bool,
+    on_drag: Message,
 }
 
 impl<'a, Message> HeaderBar<'a, Message> {
-    pub fn new(on_action: impl Fn(Action) -> Message + 'a) -> Self {
+    pub fn new(on_drag: Message) -> Self {
         Self {
             start: Vec::new(),
             middle: Vec::new(),
             end: Vec::new(),
-            show_window_controls: true,
-            on_action: Box::new(on_action),
+            reserve_window_control: true,
+            transparent: false,
+            on_drag,
+        }
+    }
+
+    pub(crate) fn without_window_control(on_drag: Message) -> Self {
+        Self {
+            reserve_window_control: false,
+            ..Self::new(on_drag)
         }
     }
 
@@ -47,8 +55,8 @@ impl<'a, Message> HeaderBar<'a, Message> {
         self
     }
 
-    pub fn show_window_controls(mut self, show_window_controls: bool) -> Self {
-        self.show_window_controls = show_window_controls;
+    pub fn transparent(mut self, transparent: bool) -> Self {
+        self.transparent = transparent;
         self
     }
 }
@@ -59,17 +67,21 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             mut start,
             middle,
             mut end,
-            show_window_controls,
-            on_action,
+            reserve_window_control,
+            transparent,
+            on_drag,
         } = header;
 
-        if show_window_controls {
-            let close = window_control(on_action(Action::Close));
+        if reserve_window_control {
+            let spacer: Element<'a, Message> = Space::new()
+                .width(WINDOW_CONTROL_SIZE)
+                .height(WINDOW_CONTROL_SIZE)
+                .into();
 
-            if cfg!(target_os = "macos") {
-                start.insert(0, close);
+            if WINDOW_CONTROL_AT_START {
+                start.insert(0, spacer);
             } else {
-                end.push(close);
+                end.push(spacer);
             }
         }
 
@@ -89,15 +101,15 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
         .height(Fill)
         .align_y(Center);
 
-        mouse_area(
-            container(content)
-                .width(Fill)
-                .height(HEIGHT)
-                .padding([0.0, spacing::SM])
-                .style(style),
-        )
-        .on_press(on_action(Action::Drag))
-        .into()
+        let mut content = container(content)
+            .width(Fill)
+            .height(HEIGHT)
+            .padding([0.0, spacing::SM]);
+        if !transparent {
+            content = content.style(style);
+        }
+
+        mouse_area(content).on_press(on_drag).into()
     }
 }
 
@@ -107,21 +119,12 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
         .align_y(Center)
 }
 
-fn window_control<'a, Message: Clone + 'a>(message: Message) -> Element<'a, Message> {
-    Button::icon_only("Close window", Icon::Cross)
-        .diameter(32.0)
-        .icon_size(16.0)
-        .kind(ButtonKind::Transparent)
-        .on_press(message)
-        .into()
-}
-
 fn style(current_theme: &Theme) -> container::Style {
     let bottles_theme = theme::BottlesTheme::from(current_theme);
 
     container::Style {
         background: Some(Background::Color(bottles_theme.window)),
-        border: Border::default().rounded(iced::border::top(11)),
+        border: Border::default().rounded(iced::border::top(6)),
         ..container::Style::default()
     }
 }

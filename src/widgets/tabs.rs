@@ -11,7 +11,7 @@ use iced::{
 };
 
 use super::{
-    pressable::{Pressable, Status},
+    control::{Control, State},
     spacing,
     text::TextExt as _,
 };
@@ -76,13 +76,15 @@ where
             let selected = selected.as_ref() == Some(&tab.value);
             let message = tab.enabled.then(|| on_select(tab.value));
 
-            Pressable::new(
+            Control::new(
                 column![text(tab.label).label(), Space::new().height(spacing::LG),]
                     .align_x(Alignment::Center),
             )
             .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
+            .sensitive(tab.enabled)
+            .selected(selected)
             .on_press_maybe(message)
-            .style(move |theme, status| tab_style(theme, status, selected))
+            .style(tab_style)
             .into()
         });
 
@@ -252,19 +254,17 @@ fn label_width(renderer: &Renderer, label: &str) -> f32 {
     paragraph.min_width()
 }
 
-fn tab_style(theme: &Theme, status: Status, selected: bool) -> button::Style {
+fn tab_style(theme: &Theme, state: State) -> button::Style {
     button::Style {
-        background: matches!(status, Status::Focused).then_some(Background::Color(
-            theme.extended_palette().background.strong.color,
-        )),
-        text_color: if selected
-            || matches!(status, Status::Hovered | Status::Pressed | Status::Focused)
-        {
+        background: (state.focused && !state.hovered && !state.pressed).then_some(
+            Background::Color(theme.extended_palette().background.strong.color),
+        ),
+        text_color: if state.selected || state.hovered || state.pressed || state.focused {
             theme.palette().text
         } else {
             theme.extended_palette().secondary.weak.text
         },
-        border: Border::default().rounded(4),
+        border: Border::default().rounded(6),
         ..button::Style::default()
     }
 }

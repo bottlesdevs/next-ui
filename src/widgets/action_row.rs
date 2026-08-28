@@ -5,7 +5,12 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{list_row::ListRow, progress_ring::ProgressRing, spacing, text::TextExt as _};
+use super::{
+    list_row::{self, ListRow},
+    progress_ring::ProgressRing,
+    spacing,
+    text::TextExt as _,
+};
 
 #[derive(Debug, Clone)]
 pub enum State<Message> {
@@ -56,15 +61,15 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
         if let Some(icon) = action.icon {
             description = description.push(
                 svg(icon.handle())
-                    .width(24)
-                    .height(24)
+                    .width(list_row::BODY_SIZE)
+                    .height(list_row::BODY_SIZE)
                     .content_fit(ContentFit::Contain),
             );
         }
 
-        description = description.push(text(action.description).detail().muted());
+        description = description.push(text(action.description).size(list_row::BODY_SIZE).muted());
 
-        let labels = column![text(action.title).label(), description].spacing(spacing::XS);
+        let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
         let trailing: Element<'a, Message> = match &action.state {
             State::Progress(progress) => ProgressRing::new(*progress).into(),
             State::Ready(_) | State::Disabled => Icon::Arrow.rotated(std::f32::consts::PI),
@@ -73,7 +78,8 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         match action.state {
             State::Ready(message) => row.on_press(message),
-            State::Disabled | State::Progress(_) => row.enabled(false),
+            State::Disabled => row.enabled(false),
+            State::Progress(_) => row,
         }
     }
 }

@@ -1,6 +1,5 @@
 use iced::{Element, Fill, Task, widget::container, window};
 
-#[cfg(not(target_os = "macos"))]
 use iced::{
     alignment::{Horizontal, Vertical},
     mouse,
@@ -8,35 +7,45 @@ use iced::{
     window::Direction,
 };
 
-use crate::theme;
+use crate::{
+    icons::Icon,
+    theme,
+    widgets::button::{Button, ButtonKind},
+};
 
-#[cfg(not(target_os = "macos"))]
 const RESIZE_EDGE: f32 = 6.0;
-#[cfg(not(target_os = "macos"))]
 const RESIZE_CORNER: f32 = 12.0;
+const PANEL_INSET: [f32; 2] = [6.0, 8.0];
+const WINDOW_CONTROL_INSET: [f32; 2] = [22.0, 20.0];
+pub(crate) const WINDOW_CONTROL_SIZE: f32 = 32.0;
+
+pub(crate) const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
 
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
     Drag,
     Resize(window::Direction),
-    Close,
+    RequestClose,
 }
 
 impl Action {
-    pub fn task<Message: Send + 'static>(self) -> Task<Message> {
-        match self {
+    /// Returns the direct window operation for this action.
+    ///
+    /// A close request returns `None` so the application can shut down its
+    /// services before exiting.
+    pub fn task<Message: Send + 'static>(self) -> Option<Task<Message>> {
+        Some(match self {
             Self::Drag => window::latest().and_then(window::drag),
             Self::Resize(direction) => {
                 window::latest().and_then(move |id| window::drag_resize(id, direction))
             }
-            Self::Close => window::latest().and_then(window::close),
-        }
+            Self::RequestClose => return None,
+        })
     }
 }
 
 pub struct WindowFrame<'a, Message> {
     content: Element<'a, Message>,
-    #[cfg(not(target_os = "macos"))]
     on_action: Box<dyn Fn(Action) -> Message + 'a>,
 }
 
@@ -45,12 +54,8 @@ impl<'a, Message> WindowFrame<'a, Message> {
         content: impl Into<Element<'a, Message>>,
         on_action: impl Fn(Action) -> Message + 'a,
     ) -> Self {
-        #[cfg(target_os = "macos")]
-        let _ = on_action;
-
         Self {
             content: content.into(),
-            #[cfg(not(target_os = "macos"))]
             on_action: Box::new(on_action),
         }
     }
@@ -61,39 +66,49 @@ impl<'a, Message: Clone + 'a> From<WindowFrame<'a, Message>> for Element<'a, Mes
         let content: Element<'a, Message> = container(frame.content)
             .width(Fill)
             .height(Fill)
-            .padding(1)
+            .padding(PANEL_INSET)
             .style(|current_theme| theme::window(&theme::BottlesTheme::from(current_theme)))
             .clip(true)
             .into();
 
-        #[cfg(target_os = "macos")]
-        return content;
+        let mut layers = stack![content].width(Fill).height(Fill).clip(true);
 
-        #[cfg(not(target_os = "macos"))]
-        {
-            let mut layers = stack![content].width(Fill).height(Fill).clip(true);
-
-            for direction in [
-                Direction::North,
-                Direction::South,
-                Direction::East,
-                Direction::West,
-                Direction::NorthEast,
-                Direction::NorthWest,
-                Direction::SouthEast,
-                Direction::SouthWest,
-            ] {
-                layers = layers.push(resize_edge(
-                    direction,
-                    (frame.on_action)(Action::Resize(direction)),
-                ))
-            }
-            layers.into()
+        for direction in [
+            Direction::North,
+            Direction::South,
+            Direction::East,
+            Direction::West,
+            Direction::NorthEast,
+            Direction::NorthWest,
+            Direction::SouthEast,
+            Direction::SouthWest,
+        ] {
+            layers = layers.push(resize_edge(
+                direction,
+                (frame.on_action)(Action::Resize(direction)),
+            ))
         }
+
+        let close = Button::icon_only("Close window", Icon::Cross)
+            .diameter(WINDOW_CONTROL_SIZE)
+            .icon_size(16.0)
+            .kind(ButtonKind::Transparent)
+            .on_press((frame.on_action)(Action::RequestClose));
+        let close = container(close)
+            .width(Fill)
+            .height(Fill)
+            .align_x(if WINDOW_CONTROL_AT_START {
+                Horizontal::Left
+            } else {
+                Horizontal::Right
+            })
+            .align_y(Vertical::Top)
+            .padding(WINDOW_CONTROL_INSET);
+
+        layers.push(close).into()
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 fn resize_edge<'a, Message: Clone + 'a>(
     direction: Direction,
     message: Message,

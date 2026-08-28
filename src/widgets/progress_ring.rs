@@ -89,12 +89,9 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let progress = state
-            .animation
-            .as_ref()
-            .map_or(self.progress, |animation| {
-                animation.interpolate_with(|value| value, Instant::now())
-            });
+        let progress = state.animation.as_ref().map_or(self.progress, |animation| {
+            animation.interpolate_with(|value| value, Instant::now())
+        });
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = bounds.width.min(bounds.height) / 2.0 - STROKE_WIDTH / 2.0;

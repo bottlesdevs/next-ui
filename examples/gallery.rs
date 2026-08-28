@@ -1,16 +1,17 @@
 use iced::{
-    Element, Fill, Subscription, Task, Theme,
+    Center, ContentFit, Element, Fill, Subscription, Task, Theme,
     keyboard::{self, key},
-    widget::{Space, column, container, image, row, scrollable, text},
+    widget::{Space, column, container, image, row, scrollable, svg, text},
 };
 use next_ui::widgets::text::TextExt as _;
 use next_ui::widgets::{
-    action_row, artwork_card, button, card, cycle_row, expander_row, header_bar,
+    action_row, artwork_card, button, card, cycle_row, dialog, drop_target, expander_row,
+    header_bar,
     info_card::{self, Kind},
-    info_row, picker_row, row_group, search, selector_row, status_bar, switcher_row, tabs,
-    text_row, title, window_frame,
+    info_row, picker_row, popover, row_group, search, selector_row, status_bar, switcher_row, tabs,
+    text_row, title,
 };
-use next_ui::{icons::Icon, theme};
+use next_ui::{icons::Icon, theme, ui::chrome};
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const EMPTY_OPTIONS: &[&str] = &[];
@@ -49,7 +50,9 @@ struct Gallery {
     selected_tab: usize,
     switched_on: bool,
     group_switched_on: bool,
-    status_expanded: bool,
+    running_status_expanded: bool,
+    stopped_status_expanded: bool,
+    dialog_open: bool,
     value: usize,
 }
 
@@ -62,7 +65,9 @@ impl Default for Gallery {
             selected_tab: 0,
             switched_on: false,
             group_switched_on: false,
-            status_expanded: false,
+            running_status_expanded: false,
+            stopped_status_expanded: false,
+            dialog_open: false,
             value: 1,
         }
     }
@@ -76,8 +81,11 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    Window(window_frame::Action),
-    StatusToggled,
+    Window(chrome::Action),
+    RunningStatusToggled,
+    StoppedStatusToggled,
+    OpenDialog,
+    DismissDialog,
     Previous,
     Next,
     MoveFocus(bool),
@@ -95,12 +103,18 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::Window(action) => return action.task(),
-            Message::StatusToggled => self.status_expanded = !self.status_expanded,
-            Message::Previous => {
-                self.value = (self.value + DLSS_LEVELS.len() - 1) % DLSS_LEVELS.len();
+            Message::Window(chrome::Action::RequestClose) => return iced::exit(),
+            Message::Window(action) => return action.task().unwrap_or_else(Task::none),
+            Message::RunningStatusToggled => {
+                self.running_status_expanded = !self.running_status_expanded;
             }
-            Message::Next => self.value = (self.value + 1) % DLSS_LEVELS.len(),
+            Message::StoppedStatusToggled => {
+                self.stopped_status_expanded = !self.stopped_status_expanded;
+            }
+            Message::OpenDialog => self.dialog_open = true,
+            Message::DismissDialog => self.dialog_open = false,
+            Message::Previous => self.value = self.value.saturating_sub(1),
+            Message::Next => self.value = (self.value + 1).min(DLSS_LEVELS.len() - 1),
             Message::MoveFocus(previous) => {
                 return if previous {
                     iced::widget::operation::focus_previous()
@@ -128,11 +142,11 @@ impl Gallery {
 
     fn view(&self) -> Element<'_, Message> {
         let headings = column![
-            text("Heading 1").h1(),
-            text("Heading 2").h2(),
+            text("Heading 1").size(72),
+            text("Heading 2").size(64),
             text("Heading 3").h3(),
             text("Heading 4").h4(),
-            text("Heading 5").h5(),
+            text("Heading 5").size(40),
         ]
         .spacing(6);
 
@@ -152,10 +166,12 @@ impl Gallery {
             button::Button::new("Loading")
                 .on_press(Message::Noop)
                 .loading(true),
+            button::Button::new("Open dialog").on_press(Message::OpenDialog),
         ]
         .spacing(12);
 
         let cards = column![
+            drop_target_example(),
             row![
                 card::Card::new(
                     column![
@@ -165,6 +181,7 @@ impl Gallery {
                     ]
                     .spacing(6),
                 )
+                .width(Fill)
                 .padding(24),
                 artwork_card::ArtworkCard::new("Artwork card", "Ready")
                     .menu(
@@ -189,17 +206,22 @@ impl Gallery {
             ]
             .spacing(18),
             row![
-                info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information."),
-                info_card::InfoCard::new(Kind::Info, "Info", "General information for the user."),
+                info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information.")
+                    .width(Fill),
+                info_card::InfoCard::new(Kind::Info, "Info", "General information for the user.")
+                    .width(Fill),
             ]
             .spacing(12),
             row![
-                info_card::InfoCard::new(Kind::Error, "Error", "Something needs attention."),
-                info_card::InfoCard::new(Kind::Warning, "Warning", "Proceed with care."),
+                info_card::InfoCard::new(Kind::Error, "Error", "Something needs attention.")
+                    .width(Fill),
+                info_card::InfoCard::new(Kind::Warning, "Warning", "Proceed with care.")
+                    .width(Fill),
             ]
             .spacing(12),
             row![
-                info_card::InfoCard::new(Kind::Success, "Success", "The operation completed."),
+                info_card::InfoCard::new(Kind::Success, "Success", "The operation completed.")
+                    .width(Fill),
                 Space::new().width(Fill),
             ]
             .spacing(12),
@@ -248,6 +270,30 @@ impl Gallery {
         let selected = self
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
+        let popover = popover::Popover::new(
+            button::Button::new("Open menu")
+                .trailing_icon(Icon::DownCaret)
+                .on_press(()),
+        )
+        .item(
+            popover::PopoverItem::new("Current profile")
+                .subtitle("Selected")
+                .icon(Icon::Person)
+                .selected(true)
+                .on_select(Message::Noop),
+        )
+        .item(
+            popover::PopoverItem::new("Available account")
+                .subtitle("Child action captures the row click")
+                .action("Link", Message::Noop),
+        )
+        .item(
+            popover::PopoverItem::new("Unavailable account")
+                .disabled_action("Taken")
+                .tooltip(text("Already linked to another profile")),
+        )
+        .item(popover::PopoverItem::new("Manage profiles").on_select(Message::Noop));
+        let popovers = column![popover].spacing(12);
         let fields = column![
             text_row::TextRow::new("Input Name", &self.text_rows[0])
                 .placeholder("Placeholder")
@@ -280,8 +326,8 @@ impl Gallery {
                 .on_toggle(Message::Switched)
                 .description("Description"),
             cycle_row::CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
-                .on_previous(Message::Previous)
-                .on_next(Message::Next),
+                .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
             picker_row::PickerRow::new("Title")
                 .description("Choose the location")
                 .on_press(Message::Noop),
@@ -297,8 +343,8 @@ impl Gallery {
             )
             .add(
                 cycle_row::CycleRow::new("Sharpening", "5")
-                    .on_previous(Message::Previous)
-                    .on_next(Message::Next),
+                    .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                    .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
             )
             .content_enabled(self.switched_on),
         ]
@@ -308,21 +354,21 @@ impl Gallery {
             .title("Graphics")
             .description("Rows wrap according to the configured column count.")
             .columns(2)
-            .add(
+            .row(
                 switcher_row::SwitcherRow::new("DLSS", self.switched_on)
                     .on_toggle(Message::Switched)
                     .description("Deep Learning Super Sampling"),
             )
-            .add(
+            .row(
                 picker_row::PickerRow::new("Shader directory")
                     .description("Choose the location")
                     .on_press(Message::Noop),
             )
-            .add(
+            .row(
                 action_row::ActionRow::new("Discrete GPU", action_row::State::Ready(Message::Noop))
                     .description("Configure graphics adapter"),
             )
-            .add(
+            .expander(
                 expander_row::ExpanderRow::with_header(
                     switcher_row::SwitcherRow::new("FSR", self.group_switched_on)
                         .on_toggle(Message::GroupSwitched)
@@ -335,8 +381,10 @@ impl Gallery {
                 )
                 .add(
                     cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
-                        .on_previous(Message::Previous)
-                        .on_next(Message::Next),
+                        .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                        .on_next_maybe(
+                            (self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),
+                        ),
                 )
                 .content_enabled(self.group_switched_on),
             );
@@ -345,7 +393,7 @@ impl Gallery {
             .title("Non-overlapping expanders")
             .description("Both expanders can remain open because their panels do not overlap")
             .columns(3)
-            .add(
+            .expander(
                 expander_row::ExpanderRow::new("First expander")
                     .description("One-column panel")
                     .add(
@@ -356,7 +404,7 @@ impl Gallery {
                         .description("Inside the first column"),
                     ),
             )
-            .add(
+            .expander(
                 expander_row::ExpanderRow::new("Second expander")
                     .description("Two-column panel")
                     .columns(2)
@@ -375,7 +423,7 @@ impl Gallery {
                         .description("Second panel column"),
                     ),
             )
-            .add(
+            .row(
                 action_row::ActionRow::new(
                     "Independent action",
                     action_row::State::Ready(Message::Noop),
@@ -387,32 +435,30 @@ impl Gallery {
             .title("2 × 2 expander grid")
             .description("Opening a sibling closes the overlapping panel on the same grid line")
             .columns(2)
-            .add(action_grid_expander("Expander A"))
-            .add(action_grid_expander("Expander B"))
-            .add(action_grid_expander("Expander C"))
-            .add(action_grid_expander("Expander D"));
+            .expander(action_grid_expander("Expander A"))
+            .expander(action_grid_expander("Expander B"))
+            .expander(action_grid_expander("Expander C"))
+            .expander(action_grid_expander("Expander D"));
 
         let status = column![
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Running,)
-                .log(LOG),
+                .log(
+                    LOG,
+                    self.running_status_expanded,
+                    Message::RunningStatusToggled,
+                ),
             status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Stopped,)
-                .log(LOG)
-                .expanded(self.status_expanded)
-                .on_toggle(Message::StatusToggled),
-            status_bar::StatusBar::<Message>::new(
-                "Win64",
-                "soda-7.0.9",
-                status_bar::StatusState::Starting,
-            ),
-            status_bar::StatusBar::<Message>::new(
-                "Win64",
-                "soda-7.0.9",
-                status_bar::StatusState::Failed,
-            ),
+                .log(
+                    LOG,
+                    self.stopped_status_expanded,
+                    Message::StoppedStatusToggled,
+                ),
+            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Starting,),
+            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::StatusState::Failed,),
         ]
         .spacing(18);
 
-        let header = header_bar::HeaderBar::new(Message::Window).middle(
+        let header = header_bar::HeaderBar::new(Message::Window(chrome::Action::Drag)).middle(
             iced::widget::container(
                 search::Search::new(
                     "Search for software and games…",
@@ -433,6 +479,7 @@ impl Gallery {
                     section("Cards", cards),
                     section("Tabs", tabs),
                     section("Search", search),
+                    section("Popovers", popovers),
                     section("Rows", fields),
                     section("Row group", row_group),
                     section("Overlap-aware expanders", multiple_expanders),
@@ -456,7 +503,22 @@ impl Gallery {
         .width(Fill)
         .height(Fill);
 
-        window_frame::WindowFrame::new(column![header, gallery], Message::Window).into()
+        let page: Element<'_, Message> =
+            chrome::WindowFrame::new(column![header, gallery], Message::Window).into();
+        let dialog = self.dialog_open.then(|| {
+            dialog::Dialog::new(
+                column![
+                    title::Title::new("Dialog").subtitle("Modal content can use any widget."),
+                    button::Button::new("Close")
+                        .kind(button::ButtonKind::Primary)
+                        .on_press(Message::DismissDialog),
+                ]
+                .spacing(18),
+                Message::DismissDialog,
+            )
+        });
+
+        dialog::WindowModal::new(page).dialog(dialog).into()
     }
 
     fn search_state(&self) -> search::SearchState<'_, Message> {
@@ -482,6 +544,37 @@ impl Gallery {
             search::SearchState::Results(results)
         }
     }
+}
+
+fn drop_target_example<'a>() -> drop_target::DropTarget<'a, Message> {
+    const ICON_CONTAINER_SIZE: f32 = 44.0;
+
+    let icon = container(
+        svg(Icon::Plus.handle())
+            .width(16)
+            .height(16)
+            .content_fit(ContentFit::Contain),
+    )
+    .width(ICON_CONTAINER_SIZE)
+    .height(ICON_CONTAINER_SIZE)
+    .align_x(Center)
+    .align_y(Center)
+    .style(|theme: &Theme| {
+        container::Style::default()
+            .background(theme.extended_palette().background.weak.color)
+            .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
+    });
+    let labels = column![
+        text("New Program").size(17).medium(),
+        text("Install or add a program.").size(14),
+    ]
+    .spacing(6);
+
+    let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Fill);
+
+    drop_target::DropTarget::new(content, Message::Noop)
+        .width(Fill)
+        .padding([72.0, 24.0])
 }
 
 fn action_grid_expander(title: &'static str) -> expander_row::ExpanderRow<'static, Message> {

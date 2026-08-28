@@ -8,7 +8,7 @@ use iced::{
     window,
 };
 
-use super::pressable::{Pressable, Status};
+use super::control::{Control, State};
 
 const WIDTH: f32 = 52.0;
 const HEIGHT: f32 = 32.0;
@@ -51,10 +51,11 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
             .on_toggle
             .map(|on_toggle| on_toggle(!switcher.is_on));
 
-        Pressable::new(knob)
+        Control::new(knob)
             .width(WIDTH)
             .height(HEIGHT)
             .padding((HEIGHT - KNOB) / 2.0)
+            .sensitive(active)
             .on_press_maybe(message)
             .style(track_style)
             .into()
@@ -143,7 +144,7 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
     }
 }
 
-fn track_style(theme: &Theme, _status: Status) -> button::Style {
+fn track_style(theme: &Theme, _state: State) -> button::Style {
     button::Style {
         background: Some(Background::Color(
             theme.extended_palette().background.weaker.color,

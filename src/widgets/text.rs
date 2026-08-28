@@ -1,42 +1,27 @@
-use iced::widget::Text;
+use iced::{Font, font::Weight, widget::Text};
 
 use super::style;
 
 pub trait TextExt: Sized {
-    fn h1(self) -> Self;
-    fn h2(self) -> Self;
     fn h3(self) -> Self;
     fn h4(self) -> Self;
-    fn h5(self) -> Self;
     fn title(self) -> Self;
     fn subtitle(self) -> Self;
     fn supporting(self) -> Self;
     fn body(self) -> Self;
     fn label(self) -> Self;
     fn detail(self) -> Self;
-    fn caption(self) -> Self;
+    fn medium(self) -> Self;
     fn muted(self) -> Self;
 }
 
 impl<'a> TextExt for Text<'a> {
-    fn h1(self) -> Self {
-        self.size(72)
-    }
-
-    fn h2(self) -> Self {
-        self.size(64)
-    }
-
     fn h3(self) -> Self {
         self.size(54)
     }
 
     fn h4(self) -> Self {
         self.size(44)
-    }
-
-    fn h5(self) -> Self {
-        self.size(40)
     }
 
     fn title(self) -> Self {
@@ -63,8 +48,11 @@ impl<'a> TextExt for Text<'a> {
         self.size(16)
     }
 
-    fn caption(self) -> Self {
-        self.size(14)
+    fn medium(self) -> Self {
+        self.font(Font {
+            weight: Weight::Medium,
+            ..Font::DEFAULT
+        })
     }
 
     fn muted(self) -> Self {

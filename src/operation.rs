@@ -1,5 +1,11 @@
+use std::sync::Arc;
+
 use bottles_core::{Operation, Progress, error};
-use iced::Task;
+use iced::{
+    Task,
+    futures::{SinkExt as _, StreamExt as _, future},
+};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone)]
 pub enum Event<K, T> {
@@ -11,46 +17,57 @@ pub enum Event<K, T> {
 pub enum Outcome<T> {
     Succeeded(T),
     Cancelled,
-    Failed(String),
+    Failed(Arc<error::Error>),
 }
 
-pub trait OperationExt: Sized {
-    type Output: Send + 'static;
-    /// Runs the operation and emits messages tagged with this specific run's key.
-    /// Include a generation in the key when the same business entity can be run again.
-    fn run<K>(self, key: K) -> Task<Event<K, Self::Output>>
-    where
-        K: Clone + Send + 'static;
-}
-
-impl<T> OperationExt for Operation<T>
+/// Drives an operation to completion while reporting progress for one keyed run.
+///
+/// Cancelling the returned token only requests cancellation. Keep the task alive
+/// until it emits [`Event::Finished`] so the operation can perform its cleanup.
+pub fn run<K, T>(operation: Operation<T>, key: K) -> (CancellationToken, Task<Event<K, T>>)
 where
     T: Send + 'static,
+    K: Clone + Send + 'static,
 {
-    type Output = T;
+    let cancellation = operation.cancellation_token();
+    let events = iced::stream::channel(
+        16,
+        move |mut output: iced::futures::channel::mpsc::Sender<Event<K, T>>| async move {
+            let mut progress = operation.progress();
+            let progress_key = key.clone();
+            let mut progress_output = output.clone();
+            let report_progress = async move {
+                while let Some(progress) = progress.next().await {
+                    if progress_output
+                        .send(Event::Progress {
+                            key: progress_key.clone(),
+                            progress,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            };
 
-    fn run<K>(self, key: K) -> Task<Event<K, T>>
-    where
-        K: Clone + Send + 'static,
-    {
-        let progress_key = key.clone();
-        let progress = Task::run(self.progress(), move |progress| Event::Progress {
-            key: progress_key.clone(),
-            progress,
-        });
-        let finished = Task::perform(self, move |result| Event::Finished {
-            key,
-            outcome: outcome(result),
-        });
+            let (result, ()) = future::join(operation, report_progress).await;
+            let _ = output
+                .send(Event::Finished {
+                    key,
+                    outcome: outcome(result),
+                })
+                .await;
+        },
+    );
 
-        Task::batch([progress, finished])
-    }
+    (cancellation, Task::run(events, std::convert::identity))
 }
 
 fn outcome<T>(result: error::Result<T>) -> Outcome<T> {
     match result {
         Ok(value) => Outcome::Succeeded(value),
         Err(error::Error::Cancelled) => Outcome::Cancelled,
-        Err(error) => Outcome::Failed(error.to_string()),
+        Err(error) => Outcome::Failed(Arc::new(error)),
     }
 }
