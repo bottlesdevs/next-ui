@@ -13,6 +13,7 @@ use crate::{
     icons::Icon,
     widgets::{
         button::{Button, ButtonKind},
+        dialog::Dialog,
         info_card::{InfoCard, Kind as InfoCardKind},
         popover::{Popover, PopoverItem},
         text_row::TextRow,
@@ -30,7 +31,10 @@ pub fn profile_events(
 pub enum Message {
     ToggleProfileSettings,
     ActivateProfile(Uuid),
-    Create(String),
+    OpenCreate,
+    CreateNameChanged(String),
+    SubmitCreate,
+    DismissCreate,
     ProfileUpdated {
         generation: u64,
         result: Result<Profile, Arc<CoreError>>,
@@ -46,53 +50,29 @@ pub enum Message {
 
 pub enum Output {
     ToggleSettings,
-    CreateFinished(Result<(), Arc<CoreError>>),
 }
 
-#[derive(Clone)]
-pub(crate) enum NewProfileMessage {
-    NameChanged(String),
-    Submit,
-    Cancel,
-}
-
-pub(super) struct NewProfileDialog {
+struct NewProfileDialog {
     name: String,
     error: Option<String>,
 }
 
 impl NewProfileDialog {
-    pub(super) fn new() -> Self {
+    fn new() -> Self {
         Self {
             name: String::new(),
             error: None,
         }
     }
 
-    pub(super) fn set_name(&mut self, name: String) {
-        self.name = name;
-    }
-
-    pub(super) fn submission(&self) -> String {
-        self.name.clone()
-    }
-
-    pub(super) fn clear_error(&mut self) {
-        self.error = None;
-    }
-
-    pub(super) fn set_error(&mut self, error: String) {
-        self.error = Some(error);
-    }
-
-    pub(super) fn view(&self, pending: bool) -> iced::widget::Column<'_, NewProfileMessage> {
+    fn view(&self, pending: bool) -> iced::widget::Column<'_, Message> {
         let mut content = column![
             container(Title::new("New profile").subtitle("Give this profile a name."))
                 .center_x(iced::Fill),
             TextRow::new("Profile name", &self.name)
                 .icon(Icon::Person)
-                .on_input(NewProfileMessage::NameChanged)
-                .on_submit(NewProfileMessage::Submit),
+                .on_input(Message::CreateNameChanged)
+                .on_submit(Message::SubmitCreate),
         ]
         .spacing(18);
 
@@ -107,11 +87,11 @@ impl NewProfileDialog {
             row![
                 Button::new("Create")
                     .kind(ButtonKind::Primary)
-                    .on_press(NewProfileMessage::Submit)
+                    .on_press(Message::SubmitCreate)
                     .loading(pending),
                 Button::new("Cancel")
                     .kind(ButtonKind::Transparent)
-                    .on_press(NewProfileMessage::Cancel),
+                    .on_press(Message::DismissCreate),
             ]
             .spacing(12),
         )
@@ -130,6 +110,7 @@ pub struct State {
     profiles: Profiles,
     selected_id: Uuid,
     name_draft: String,
+    new_profile: Option<NewProfileDialog>,
     last_error: Option<String>,
     request_generation: u64,
     request_kind: Option<RequestKind>,
@@ -141,6 +122,7 @@ impl State {
             profiles,
             selected_id: selected.id(),
             name_draft: selected.name().to_owned(),
+            new_profile: None,
             last_error: None,
             request_generation: 0,
             request_kind: None,
@@ -169,8 +151,17 @@ impl State {
         self.request_kind.is_some()
     }
 
-    pub(super) fn creating_profile(&self) -> bool {
-        self.request_kind == Some(RequestKind::Create)
+    pub(super) fn dialog(&self) -> Option<Dialog<'_, Message>> {
+        self.new_profile.as_ref().map(|dialog| {
+            Dialog::new(
+                dialog.view(self.request_kind == Some(RequestKind::Create)),
+                Message::DismissCreate,
+            )
+        })
+    }
+
+    pub(super) fn dismiss_dialog(&mut self) {
+        self.new_profile = None;
     }
 
     pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
@@ -179,6 +170,17 @@ impl State {
             Message::ToggleProfileSettings => {
                 output = Some(Output::ToggleSettings);
             }
+            Message::OpenCreate => {
+                if self.request_kind.is_none() && self.new_profile.is_none() {
+                    self.new_profile = Some(NewProfileDialog::new());
+                }
+            }
+            Message::CreateNameChanged(name) => {
+                if let Some(dialog) = &mut self.new_profile {
+                    dialog.name = name;
+                }
+            }
+            Message::DismissCreate => self.dismiss_dialog(),
             Message::ActivateProfile(id) => {
                 if self.request_kind.is_none() {
                     let profiles = self.profiles.clone();
@@ -192,16 +194,20 @@ impl State {
                     );
                 }
             }
-            Message::Create(draft) => {
+            Message::SubmitCreate => {
                 if self.request_kind.is_some() {
                     return (Task::none(), None);
                 }
+                let Some(dialog) = &mut self.new_profile else {
+                    return (Task::none(), None);
+                };
 
                 let profiles = self.profiles.clone();
-                let name = if draft.trim().is_empty() {
+                dialog.error = None;
+                let name = if dialog.name.trim().is_empty() {
                     "New profile".to_owned()
                 } else {
-                    draft.trim().to_owned()
+                    dialog.name.trim().to_owned()
                 };
 
                 let generation = self.begin_request(RequestKind::Create);
@@ -219,7 +225,7 @@ impl State {
             } if generation == self.request_generation => {
                 self.last_error = None;
                 if self.request_kind == Some(RequestKind::Create) {
-                    output = Some(Output::CreateFinished(Ok(())));
+                    self.new_profile = None;
                 }
                 self.request_kind = None;
             }
@@ -228,7 +234,9 @@ impl State {
                 result: Err(error),
             } if generation == self.request_generation => {
                 if self.request_kind == Some(RequestKind::Create) {
-                    output = Some(Output::CreateFinished(Err(error)));
+                    if let Some(dialog) = &mut self.new_profile {
+                        dialog.error = Some(error.to_string());
+                    }
                 } else {
                     self.last_error = Some(error.to_string());
                 }
@@ -321,11 +329,11 @@ mod tests {
     #[test]
     fn profile_submission_does_not_consume_the_dialog_draft() {
         let mut dialog = NewProfileDialog::new();
-        dialog.set_name("Player one".into());
+        dialog.name = "Player one".into();
 
-        assert_eq!(dialog.submission(), "Player one");
-        dialog.set_error("creation failed".into());
-        assert_eq!(dialog.submission(), "Player one");
+        assert_eq!(dialog.name, "Player one");
+        dialog.error = Some("creation failed".into());
+        assert_eq!(dialog.name, "Player one");
         assert_eq!(dialog.error.as_deref(), Some("creation failed"));
     }
 }

@@ -69,7 +69,6 @@ enum Panel {
 }
 
 enum Modal {
-    NewProfile(profiles::NewProfileDialog),
     AccountLogin(accounts::LoginDialog),
 }
 
@@ -162,8 +161,6 @@ pub enum Message {
     DetailTabSelected(DetailTab),
     BottleSelected(Uuid),
     Back,
-    OpenNewProfile,
-    NewProfileDialog(profiles::NewProfileMessage),
     AccountLoginDialog(accounts::LoginMessage),
     AddBottle,
     CancelBottle,
@@ -215,7 +212,6 @@ impl Message {
 impl Modal {
     fn cancel_message(&self) -> Message {
         match self {
-            Self::NewProfile(_) => Message::NewProfileDialog(profiles::NewProfileMessage::Cancel),
             Self::AccountLogin(_) => Message::AccountLoginDialog(accounts::LoginMessage::Cancel),
         }
     }
@@ -281,6 +277,7 @@ impl State {
     pub fn cancel_active_operations(&mut self) {
         self.draining = true;
         self.modal = None;
+        self.profiles.dismiss_dialog();
         self.bottles.cancel_creation();
         self.accounts.cancel_active_operation();
         self.library.cancel_active_operations();
@@ -333,42 +330,12 @@ impl State {
             }
             Message::Back => {
                 self.modal = None;
+                self.profiles.dismiss_dialog();
                 self.accounts.cancel_active_operation();
                 if self.panel_open && self.panel == Panel::Profiles {
                     self.panel_open = false;
                 } else {
                     self.route = Route::Bottles;
-                }
-            }
-            Message::OpenNewProfile => {
-                if !self.profiles.has_active_operation() {
-                    self.accounts.cancel_active_operation();
-                    self.modal = Some(Modal::NewProfile(profiles::NewProfileDialog::new()));
-                }
-            }
-            Message::NewProfileDialog(profiles::NewProfileMessage::NameChanged(name)) => {
-                if let Some(Modal::NewProfile(dialog)) = &mut self.modal {
-                    dialog.set_name(name);
-                }
-            }
-            Message::NewProfileDialog(profiles::NewProfileMessage::Submit) => {
-                if self.profiles.has_active_operation() {
-                    return Task::none();
-                }
-                let Some(Modal::NewProfile(dialog)) = &mut self.modal else {
-                    return Task::none();
-                };
-                dialog.clear_error();
-                let submission = dialog.submission();
-                return self
-                    .profiles
-                    .update(profiles::Message::Create(submission))
-                    .0
-                    .map(Message::Profiles);
-            }
-            Message::NewProfileDialog(profiles::NewProfileMessage::Cancel) => {
-                if matches!(self.modal, Some(Modal::NewProfile(_))) {
-                    self.modal = None;
                 }
             }
             Message::AccountLoginDialog(accounts::LoginMessage::Cancel) => {
@@ -443,27 +410,22 @@ impl State {
                 return self.settings.update(message, &ctx).map(Message::Settings);
             }
             Message::Profiles(message) => {
+                if matches!(message, profiles::Message::OpenCreate) {
+                    self.accounts.cancel_active_operation();
+                    self.modal = None;
+                }
                 let (task, output) = self.profiles.update(message);
                 let task = task.map(Message::Profiles);
                 return match output {
                     Some(profiles::Output::ToggleSettings) => {
                         if self.panel_open && self.panel == Panel::Profiles {
                             self.panel_open = false;
+                            self.profiles.dismiss_dialog();
+                            self.modal = None;
+                            self.accounts.cancel_active_operation();
                         } else {
                             self.panel = Panel::Profiles;
                             self.panel_open = true;
-                        }
-                        task
-                    }
-                    Some(profiles::Output::CreateFinished(Ok(()))) => {
-                        if matches!(self.modal, Some(Modal::NewProfile(_))) {
-                            self.modal = None;
-                        }
-                        task
-                    }
-                    Some(profiles::Output::CreateFinished(Err(error))) => {
-                        if let Some(Modal::NewProfile(dialog)) = &mut self.modal {
-                            dialog.set_error(error.to_string());
                         }
                         task
                     }
@@ -611,18 +573,23 @@ impl State {
     }
 
     pub(crate) fn dialog(&self) -> Option<Dialog<'_, Message>> {
-        let modal = self.modal.as_ref()?;
-        let content = match modal {
-            Modal::AccountLogin(dialog) => {
-                Element::from(dialog.view()).map(Message::AccountLoginDialog)
-            }
-            Modal::NewProfile(dialog) => {
-                Element::from(dialog.view(self.profiles.creating_profile()))
-                    .map(Message::NewProfileDialog)
-            }
-        };
+        if !self.panel_open || self.panel != Panel::Profiles {
+            return None;
+        }
 
-        Some(Dialog::new(content, modal.cancel_message()))
+        let profile = self
+            .profiles
+            .dialog()
+            .map(|dialog| dialog.map(Message::Profiles));
+        let account = self.modal.as_ref().map(|modal| match modal {
+            Modal::AccountLogin(dialog) => Dialog::new(
+                Element::from(dialog.view()).map(Message::AccountLoginDialog),
+                modal.cancel_message(),
+            ),
+        });
+        debug_assert!(profile.is_none() || account.is_none());
+
+        profile.or(account)
     }
 
     fn primary_page(&self, context: PaneContext) -> Element<'_, Message> {
@@ -670,7 +637,7 @@ impl State {
             .end(header_button(
                 "New profile",
                 Icon::Plus,
-                Message::OpenNewProfile,
+                Message::Profiles(profiles::Message::OpenCreate),
             ));
 
         let content: Element<'_, Message> = {
