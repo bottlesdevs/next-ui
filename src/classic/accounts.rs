@@ -18,7 +18,7 @@ use crate::{
         info_row::InfoRow,
         list_row::ListRow,
         picker_row::PickerRow,
-        popover::{Popover, PopoverItem},
+        popover::{PopoverMenu, PopoverMenuItem},
         row_group::RowGroup,
         text_row::TextRow,
         title::Title,
@@ -348,7 +348,7 @@ impl State {
         let link_trigger = PickerRow::new("Link a storefront account")
             .description("Choose the account provider to connect")
             .on_press(());
-        let mut link_popover = Popover::new(link_trigger)
+        let mut link_menu = PopoverMenu::new(link_trigger)
             .footer("Not listed, install a provider plugin", Message::Noop);
 
         for provider in ctx.profiles.account_providers() {
@@ -360,14 +360,14 @@ impl State {
                 continue;
             }
 
-            link_popover = link_popover.add(
-                PopoverItem::new(provider.name.clone())
+            link_menu = link_menu.item(
+                PopoverMenuItem::new(provider.name.clone())
                     .icon(provider_icon(&provider))
                     .action("Link", Message::BeginLogin(provider)),
             );
         }
 
-        let mut content = column![accounts, container(link_popover).width(iced::Fill)].spacing(18);
+        let mut content = column![accounts, container(link_menu).width(iced::Fill)].spacing(18);
         if let Some(error) = &self.last_error {
             content = content.push(
                 crate::widgets::info_card::InfoCard::new(

@@ -19,10 +19,8 @@ use super::{
     spacing,
 };
 
-/// A single row inside a [`Popover`]'s panel: either a plain navigable row, or one with a
-/// trailing action button (e.g. "Install"). Matches the mixed row kinds seen in the
-/// account-linking / storefront-picker mockups.
-pub struct PopoverItem<'a, Message> {
+/// A row in a [`PopoverMenu`], optionally containing a trailing action.
+pub struct PopoverMenuItem<'a, Message> {
     title: Fragment<'a>,
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
@@ -37,7 +35,7 @@ pub struct PopoverItem<'a, Message> {
     selected: bool,
 }
 
-impl<'a, Message> PopoverItem<'a, Message> {
+impl<'a, Message> PopoverMenuItem<'a, Message> {
     pub fn new(title: impl IntoFragment<'a>) -> Self {
         Self {
             title: title.into_fragment(),
@@ -92,16 +90,14 @@ impl<'a, Message> PopoverItem<'a, Message> {
     }
 }
 
-/// A trigger element that opens a floating, anchored panel of [`PopoverItem`]s with an
-/// optional pinned footer row, used for the account-linking/storefront-picker and profile
-/// switcher flows.
-pub struct Popover<'a, Message> {
+/// A trigger that opens an anchored menu of [`PopoverMenuItem`]s.
+pub struct PopoverMenu<'a, Message> {
     trigger: Element<'a, ()>,
-    items: Vec<PopoverItem<'a, Message>>,
+    items: Vec<PopoverMenuItem<'a, Message>>,
     footer: Option<(&'a str, Message)>,
 }
 
-impl<'a, Message> Popover<'a, Message> {
+impl<'a, Message> PopoverMenu<'a, Message> {
     pub fn new(trigger: impl Into<Element<'a, ()>>) -> Self {
         Self {
             trigger: trigger.into(),
@@ -110,7 +106,7 @@ impl<'a, Message> Popover<'a, Message> {
         }
     }
 
-    pub fn add(mut self, item: PopoverItem<'a, Message>) -> Self {
+    pub fn item(mut self, item: PopoverMenuItem<'a, Message>) -> Self {
         self.items.push(item);
         self
     }
@@ -121,32 +117,32 @@ impl<'a, Message> Popover<'a, Message> {
     }
 }
 
-impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
-    fn from(popover: Popover<'a, Message>) -> Self {
-        let body: Element<'a, Message> = if popover.items.is_empty() {
+impl<'a, Message: Clone + 'a> From<PopoverMenu<'a, Message>> for Element<'a, Message> {
+    fn from(menu: PopoverMenu<'a, Message>) -> Self {
+        let body: Element<'a, Message> = if menu.items.is_empty() {
             column![].into()
         } else {
             let mut rows = column![];
 
-            for item in popover.items {
+            for item in menu.items {
                 rows = rows.push(item_row(item));
             }
 
             container(rows).padding(spacing::MD).into()
         };
 
-        let footer = popover
+        let footer = menu
             .footer
             .map(|(label, message)| panel_footer(label, message));
 
-        Element::new(PopoverWidget {
-            trigger: popover.trigger,
+        Element::new(PopoverMenuWidget {
+            trigger: menu.trigger,
             panel: PanelContent::new(scrollable(body), footer),
         })
     }
 }
 
-fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<'a, Message> {
+fn item_row<'a, Message: Clone + 'a>(item: PopoverMenuItem<'a, Message>) -> Element<'a, Message> {
     let mut content = row_content(item.title, item.subtitle, item.icon);
 
     if item.selected {
@@ -184,7 +180,7 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
     }
 }
 
-struct PopoverWidget<'a, Message> {
+struct PopoverMenuWidget<'a, Message> {
     trigger: Element<'a, ()>,
     panel: PanelContent<'a, Message>,
 }
@@ -194,13 +190,13 @@ fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct State {
-    pub(super) open: bool,
-    pub(super) focus_panel: bool,
-    pub(super) focus_trigger: bool,
+struct State {
+    open: bool,
+    focus_panel: bool,
+    focus_trigger: bool,
 }
 
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverMenuWidget<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }

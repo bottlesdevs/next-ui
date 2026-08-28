@@ -270,25 +270,25 @@ impl Gallery {
         let selected = self
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
-        let popover = popover::Popover::new(
+        let popover_menu = popover::PopoverMenu::new(
             button::Button::new("Open popover")
                 .trailing_icon(Icon::DownCaret)
                 .on_press(()),
         )
-        .add(
-            popover::PopoverItem::new("Current profile")
+        .item(
+            popover::PopoverMenuItem::new("Current profile")
                 .subtitle("Selected")
                 .icon(Icon::Person)
                 .selected(true)
                 .on_select(Message::Noop),
         )
-        .add(
-            popover::PopoverItem::new("Available account")
+        .item(
+            popover::PopoverMenuItem::new("Available account")
                 .subtitle("Child action captures the row click")
                 .action("Link", Message::Noop),
         )
-        .add(
-            popover::PopoverItem::new("Unavailable account")
+        .item(
+            popover::PopoverMenuItem::new("Unavailable account")
                 .disabled_action("Taken")
                 .tooltip(text("Already linked to another profile")),
         )
@@ -478,7 +478,7 @@ impl Gallery {
                     section("Cards", cards),
                     section("Tabs", tabs),
                     section("Search", search),
-                    section("Popover", popover),
+                    section("Popover", popover_menu),
                     section("Rows", fields),
                     section("Row group", row_group),
                     section("Overlap-aware expanders", multiple_expanders),
