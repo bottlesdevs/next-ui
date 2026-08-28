@@ -1,4 +1,4 @@
-mod anchored_panel;
+mod anchored_overlay;
 mod control;
 mod style;
 mod surface;

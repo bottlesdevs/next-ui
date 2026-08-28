@@ -10,8 +10,8 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    anchored_panel::{
-        AnchoredPanel, PanelContent, footer as panel_footer, row_content,
+    anchored_overlay::{
+        AnchoredOverlay, PanelContent, Width, footer as panel_footer, row_content,
         row_style as panel_row_style,
     },
     button::{Button, ButtonKind},
@@ -357,14 +357,26 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
                 .map(|content| content.map(&unexpected_trigger_overlay_message::<Message>));
         }
 
-        Some(overlay::Element::new(Box::new(AnchoredPanel::popover(
-            bounds.position() + translation,
-            bounds.height,
-            bounds.width,
+        let State {
+            open,
+            focus_panel,
+            focus_trigger,
+        } = state;
+        let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
+
+        Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
+            anchor,
             *viewport,
             &mut self.panel,
             &mut children[1],
-            state,
+            Width::NaturalAtLeastAnchor,
+            spacing::SM,
+            Some(focus_panel),
+            move |_| {
+                *open = false;
+                *focus_trigger = true;
+                true
+            },
         ))))
     }
 }

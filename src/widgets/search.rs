@@ -14,8 +14,8 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    anchored_panel::{
-        AnchoredPanel, PanelContent, footer as panel_footer, row_content,
+    anchored_overlay::{
+        AnchoredOverlay, Dismissal, PanelContent, Width, footer as panel_footer, row_content,
         row_style as panel_row_style,
     },
     button::{Button, ButtonKind},
@@ -259,6 +259,12 @@ struct SearchLocal {
     query: String,
 }
 
+impl SearchLocal {
+    fn popup_open(&self, visible: bool) -> bool {
+        visible && self.focused && !self.dismissed
+    }
+}
+
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<SearchLocal>()
@@ -327,6 +333,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_mut::<SearchLocal>();
+        let popup_open = state.popup_open(self.visible);
 
         if state.focused
             && let Event::Keyboard(keyboard::Event::KeyPressed {
@@ -335,7 +342,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         {
             let result_count = self.selections.len();
             let handled = match key.as_ref() {
-                keyboard::Key::Named(key::Named::ArrowDown) if result_count > 0 => {
+                keyboard::Key::Named(key::Named::ArrowDown) if popup_open && result_count > 0 => {
                     state.highlighted = Some(
                         state
                             .highlighted
@@ -343,31 +350,34 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
                     );
                     true
                 }
-                keyboard::Key::Named(key::Named::ArrowUp) if result_count > 0 => {
+                keyboard::Key::Named(key::Named::ArrowUp) if popup_open && result_count > 0 => {
                     state.highlighted = Some(state.highlighted.map_or(result_count - 1, |index| {
                         (index + result_count - 1) % result_count
                     }));
                     true
                 }
-                keyboard::Key::Named(key::Named::Home) if result_count > 0 => {
+                keyboard::Key::Named(key::Named::Home) if popup_open && result_count > 0 => {
                     state.highlighted = Some(0);
                     true
                 }
-                keyboard::Key::Named(key::Named::End) if result_count > 0 => {
+                keyboard::Key::Named(key::Named::End) if popup_open && result_count > 0 => {
                     state.highlighted = Some(result_count - 1);
                     true
                 }
                 keyboard::Key::Named(key::Named::Enter) => {
-                    if let Some(index) = state.highlighted {
+                    if let Some(index) = state.highlighted.filter(|_| popup_open) {
                         state.dismissed = true;
                         shell.publish(self.selections[index].clone());
+                        true
                     } else if let Some(message) = &self.on_submit {
                         state.dismissed = true;
                         shell.publish(message.clone());
+                        true
+                    } else {
+                        false
                     }
-                    true
                 }
-                keyboard::Key::Named(key::Named::Escape) => {
+                keyboard::Key::Named(key::Named::Escape) if popup_open => {
                     state.dismissed = true;
                     true
                 }
@@ -458,21 +468,49 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
 
         let bounds = layout.bounds();
 
-        Some(overlay::Element::new(Box::new(AnchoredPanel::search(
-            bounds.position() + translation,
-            bounds.height,
-            bounds.width,
+        let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
+
+        Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
+            anchor,
             *viewport,
             &mut self.panel,
             &mut children[1],
-            &mut state.dismissed,
+            Width::MatchAnchor,
+            0.0,
+            None,
+            move |reason| {
+                if reason == Dismissal::ContentMessage {
+                    state.dismissed = true;
+                    true
+                } else {
+                    false
+                }
+            },
         ))))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::reconcile_index;
+    use super::{SearchLocal, reconcile_index};
+
+    #[test]
+    fn popup_is_open_only_while_visible_focused_and_not_dismissed() {
+        let mut state = SearchLocal {
+            focused: true,
+            ..SearchLocal::default()
+        };
+
+        assert!(state.popup_open(true));
+        assert!(!state.popup_open(false));
+
+        state.dismissed = true;
+        assert!(!state.popup_open(true));
+
+        state.dismissed = false;
+        state.focused = false;
+        assert!(!state.popup_open(true));
+    }
 
     #[test]
     fn preserves_highlight_across_result_changes() {
