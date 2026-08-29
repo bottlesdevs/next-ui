@@ -33,7 +33,7 @@ use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, Profil
 use iced::{
     Element, Fill, Subscription, Task,
     keyboard::{self, key},
-    widget::{column, container, scrollable},
+    widget::{column, container, keyed_column, scrollable},
 };
 use layout::{PaneContext, Side, navigation_split, side_panel};
 use uuid::Uuid;
@@ -753,10 +753,25 @@ impl State {
             DetailTab::Snapshots => self.snapshots.view().map(Message::Snapshots),
         };
 
-        column![header, scroll_panel(content)]
+        let mut body = column![scroll_content(content)].width(Fill).height(Fill);
+
+        if let Some(state) = self.selected_bottle_state() {
+            body = body.push(
+                keyed_column([(
+                    state.id(),
+                    self.bottles.bottle_status(state).map(Message::Bottles),
+                )])
+                .width(Fill),
+            );
+        }
+
+        let body = container(body)
             .width(Fill)
             .height(Fill)
-            .into()
+            .style(theme::panel)
+            .clip(true);
+
+        column![header, body].width(Fill).height(Fill).into()
     }
 }
 
@@ -772,6 +787,15 @@ fn exclusive_dialog<'a>(
 }
 
 fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(scroll_content(content))
+        .width(Fill)
+        .height(Fill)
+        .style(theme::panel)
+        .clip(true)
+        .into()
+}
+
+fn scroll_content<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     let content = container(content).width(Fill).max_width(CONTENT_MAX_WIDTH);
     let content = container(content).padding(24).center_x(Fill);
 
@@ -789,8 +813,6 @@ fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Mes
     )
     .width(Fill)
     .height(Fill)
-    .style(theme::panel)
-    .clip(true)
     .into()
 }
 

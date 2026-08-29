@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bottles_core::{Addons, Bottle, BottleManager, BottleState, Progress, Slot, Storage};
+use bottles_core::{Addons, Bottle, BottleManager, BottleState, Slot, Storage};
 use iced::{
     Center, ContentFit, Element, Length, Task, Theme,
     widget::{Grid, column, container, image, responsive, row, svg, text},
@@ -18,11 +18,12 @@ use crate::{
         action_row::{ActionRow, State as ActionRowState},
         artwork_card::{ArtworkCard, CardAction},
         drop_target::DropTarget,
+        info_card::{InfoCard, Kind as InfoCardKind},
         picker_row::PickerRow,
         row_group::RowGroup,
         selector_row::SelectorRow,
         spacing,
-        status_bar::{StatusBar, StatusState},
+        status_bar::{BottleStatus, StatusBar},
         text::TextExt as _,
         text_row::TextRow,
     },
@@ -61,7 +62,6 @@ pub fn bottle_state_events(
 pub enum Message {
     CreateBottle,
     BottleCreation(operation::Event<u64, Bottle>),
-    ToggleCreationLog,
     BottleNameChanged(String),
     RunnerSelected(RunnerOption),
     PurposeSelected(&'static str),
@@ -82,9 +82,6 @@ pub struct State {
     selected_runner: Option<RunnerOption>,
     purpose: &'static str,
     architecture: &'static str,
-    creation_log: String,
-    creation_log_expanded: bool,
-    creation_failed: bool,
     creation_generation: u64,
     creation_cancellation: Option<CancellationToken>,
     program_launches: usize,
@@ -110,9 +107,6 @@ impl State {
             selected_runner,
             purpose: PURPOSES[0],
             architecture: ARCHITECTURES[0],
-            creation_log: String::new(),
-            creation_log_expanded: false,
-            creation_failed: false,
             creation_generation: 0,
             creation_cancellation: None,
             program_launches: 0,
@@ -125,8 +119,6 @@ impl State {
     }
 
     pub fn reset_creation(&mut self) {
-        self.creation_log.clear();
-        self.creation_failed = false;
         self.last_error = None;
     }
 
@@ -155,20 +147,10 @@ impl State {
                     let (cancellation, task) = operation::run(operation, generation);
                     self.creation_cancellation = Some(cancellation);
 
-                    self.creation_log.clear();
-                    self.creation_failed = false;
                     self.last_error = None;
 
                     return (task.map(Message::BottleCreation), None);
                 }
-            }
-            Message::BottleCreation(operation::Event::Progress { key, progress })
-                if key == self.creation_generation =>
-            {
-                if !self.creation_log.is_empty() {
-                    self.creation_log.push('\n');
-                }
-                self.creation_log.push_str(&progress_log_line(&progress));
             }
             Message::BottleCreation(operation::Event::Finished { key, outcome })
                 if key == self.creation_generation =>
@@ -180,25 +162,12 @@ impl State {
                         output = Some(Output::Created);
                     }
                     operation::Outcome::Cancelled => {
-                        self.creation_failed = true;
                         self.last_error = Some("Bottle creation was cancelled.".into());
                     }
                     operation::Outcome::Failed(error) => {
-                        self.creation_failed = true;
                         self.last_error = Some(error.to_string());
                     }
                 }
-
-                if let Some(error) = &self.last_error {
-                    if !self.creation_log.is_empty() {
-                        self.creation_log.push('\n');
-                    }
-                    self.creation_log
-                        .push_str(&format!("{} Failed: {error}", timestamp()));
-                }
-            }
-            Message::ToggleCreationLog => {
-                self.creation_log_expanded = !self.creation_log_expanded;
             }
             Message::BottleNameChanged(name) => self.bottle_name = name,
             Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
@@ -270,33 +239,21 @@ impl State {
         ]
         .spacing(12);
 
-        let mut page = column![content];
-
-        if !self.creation_log.is_empty() {
-            let state = if self.creation_failed {
-                StatusState::Failed
-            } else {
-                StatusState::Starting
-            };
-
-            page = page.push(
-                StatusBar::new(
-                    self.architecture,
-                    self.selected_runner
-                        .as_ref()
-                        .map(|runner| runner.label.as_str())
-                        .unwrap_or_default(),
-                    state,
-                )
-                .log(
-                    &self.creation_log,
-                    self.creation_log_expanded,
-                    Message::ToggleCreationLog,
-                ),
-            );
+        if let Some(error) = &self.last_error {
+            column![
+                InfoCard::new(InfoCardKind::Error, "Could not create bottle", error)
+                    .width(Length::Fill),
+                content,
+            ]
+            .spacing(12)
+            .into()
+        } else {
+            content.into()
         }
+    }
 
-        page.into()
+    pub fn bottle_status<'a>(&self, state: &'a BottleState) -> Element<'a, Message> {
+        StatusBar::new("Win64", state.runner().name(), BottleStatus::Stopped).into()
     }
 
     pub fn program_grid<'a>(&self, bottle: Bottle, state: &'a BottleState) -> Element<'a, Message> {
@@ -379,30 +336,4 @@ fn sample_image(id: Uuid) -> image::Handle {
             second[1], second[2], 255, first[0], first[1], first[2], 255,
         ],
     )
-}
-
-pub fn timestamp() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default();
-
-    format!(
-        "{:02}:{:02}:{:02}",
-        (seconds / 3600) % 24,
-        (seconds / 60) % 60,
-        seconds % 60
-    )
-}
-
-pub fn progress_log_line(progress: &Progress) -> String {
-    match progress.transfer.as_ref().and_then(|_| progress.fraction()) {
-        Some(fraction) => format!(
-            "{} {} ({:.0}%)",
-            timestamp(),
-            progress.stage,
-            fraction * 100.0
-        ),
-        None => format!("{} {}", timestamp(), progress.stage),
-    }
 }
