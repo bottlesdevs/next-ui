@@ -559,9 +559,14 @@ impl State {
                     .map(Message::Profiles),
             );
         let content: Element<'_, Message> = match self.primary_tab() {
-            PrimaryTab::Bottles => self
-                .bottles
-                .rows_view(&self.read_model.bottle_states, Message::BottleSelected),
+            PrimaryTab::Bottles => self.bottles.rows_view(
+                &self.read_model.bottle_states,
+                match self.route {
+                    Route::Bottle { id, .. } => Some(id),
+                    _ => None,
+                },
+                Message::BottleSelected,
+            ),
             PrimaryTab::Library => self.library.view().map(Message::Library),
         };
 

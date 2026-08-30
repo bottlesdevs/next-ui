@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bottles_core::{Addons, Bottle, BottleManager, BottleState, Slot, Storage};
 use iced::{
     Center, Element, Length, Task, Theme,
-    widget::{Grid, column, container, image, responsive, row, text},
+    widget::{Grid, column, container, responsive, row, text},
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -19,8 +19,8 @@ use crate::{
         artwork_card::{ArtworkCard, CardAction},
         drop_target::DropTarget,
         info_card::{InfoCard, Kind as InfoCardKind},
+        list_row::ListRow,
         picker_row::PickerRow,
-        row_group::RowGroup,
         selector_row::SelectorRow,
         spacing,
         status_bar::{BottleStatus, StatusBar},
@@ -29,7 +29,8 @@ use crate::{
     },
 };
 
-use super::CONTENT_GRID_BREAKPOINT;
+const BOTTLE_LIST_MAX_WIDTH: f32 = 720.0;
+const BOTTLE_TRACK_MIN_WIDTH: f32 = 300.0;
 
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
@@ -200,21 +201,32 @@ impl State {
     pub fn rows_view<'a, Msg: 'static + Clone>(
         &self,
         bottle_states: &'a [Arc<BottleState>],
+        selected_id: Option<Uuid>,
         on_select: impl Fn(Uuid) -> Msg + 'a,
     ) -> Element<'a, Msg> {
         responsive(move |size| {
-            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
+            let columns = usize::from(size.width >= BOTTLE_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
+            let rows = bottle_states.iter().map(|state| {
+                let row: ListRow<'_, Msg> =
+                    ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
+                        .description(state.runner().name())
+                        .icon(Icon::Bottles)
+                        .into();
 
-            bottle_states
-                .iter()
-                .fold(RowGroup::new().columns(columns), |rows, state| {
-                    rows.row(
-                        ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
-                            .description(state.runner().name())
-                            .icon(Icon::Bottles),
-                    )
-                })
-                .into()
+                row.selected(selected_id == Some(state.id())).into()
+            });
+            let grid = Grid::with_children(rows)
+                .columns(columns)
+                .spacing(spacing::SM)
+                .height(Length::Shrink);
+
+            container(
+                container(grid)
+                    .width(Length::Fill)
+                    .max_width(BOTTLE_LIST_MAX_WIDTH),
+            )
+            .center_x(Length::Fill)
+            .into()
         })
         .height(Length::Shrink)
         .into()
@@ -258,24 +270,18 @@ impl State {
 
     pub fn program_grid<'a>(&self, bottle: Bottle, state: &'a BottleState) -> Element<'a, Message> {
         let programs = state.programs().collect::<Vec<_>>();
+        let items = std::iter::once(new_program_target().into()).chain(
+            programs
+                .iter()
+                .copied()
+                .map(|program| program_card(bottle.clone(), program)),
+        );
 
-        responsive(move |size| {
-            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
-            let items = std::iter::once(new_program_target().into()).chain(
-                programs
-                    .iter()
-                    .copied()
-                    .map(|program| program_card(bottle.clone(), program)),
-            );
-
-            Grid::with_children(items)
-                .columns(columns)
-                .spacing(12)
-                .height(Length::Shrink)
-                .into()
-        })
-        .height(Length::Shrink)
-        .into()
+        Grid::with_children(items)
+            .fluid(400.0)
+            .spacing(spacing::MD)
+            .height(Length::Shrink)
+            .into()
     }
 }
 
@@ -306,29 +312,13 @@ fn new_program_target<'a>() -> DropTarget<'a, Message> {
 }
 
 fn program_card(bottle: Bottle, program: &bottles_core::Program) -> Element<'_, Message> {
-    ArtworkCard::new(program.name(), program.executable())
-        .secondary(CardAction::new("Settings", Icon::Gear).on_press(Message::Noop))
+    ArtworkCard::new(program.name(), "Installed program")
+        .menu(CardAction::new("More actions", Icon::EllipsisVertical))
         .primary(
             CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram {
                 bottle,
                 program_id: program.id(),
             }),
         )
-        .banner(sample_image(program.id()))
         .into()
-}
-
-fn sample_image(id: Uuid) -> image::Handle {
-    let seed = id.as_bytes()[0] % 16;
-    let first = [45 + seed * 5, 50 + seed * 3, 65 + seed * 4];
-    let second = [first[2], first[0] + 20, first[1] + 10];
-
-    image::Handle::from_rgba(
-        2,
-        2,
-        vec![
-            first[0], first[1], first[2], 255, second[0], second[1], second[2], 255, second[0],
-            second[1], second[2], 255, first[0], first[1], first[2], 255,
-        ],
-    )
 }
