@@ -9,7 +9,7 @@ use super::{
     text::TextExt as _,
 };
 
-pub(crate) const BANNER_HEIGHT: f32 = 180.0;
+pub(crate) const BANNER_HEIGHT: f32 = 132.0;
 
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
@@ -59,9 +59,12 @@ impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
 }
 
 pub(crate) fn labels<'a, Message: 'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Message> {
-    column![text(title).title(), text(subtitle).subtitle().muted(),]
-        .spacing(spacing::XS)
-        .into()
+    column![
+        text(title).label().medium(),
+        text(subtitle).detail().muted(),
+    ]
+    .spacing(spacing::XS)
+    .into()
 }
 
 pub(crate) fn image_content<'a, Message: 'a>(

@@ -11,8 +11,8 @@ use super::{
     spacing,
 };
 
-const ACTION_DIAMETER: f32 = 52.0;
-const PRIMARY_ACTION_DIAMETER: f32 = 68.0;
+const ACTION_DIAMETER: f32 = 40.0;
+const PRIMARY_ACTION_DIAMETER: f32 = 48.0;
 
 pub struct CardAction<'a, Message> {
     label: &'a str,

@@ -84,7 +84,7 @@ impl<'a, Message: 'a> Default for RowGroup<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Message> {
     fn from(group: RowGroup<'a, Message>) -> Self {
-        let mut rows = column![].spacing(spacing::MD);
+        let mut rows = column![].spacing(spacing::SM);
         let mut entries = group.entries.into_iter();
 
         loop {
@@ -97,7 +97,7 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
             rows = rows.push(group_line(line, group.columns, group.enabled, false));
         }
 
-        let mut content = column![].spacing(spacing::MD);
+        let mut content = column![].spacing(spacing::SM);
 
         if group.title.is_some() || group.description.is_some() {
             let mut heading = column![].spacing(spacing::XS);
