@@ -7,7 +7,10 @@ use std::sync::Arc;
 use bottles_core::BottleState;
 #[cfg(target_os = "linux")]
 use bottles_core::{Bottle, MangoHudConfig, error::Error as CoreError};
-use iced::{Element, widget::column};
+use iced::{
+    Element, Length,
+    widget::{column, responsive},
+};
 
 #[cfg(target_os = "linux")]
 use crate::widgets::info_card::{InfoCard, Kind};
@@ -15,12 +18,17 @@ use crate::{
     icons::Icon,
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
+        cycle_row::CycleRow,
+        expander_row::ExpanderRow,
         info_row::InfoRow,
-        picker_row::PickerRow,
+        list_row::{self, ListRow},
         row_group::RowGroup,
+        spacing,
         switcher_row::SwitcherRow,
     },
 };
+
+const SETTINGS_TRACK_MIN_WIDTH: f32 = 300.0;
 
 pub struct Context<'a> {
     #[cfg(target_os = "linux")]
@@ -113,50 +121,112 @@ impl State {
         let Some(state) = ctx.bottle_state else {
             return column![].into();
         };
-        let environment_count = state.environment().iter().count();
-        let environment_label = if environment_count == 0 {
-            "None set".to_string()
-        } else {
-            format!("{environment_count} variables set")
-        };
+        let content = column![
+            responsive(move |size| {
+                let columns =
+                    usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
+                let bottle_name = ListRow::new(list_row::labels("Bottle Name", state.name()))
+                    .trailing(
+                        Icon::Pencil
+                            .view()
+                            .width(list_row::BODY_SIZE)
+                            .height(list_row::BODY_SIZE),
+                    )
+                    .enabled(false);
+                let unavailable = || {
+                    InfoRow::new("Not available yet")
+                        .description("This setting is not supported yet.")
+                };
+                let bottle = RowGroup::new()
+                    .title("Bottle")
+                    .columns(columns)
+                    .row(bottle_name)
+                    .expander(
+                        ExpanderRow::with_header(
+                            InfoRow::new("Runner")
+                                .description(format!(
+                                    "{} {}",
+                                    state.runner().name(),
+                                    state.runner().version()
+                                ))
+                                .icon(Icon::Run),
+                        )
+                        .add(unavailable())
+                        .content_enabled(false),
+                    )
+                    .expander(
+                        ExpanderRow::new("Dependencies")
+                            .description("Install fonts, codecs, libraries...")
+                            .add(unavailable())
+                            .content_enabled(false),
+                    )
+                    .expander(
+                        ExpanderRow::new("Drives")
+                            .description("Define your custom drives")
+                            .add(unavailable())
+                            .content_enabled(false),
+                    );
 
-        let bottle = RowGroup::new()
-            .title("Bottle")
-            .row(
-                ActionRow::new(state.runner().name(), ActionRowState::Disabled)
-                    .description(state.runner().version())
-                    .icon(Icon::Run),
-            )
-            .row(environment_row(environment_label));
+                let graphics = RowGroup::new()
+                    .title("Graphics")
+                    .columns(columns)
+                    .row(
+                        SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"),
+                    )
+                    .row(
+                        SwitcherRow::new("vkBasalt", false)
+                            .description("Add post-processing effects"),
+                    )
+                    .row(
+                        SwitcherRow::new("Discrete GPU", false)
+                            .description("Force use your dedicated GPU"),
+                    )
+                    .expander(
+                        ExpanderRow::with_header(
+                            SwitcherRow::new("FSR", false)
+                                .description("FidelityFX Super Resolution"),
+                        )
+                        .columns(2)
+                        .add(
+                            ActionRow::new("Quality", ActionRowState::Disabled)
+                                .description("Balanced"),
+                        )
+                        .add(CycleRow::new("Sharpening", "5")),
+                    );
 
-        let graphics = RowGroup::new()
-            .title("Graphics")
-            .row(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
-            .row(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
-            .row(
-                SwitcherRow::new("Discrete GPU", false).description("Force use your dedicated GPU"),
-            );
+                #[cfg(target_os = "linux")]
+                let graphics = {
+                    let wrappers = state.wrappers();
+                    graphics.row(
+                        SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
+                            .description("Use the SteamOS compositor")
+                            .on_toggle(Message::ToggleGamescope),
+                    )
+                };
 
-        #[cfg(target_os = "linux")]
-        let graphics = {
-            let wrappers = state.wrappers();
-            graphics
-                .row(
-                    SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
-                        .description("Use the SteamOS compositor")
-                        .on_toggle(Message::ToggleGamescope),
-                )
-                .row(
-                    SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
-                        .description("Show a performance overlay")
-                        .on_toggle(Message::ToggleMangoHud),
-                )
-        };
+                let graphics = graphics.expander(
+                    ExpanderRow::with_header(
+                        SwitcherRow::new("Display Settings", false)
+                            .description("Resolution and other options"),
+                    )
+                    .add(unavailable())
+                    .content_enabled(false),
+                );
 
-        let graphics = graphics
-            .row(PickerRow::new("Display Settings").description("Resolution and other options"));
+                #[cfg(target_os = "linux")]
+                let graphics = {
+                    let wrappers = state.wrappers();
+                    graphics.row(
+                        SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
+                            .description("Show a performance overlay")
+                            .on_toggle(Message::ToggleMangoHud),
+                    )
+                };
 
-        let content = column![bottle, graphics].spacing(12);
+                column![bottle, graphics].spacing(spacing::SM).into()
+            })
+            .height(Length::Shrink)
+        ];
         #[cfg(target_os = "linux")]
         let content = if let Some(error) = &self.last_error {
             content.push(
@@ -188,10 +258,4 @@ impl State {
             false
         }
     }
-}
-
-fn environment_row(description: String) -> InfoRow<'static> {
-    InfoRow::new("Environment variables")
-        .description(description)
-        .icon(Icon::Gear)
 }
