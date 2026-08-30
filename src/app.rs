@@ -83,7 +83,6 @@ enum Phase {
         core: Arc<Bottles>,
         workspace: Workspace,
         transition: WorkspaceTransition,
-        notice: Option<AppError>,
     },
     ShuttingDown,
     Failed(AppError),
@@ -91,21 +90,21 @@ enum Phase {
 
 enum Workspace {
     Classic(Box<classic::State>),
-    Unavailable(Experience),
+    NextUnavailable,
 }
 
 impl Workspace {
     fn experience(&self) -> Experience {
         match self {
             Self::Classic(state) => state.experience(),
-            Self::Unavailable(experience) => *experience,
+            Self::NextUnavailable => Experience::Next,
         }
     }
 
     fn has_active_operations(&self) -> bool {
         match self {
             Self::Classic(state) => state.has_active_operations(),
-            Self::Unavailable(_) => false,
+            Self::NextUnavailable => false,
         }
     }
 
@@ -116,9 +115,8 @@ impl Workspace {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkspaceTransition {
-    Ready,
+    Ready { notice: Option<AppError> },
     Confirming(Experience),
     Draining(Experience),
     Saving(Experience),
@@ -202,7 +200,7 @@ impl App {
             Phase::Booting
             | Phase::Onboarding { .. }
             | Phase::Workspace {
-                workspace: Workspace::Unavailable(_),
+                workspace: Workspace::NextUnavailable,
                 ..
             }
             | Phase::ShuttingDown
@@ -285,13 +283,16 @@ impl App {
                     return Task::none();
                 };
                 if matches!(transition, WorkspaceTransition::Confirming(_)) {
-                    *transition = WorkspaceTransition::Ready;
+                    *transition = WorkspaceTransition::Ready { notice: None };
                 }
             }
             AppMessage::DismissNotice => match &mut self.phase {
-                Phase::Onboarding { notice, .. } | Phase::Workspace { notice, .. } => {
-                    *notice = None;
-                }
+                Phase::Onboarding { notice, .. }
+                | Phase::Workspace {
+                    transition: WorkspaceTransition::Ready { notice },
+                    ..
+                } => *notice = None,
+                Phase::Workspace { .. } => {}
                 Phase::Booting | Phase::ShuttingDown | Phase::Failed(_) => {}
             },
             AppMessage::CloseRequested => return self.request_close(),
@@ -317,10 +318,9 @@ impl App {
             Phase::Workspace {
                 workspace,
                 transition,
-                notice,
                 ..
             } => match transition {
-                WorkspaceTransition::Ready => match notice {
+                WorkspaceTransition::Ready { notice } => match notice {
                     Some(error) => notice_view("The experience was not changed", error.to_string()),
                     None => workspace_view(workspace),
                 },
@@ -360,8 +360,7 @@ impl App {
         let dialog = match &self.phase {
             Phase::Workspace {
                 workspace: Workspace::Classic(state),
-                transition: WorkspaceTransition::Ready,
-                notice: None,
+                transition: WorkspaceTransition::Ready { notice: None },
                 ..
             } => state.dialog().map(|dialog| dialog.map(classic_message)),
             _ => None,
@@ -401,16 +400,15 @@ impl App {
             Phase::Workspace {
                 workspace,
                 transition,
-                notice,
                 ..
             } => {
-                if *transition != WorkspaceTransition::Ready || workspace.experience() == experience
+                if !matches!(transition, WorkspaceTransition::Ready { notice: None })
+                    || workspace.experience() == experience
                 {
                     return Task::none();
                 }
 
                 *transition = WorkspaceTransition::Confirming(experience);
-                *notice = None;
                 Task::none()
             }
             Phase::Booting | Phase::ShuttingDown | Phase::Failed(_) => Task::none(),
@@ -426,9 +424,10 @@ impl App {
         else {
             return Task::none();
         };
-        let WorkspaceTransition::Confirming(target) = *transition else {
+        let WorkspaceTransition::Confirming(target) = transition else {
             return Task::none();
         };
+        let target = *target;
 
         workspace.cancel_active_operations();
         *transition = WorkspaceTransition::Draining(target);
@@ -486,11 +485,11 @@ impl App {
                     Phase::Workspace {
                         workspace,
                         transition,
-                        notice,
                         ..
                     } => {
-                        *transition = WorkspaceTransition::Ready;
-                        *notice = Some(error);
+                        *transition = WorkspaceTransition::Ready {
+                            notice: Some(error),
+                        };
                         return match workspace {
                             Workspace::Classic(state) => {
                                 state.resume_after_failed_switch().map(|message| {
@@ -499,7 +498,7 @@ impl App {
                                     )))
                                 })
                             }
-                            Workspace::Unavailable(_) => Task::none(),
+                            Workspace::NextUnavailable => Task::none(),
                         };
                     }
                     _ => unreachable!("the failed save belonged to a retained workspace"),
@@ -520,14 +519,13 @@ impl App {
                     }),
                 )
             }
-            Experience::Next => (Workspace::Unavailable(Experience::Next), Task::none()),
+            Experience::Next => (Workspace::NextUnavailable, Task::none()),
         };
 
         self.phase = Phase::Workspace {
             core,
             workspace,
-            transition: WorkspaceTransition::Ready,
-            notice: None,
+            transition: WorkspaceTransition::Ready { notice: None },
         };
         task
     }
@@ -706,14 +704,11 @@ fn classic_message(message: classic::Message) -> AppMessage {
 fn workspace_view(workspace: &Workspace) -> Element<'_, AppMessage> {
     match workspace {
         Workspace::Classic(state) => state.view().map(classic_message),
-        Workspace::Unavailable(Experience::Next) => status_view(
+        Workspace::NextUnavailable => status_view(
             "Next experience is not available yet",
             "Choose Classic to use Bottles today.",
             true,
         ),
-        Workspace::Unavailable(Experience::Classic) => {
-            unreachable!("the Classic experience always has a workspace")
-        }
     }
 }
 
