@@ -6,21 +6,19 @@ use bottles_core::{Library, LibraryItem, SearchEntry, SearchSource, error::Error
 use iced::{
     Element, Fill, Length,
     futures::{StreamExt as _, stream},
-    widget::{column, responsive},
+    widget::{Grid, column, container},
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     icons::Icon,
     widgets::{
-        action_row::{ActionRow, State as ActionRowState},
+        artwork_card::{ArtworkCard, CardAction},
         info_card::{InfoCard, Kind},
-        row_group::RowGroup,
         search::Search as SearchWidget,
+        spacing,
     },
 };
-
-use super::CONTENT_GRID_BREAKPOINT;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibraryState {
@@ -91,7 +89,6 @@ pub enum Message {
     Loaded(u64),
     Launch(LibraryItem),
     Launched(Result<u32, Arc<CoreError>>),
-    Noop,
 }
 
 pub enum Output {
@@ -159,7 +156,6 @@ impl State {
                 self.launching = false;
                 self.last_error = None;
             }
-            Message::Noop => {}
         }
 
         (iced::Task::none(), None)
@@ -174,7 +170,16 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let search = SearchWidget::new("Search library", &self.query, Message::QueryChanged);
+        let search = container(
+            container(SearchWidget::new(
+                "Search library",
+                &self.query,
+                Message::QueryChanged,
+            ))
+            .width(Fill)
+            .max_width(500),
+        )
+        .center_x(Fill);
 
         let notice = match self.search.state {
             LibraryState::Idle => Some((
@@ -211,40 +216,25 @@ impl State {
                 .into();
         }
 
-        let rows = responsive(move |size| {
-            let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
-
-            self.search
-                .entries
-                .iter()
-                .fold(RowGroup::new().columns(columns), |rows, entry| {
-                    rows.row(
-                        ActionRow::new(entry.title(), ActionRowState::Ready(entry_action(entry)))
-                            .description(entry.source_name())
-                            .icon(source_icon(entry.source())),
-                    )
-                })
-                .into()
-        })
-        .height(Length::Shrink);
+        let rows = Grid::with_children(self.search.entries.iter().map(entry_card))
+            .fluid(400.0)
+            .spacing(spacing::MD)
+            .height(Length::Shrink);
 
         content.push(rows).into()
     }
 }
 
-fn entry_action(entry: &SearchEntry) -> Message {
-    match entry.source() {
-        SearchSource::Installed(item) => Message::Launch(item.clone()),
-        _ => Message::Noop,
-    }
-}
-
-fn source_icon(source: &SearchSource) -> Icon {
-    match source {
-        SearchSource::Installed(_) => Icon::Controller,
-        SearchSource::Storefront { .. } => Icon::Disk,
-        _ => Icon::Warning,
-    }
+fn entry_card(entry: &SearchEntry) -> Element<'_, Message> {
+    ArtworkCard::new(entry.title(), entry.source_name())
+        .menu(CardAction::new("More actions", Icon::EllipsisVertical))
+        .primary(
+            CardAction::new("Play", Icon::Play).on_press_maybe(match entry.source() {
+                SearchSource::Installed(item) => Some(Message::Launch(item.clone())),
+                _ => None,
+            }),
+        )
+        .into()
 }
 
 #[cfg(test)]
