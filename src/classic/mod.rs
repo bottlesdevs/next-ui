@@ -675,11 +675,17 @@ impl State {
                 container(Title::new("New Bottle").subtitle("Creating a new bottle."))
                     .padding(iced::padding::bottom(12)),
             )
-            .end(header_button(
-                "Create bottle",
-                Icon::Checkmark,
-                Message::Bottles(bottles::Message::CreateBottle),
-            ));
+            .end(
+                header_button(
+                    "Create bottle",
+                    Icon::Checkmark,
+                    Message::Bottles(bottles::Message::CreateBottle),
+                )
+                .on_press_maybe(
+                    (!self.bottles.is_creating())
+                        .then_some(Message::Bottles(bottles::Message::CreateBottle)),
+                ),
+            );
         let content = self.bottles.creation_view().map(Message::Bottles);
 
         column![header, scroll_panel(content)]

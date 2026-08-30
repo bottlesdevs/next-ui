@@ -65,8 +65,6 @@ pub enum Message {
     BottleCreation(operation::Event<u64, Bottle>),
     BottleNameChanged(String),
     RunnerSelected(RunnerOption),
-    PurposeSelected(&'static str),
-    ArchitectureSelected(&'static str),
     LaunchProgram { bottle: Bottle, program_id: Uuid },
     ProgramLaunched(Result<u32, Arc<bottles_core::error::Error>>),
     Noop,
@@ -81,8 +79,6 @@ pub struct State {
     bottle_name: String,
     runners: Vec<RunnerOption>,
     selected_runner: Option<RunnerOption>,
-    purpose: &'static str,
-    architecture: &'static str,
     creation_generation: u64,
     creation_cancellation: Option<CancellationToken>,
     program_launches: usize,
@@ -106,8 +102,6 @@ impl State {
             bottle_name: "Gaming paradise".into(),
             runners,
             selected_runner,
-            purpose: PURPOSES[0],
-            architecture: ARCHITECTURES[0],
             creation_generation: 0,
             creation_cancellation: None,
             program_launches: 0,
@@ -131,6 +125,10 @@ impl State {
 
     pub fn has_active_operation(&self) -> bool {
         self.creation_cancellation.is_some() || self.program_launches > 0
+    }
+
+    pub(super) fn is_creating(&self) -> bool {
+        self.creation_cancellation.is_some()
     }
 
     pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
@@ -172,8 +170,6 @@ impl State {
             }
             Message::BottleNameChanged(name) => self.bottle_name = name,
             Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
-            Message::PurposeSelected(purpose) => self.purpose = purpose,
-            Message::ArchitectureSelected(architecture) => self.architecture = architecture,
             Message::LaunchProgram { bottle, program_id } => {
                 self.program_launches += 1;
                 return (
@@ -233,21 +229,27 @@ impl State {
     }
 
     pub fn creation_view(&self) -> Element<'_, Message> {
+        let creating = self.is_creating();
+        let name = TextRow::new("Bottle Name", &self.bottle_name).icon(Icon::Person);
+        let name = if creating {
+            name
+        } else {
+            name.on_input(Message::BottleNameChanged)
+        };
+        let runner = SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
+            .icon(Icon::Run);
+        let runner = if creating {
+            runner
+        } else {
+            runner.on_selected(Message::RunnerSelected)
+        };
         let content = column![
-            TextRow::new("Bottle Name", &self.bottle_name)
-                .icon(Icon::Person)
-                .on_input(Message::BottleNameChanged),
-            SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
-                .icon(Icon::Run)
-                .on_selected(Message::RunnerSelected),
-            SelectorRow::new("Purpose", &PURPOSES, Some(&self.purpose))
-                .on_selected(Message::PurposeSelected),
-            SelectorRow::new("Architecture", &ARCHITECTURES, Some(&self.architecture),)
-                .icon(Icon::Chip)
-                .on_selected(Message::ArchitectureSelected),
-            PickerRow::new("Use Recipe")
-                .description("Choose the location")
-                .on_press(Message::Noop),
+            name,
+            runner,
+            SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0])),
+            SelectorRow::new("Architecture", &ARCHITECTURES, Some(&ARCHITECTURES[0]))
+                .icon(Icon::Chip),
+            PickerRow::new("Use Recipe").description("Choose the location"),
         ]
         .spacing(12);
 
