@@ -293,9 +293,9 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
             if pressed {
                 palette.background.weakest
             } else if active {
-                palette.background.strongest
+                crate::theme::deep_surface(theme)
             } else {
-                crate::theme::BottlesTheme::from(theme).hint
+                crate::theme::hint(theme)
             }
         }
         ButtonKind::Secondary => {

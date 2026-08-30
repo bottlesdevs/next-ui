@@ -139,7 +139,7 @@ impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
             .padding([spacing::MD, spacing::LG])
             .width(Fill)
             .style(|current_theme: &Theme| {
-                container::background(theme::BottlesTheme::from(current_theme).hint.color)
+                container::background(theme::hint(current_theme).color)
                     .border(iced::Border::default().rounded(iced::border::bottom(6)))
             })
             .into();

@@ -12,7 +12,7 @@ use iced::{
 };
 
 use crate::{
-    theme::WINDOW,
+    theme,
     ui::chrome::WINDOW_CONTROL_AT_START,
     widgets::{event_cursor, header_bar::HeaderBar, spacing},
 };
@@ -400,6 +400,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                     && progress > 0.0
                     && let Some(bounds) = child_layout.bounds().intersection(&clip)
                 {
+                    let window = theme::window_color(theme);
                     renderer.with_layer(bounds, |renderer| {
                         renderer.fill_quad(
                             renderer::Quad {
@@ -411,9 +412,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                                     Side::Start => Degrees(90.0),
                                     Side::End => Degrees(270.0),
                                 })
-                                .add_stop(0.0, WINDOW.scale_alpha(0.2 * progress))
-                                .add_stop(0.7, WINDOW.scale_alpha(0.45 * progress))
-                                .add_stop(1.0, WINDOW.scale_alpha(progress)),
+                                .add_stop(0.0, window.scale_alpha(0.2 * progress))
+                                .add_stop(0.7, window.scale_alpha(0.45 * progress))
+                                .add_stop(1.0, window.scale_alpha(progress)),
                             ),
                         );
                     });

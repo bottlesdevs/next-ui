@@ -254,7 +254,7 @@ fn disabled_subtree_style(theme: &Theme, state: ControlState) -> ControlStyle {
     ControlStyle {
         text_color: theme.palette().text,
         border: Border::default().rounded(RADIUS),
-        foreground: (!state.sensitive).then_some(Background::Color(crate::theme::SCRIM)),
+        foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
         ..ControlStyle::default()
     }
 }
@@ -612,7 +612,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
                         shadow: Shadow::default(),
                         snap: true,
                     },
-                    Background::Color(crate::theme::SCRIM),
+                    Background::Color(crate::theme::scrim(theme)),
                 );
             }
         }

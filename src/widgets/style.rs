@@ -9,7 +9,7 @@ pub(crate) fn action(theme: &Theme, state: State) -> button::Style {
     let background = if state.pressed {
         Some(theme.extended_palette().background.stronger.color)
     } else if state.hovered || state.focused {
-        Some(crate::theme::BottlesTheme::from(theme).row_hover_strong)
+        Some(theme.extended_palette().background.strong.color)
     } else {
         None
     };

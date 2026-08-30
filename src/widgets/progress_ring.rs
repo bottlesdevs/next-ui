@@ -102,7 +102,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
             &track,
             canvas::Stroke::default()
                 .with_width(STROKE_WIDTH)
-                .with_color(palette.background.strong.color),
+                .with_color(palette.background.neutral.color),
         );
 
         if progress >= 1.0 {

@@ -49,14 +49,7 @@ impl Kind {
         palette.text = colors.text;
         extended.background.base = colors;
         extended.background.strong = match self {
-            Self::Panel => Pair {
-                color: if extended.is_dark {
-                    theme::ROW_HOVER_STRONG
-                } else {
-                    theme::ROW_HOVER_STRONG_LIGHT
-                },
-                text: colors.text,
-            },
+            Self::Panel => extended.background.strong,
             Self::Card => extended.background.neutral,
             Self::Overlay => extended.background.stronger,
         };

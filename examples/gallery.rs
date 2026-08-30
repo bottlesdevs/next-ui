@@ -40,7 +40,7 @@ fn main() -> iced::Result {
 }
 
 fn theme(_: &Gallery) -> Theme {
-    theme::theme()
+    theme::dark()
 }
 
 struct Gallery {

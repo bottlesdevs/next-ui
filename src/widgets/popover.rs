@@ -354,7 +354,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
 }
 
 fn tooltip_style(theme: &Theme) -> container::Style {
-    crate::theme::surface(theme.extended_palette().background.strongest)
+    crate::theme::surface(crate::theme::deep_surface(theme))
 }
 
 #[cfg(test)]

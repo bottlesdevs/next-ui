@@ -190,7 +190,7 @@ pub(crate) fn style(theme: &Theme, state: State) -> Style {
         background: Some(Background::Color(color)),
         text_color: theme.palette().text,
         border: Border::default().rounded(6),
-        foreground: (!state.sensitive).then_some(Background::Color(crate::theme::SCRIM)),
+        foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
         ..Style::default()
     }
 }

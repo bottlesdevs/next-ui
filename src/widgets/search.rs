@@ -178,9 +178,9 @@ fn panel<'a, Message: Clone + 'a>(
 
             container(rows).width(Fill).padding(spacing::MD).into()
         }
-        SearchState::Loading => status_row("Searching…", None),
-        SearchState::Empty => status_row("No results", None),
-        SearchState::Error(error) => status_row(error, Some(crate::theme::ERROR)),
+        SearchState::Loading => status_row("Searching…", false),
+        SearchState::Empty => status_row("No results", false),
+        SearchState::Error(error) => status_row(error, true),
         SearchState::Hidden => column![].into(),
     };
 
@@ -223,9 +223,13 @@ fn result_row<'a, Message: Clone + 'a>(
     })
 }
 
-fn status_row<'a, Message: 'a>(label: &'a str, color: Option<Color>) -> Element<'a, Message> {
+fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Message> {
     container(text(label).label().style(move |theme: &Theme| text::Style {
-        color: Some(color.unwrap_or(theme.extended_palette().secondary.weak.text)),
+        color: Some(if error {
+            theme.extended_palette().danger.base.color
+        } else {
+            theme.extended_palette().secondary.weak.text
+        }),
     }))
     .width(Fill)
     .padding(spacing::MD)

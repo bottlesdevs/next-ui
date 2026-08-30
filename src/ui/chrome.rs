@@ -67,7 +67,7 @@ impl<'a, Message: Clone + 'a> From<WindowFrame<'a, Message>> for Element<'a, Mes
             .width(Fill)
             .height(Fill)
             .padding(PANEL_INSET)
-            .style(|current_theme| theme::window(&theme::BottlesTheme::from(current_theme)))
+            .style(theme::window)
             .clip(true)
             .into();
 

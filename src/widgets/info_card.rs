@@ -97,7 +97,7 @@ fn colors(theme: &Theme, kind: Kind) -> Pair {
     let palette = theme.extended_palette();
 
     match kind {
-        Kind::Hint => theme::BottlesTheme::from(theme).hint,
+        Kind::Hint => theme::hint(theme),
         Kind::Info => theme::info(),
         Kind::Error => palette.danger.base,
         Kind::Warning => palette.warning.base,

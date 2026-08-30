@@ -120,10 +120,8 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 }
 
 fn style(current_theme: &Theme) -> container::Style {
-    let bottles_theme = theme::BottlesTheme::from(current_theme);
-
     container::Style {
-        background: Some(Background::Color(bottles_theme.window)),
+        background: Some(Background::Color(theme::window_color(current_theme))),
         border: Border::default().rounded(iced::border::top(6)),
         ..container::Style::default()
     }

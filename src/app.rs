@@ -68,7 +68,7 @@ pub enum Experience {
 
 pub(crate) struct App {
     phase: Phase,
-    system_theme: ThemeMode,
+    theme: Theme,
 }
 
 enum Phase {
@@ -178,7 +178,7 @@ impl App {
         (
             Self {
                 phase: Phase::Booting,
-                system_theme: ThemeMode::default(),
+                theme: theme::for_mode(ThemeMode::default()),
             },
             Task::batch([
                 Task::perform(boot(), AppMessage::Booted),
@@ -188,7 +188,7 @@ impl App {
     }
 
     pub(crate) fn theme(&self) -> Theme {
-        theme::BottlesTheme::for_mode(self.system_theme).theme
+        self.theme.clone()
     }
 
     pub(crate) fn subscription(&self) -> Subscription<AppMessage> {
@@ -305,7 +305,7 @@ impl App {
             AppMessage::Window(action) => {
                 return action.task().unwrap_or_else(|| self.request_close());
             }
-            AppMessage::SystemThemeChanged(mode) => self.system_theme = mode,
+            AppMessage::SystemThemeChanged(mode) => self.theme = theme::for_mode(mode),
         }
 
         Task::none()

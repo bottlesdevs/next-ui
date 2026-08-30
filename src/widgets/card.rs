@@ -81,7 +81,7 @@ pub(crate) fn image_content<'a, Message: 'a>(
             .height(BANNER_HEIGHT)
             .style(|theme: &Theme| {
                 container::Style::default()
-                    .background(theme.extended_palette().background.strong.color)
+                    .background(theme.extended_palette().background.neutral.color)
             })
             .into(),
     };
