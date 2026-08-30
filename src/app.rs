@@ -14,7 +14,7 @@ use crate::{
     ui::chrome,
     widgets::{
         button::{Button, ButtonKind},
-        dialog::WindowModal,
+        dialog::{Dialog, WindowModal},
         header_bar::HeaderBar,
     },
 };
@@ -320,11 +320,9 @@ impl App {
                 transition,
                 ..
             } => match transition {
-                WorkspaceTransition::Ready { notice } => match notice {
-                    Some(error) => notice_view("The experience was not changed", error.to_string()),
-                    None => workspace_view(workspace),
-                },
-                WorkspaceTransition::Confirming(target) => confirmation_view(*target),
+                WorkspaceTransition::Ready { .. } | WorkspaceTransition::Confirming(_) => {
+                    workspace_view(workspace)
+                }
                 WorkspaceTransition::Draining(_) => status_view(
                     "Preparing to switch experiences",
                     "Finishing current operations safely.",
@@ -358,6 +356,20 @@ impl App {
         let page: Element<'_, AppMessage> =
             chrome::WindowFrame::new(body, AppMessage::Window).into();
         let dialog = match &self.phase {
+            Phase::Workspace {
+                transition: WorkspaceTransition::Confirming(target),
+                ..
+            } => Some(confirmation_dialog(*target)),
+            Phase::Workspace {
+                transition:
+                    WorkspaceTransition::Ready {
+                        notice: Some(error),
+                    },
+                ..
+            } => Some(notice_dialog(
+                "The experience was not changed",
+                error.to_string(),
+            )),
             Phase::Workspace {
                 workspace: Workspace::Classic(state),
                 transition: WorkspaceTransition::Ready { notice: None },
@@ -712,7 +724,7 @@ fn workspace_view(workspace: &Workspace) -> Element<'_, AppMessage> {
     }
 }
 
-fn confirmation_view(target: Experience) -> Element<'static, AppMessage> {
+fn confirmation_dialog(target: Experience) -> Dialog<'static, AppMessage> {
     use iced::widget::{column, row, text};
 
     let (description, confirm_label) = match target {
@@ -735,23 +747,24 @@ fn confirmation_view(target: Experience) -> Element<'static, AppMessage> {
     ]
     .spacing(8);
 
-    root_body(
+    Dialog::new(
         column![
             text("Switch experiences?").size(32),
             text(description),
             actions
         ]
         .spacing(12),
+        AppMessage::CancelExperienceSwitch,
     )
 }
 
-fn notice_view<'a>(
+fn notice_dialog<'a>(
     title: impl iced::widget::text::IntoFragment<'a>,
     description: impl iced::widget::text::IntoFragment<'a>,
-) -> Element<'a, AppMessage> {
+) -> Dialog<'a, AppMessage> {
     use iced::widget::{column, text};
 
-    root_body(
+    Dialog::new(
         column![
             text(title).size(32),
             text(description),
@@ -760,6 +773,7 @@ fn notice_view<'a>(
                 .on_press(AppMessage::DismissNotice),
         ]
         .spacing(12),
+        AppMessage::DismissNotice,
     )
 }
 
