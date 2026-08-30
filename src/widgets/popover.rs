@@ -128,12 +128,11 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
     let mut content = row_content(item.title, item.subtitle, item.icon);
 
     if item.selected {
-        content = content.push(
-            svg(Icon::Checkmark.handle())
-                .width(16)
-                .height(16)
-                .content_fit(iced::ContentFit::Contain),
-        );
+        content = content.push(Icon::Checkmark.view().width(16).height(16).style(
+            |theme: &Theme, _| svg::Style {
+                color: Some(theme.palette().primary),
+            },
+        ));
     }
 
     if let Some((label, message)) = item.action {

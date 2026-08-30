@@ -67,7 +67,7 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
             .on_press_maybe(cycle.previous);
 
         let next_enabled = cycle.next.is_some();
-        let next = Control::new(Icon::Arrow.rotated(std::f32::consts::PI))
+        let next = Control::new(Icon::Arrow.view().rotation(std::f32::consts::PI))
             .padding(spacing::XS)
             .sensitive(next_enabled)
             .style(style::action)

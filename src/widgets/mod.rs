@@ -8,7 +8,7 @@ mod surface;
 pub(crate) use control::Interaction;
 pub(crate) use control::{Control, event_cursor};
 
-use iced::{ContentFit, Point, Rectangle, Size, advanced::svg::Renderer as _};
+use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 
 pub(crate) mod spacing {
     pub(crate) const XS: f32 = 6.0;
@@ -28,7 +28,7 @@ fn reconcile_index<T: PartialEq>(
         .and_then(|key| new_keys.iter().position(|candidate| candidate == key))
 }
 
-fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, expansion: f32) {
+fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, expansion: f32) {
     let handle = crate::icons::Icon::DownCaret.handle();
     let Size { width, height } = renderer.measure_svg(&handle);
     let size = ContentFit::Contain.fit(Size::new(width as f32, height as f32), slot.size());
@@ -43,7 +43,7 @@ fn draw_caret(renderer: &mut iced::Renderer, slot: Rectangle, expansion: f32) {
     renderer.draw_svg(
         iced::advanced::svg::Svg {
             handle,
-            color: None,
+            color: Some(theme.extended_palette().secondary.weak.text),
             rotation: (std::f32::consts::PI * expansion).into(),
             opacity: 1.0,
         },

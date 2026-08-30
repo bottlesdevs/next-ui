@@ -1,9 +1,6 @@
 use iced::{
-    ContentFit, Element,
-    widget::{
-        svg,
-        text::{Fragment, IntoFragment},
-    },
+    Element,
+    widget::text::{Fragment, IntoFragment},
 };
 
 use crate::icons::Icon;
@@ -48,10 +45,9 @@ impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
 
         match info.icon {
             Some(icon) => row.leading(
-                svg(icon.handle())
+                icon.view()
                     .width(list_row::BODY_SIZE)
-                    .height(list_row::BODY_SIZE)
-                    .content_fit(ContentFit::Contain),
+                    .height(list_row::BODY_SIZE),
             ),
             None => row,
         }

@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use bottles_core::{Addons, Bottle, BottleManager, BottleState, Slot, Storage};
 use iced::{
-    Center, ContentFit, Element, Length, Task, Theme,
-    widget::{Grid, column, container, image, responsive, row, svg, text},
+    Center, Element, Length, Task, Theme,
+    widget::{Grid, column, container, image, responsive, row, text},
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -282,21 +282,16 @@ impl State {
 fn new_program_target<'a>() -> DropTarget<'a, Message> {
     const ICON_CONTAINER_SIZE: f32 = 44.0;
 
-    let icon = container(
-        svg(Icon::Plus.handle())
-            .width(16)
-            .height(16)
-            .content_fit(ContentFit::Contain),
-    )
-    .width(ICON_CONTAINER_SIZE)
-    .height(ICON_CONTAINER_SIZE)
-    .align_x(Center)
-    .align_y(Center)
-    .style(|theme: &Theme| {
-        container::Style::default()
-            .background(theme.extended_palette().background.weak.color)
-            .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
-    });
+    let icon = container(Icon::Plus.view().width(16).height(16))
+        .width(ICON_CONTAINER_SIZE)
+        .height(ICON_CONTAINER_SIZE)
+        .align_x(Center)
+        .align_y(Center)
+        .style(|theme: &Theme| {
+            container::Style::default()
+                .background(theme.extended_palette().background.weak.color)
+                .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
+        });
     let labels = column![
         text("New Program").size(17).medium(),
         text("Install or add a program.").size(14),

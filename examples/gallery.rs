@@ -1,7 +1,7 @@
 use iced::{
-    Center, ContentFit, Element, Fill, Subscription, Task, Theme,
+    Center, Element, Fill, Subscription, Task, Theme,
     keyboard::{self, key},
-    widget::{Space, column, container, image, row, scrollable, svg, text},
+    widget::{Space, column, container, image, row, scrollable, text},
 };
 use next_ui::widgets::text::TextExt as _;
 use next_ui::widgets::{
@@ -529,21 +529,16 @@ impl Gallery {
 fn drop_target_example<'a>() -> drop_target::DropTarget<'a, Message> {
     const ICON_CONTAINER_SIZE: f32 = 44.0;
 
-    let icon = container(
-        svg(Icon::Plus.handle())
-            .width(16)
-            .height(16)
-            .content_fit(ContentFit::Contain),
-    )
-    .width(ICON_CONTAINER_SIZE)
-    .height(ICON_CONTAINER_SIZE)
-    .align_x(Center)
-    .align_y(Center)
-    .style(|theme: &Theme| {
-        container::Style::default()
-            .background(theme.extended_palette().background.weak.color)
-            .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
-    });
+    let icon = container(Icon::Plus.view().width(16).height(16))
+        .width(ICON_CONTAINER_SIZE)
+        .height(ICON_CONTAINER_SIZE)
+        .align_x(Center)
+        .align_y(Center)
+        .style(|theme: &Theme| {
+            container::Style::default()
+                .background(theme.extended_palette().background.weak.color)
+                .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
+        });
     let labels = column![
         text("New Program").size(17).medium(),
         text("Install or add a program.").size(14),

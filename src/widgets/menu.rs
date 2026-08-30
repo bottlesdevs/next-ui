@@ -1,6 +1,6 @@
 use iced::{
     Alignment, Background, Border, Element, Fill, Theme,
-    widget::{Space, button, column, row, svg, text, text::Fragment},
+    widget::{Space, button, column, row, text, text::Fragment},
 };
 
 use crate::icons::Icon;
@@ -25,12 +25,7 @@ pub(super) fn row_content<'a, Message: 'a>(
     let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
     if let Some(icon) = icon {
-        content = content.push(
-            svg(icon.handle())
-                .width(20)
-                .height(20)
-                .content_fit(iced::ContentFit::Contain),
-        );
+        content = content.push(icon.view().width(20).height(20));
     }
 
     content.push(labels).push(Space::new().width(Fill))
@@ -59,9 +54,12 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     message: Message,
 ) -> Element<'a, Message> {
     Control::new(
-        row![text(label), Icon::Arrow.rotated(std::f32::consts::PI)]
-            .spacing(spacing::SM)
-            .align_y(Alignment::Center),
+        row![
+            text(label),
+            Icon::Arrow.view().rotation(std::f32::consts::PI)
+        ]
+        .spacing(spacing::SM)
+        .align_y(Alignment::Center),
     )
     .width(Fill)
     .padding(spacing::MD)

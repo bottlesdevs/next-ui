@@ -1,4 +1,4 @@
-use iced::{ContentFit, Element, widget::svg};
+use iced::{Theme, widget::svg};
 use rust_embed::RustEmbed;
 
 pub(crate) const SIZE: f32 = 24.0;
@@ -37,7 +37,7 @@ pub enum Icon {
 }
 
 impl Icon {
-    pub fn handle(self) -> svg::Handle {
+    pub(crate) fn handle(self) -> svg::Handle {
         let path = format!("icons/{}.svg", self.name());
         let icon = Assets::get(&path)
             .unwrap_or_else(|| unreachable!("typed embedded icon is missing: {path}"));
@@ -45,17 +45,13 @@ impl Icon {
         svg::Handle::from_memory(icon.data)
     }
 
-    pub fn view<'a, Message: 'a>(self) -> Element<'a, Message> {
-        self.rotated(0.0)
-    }
-
-    pub fn rotated<'a, Message: 'a>(self, rotation: f32) -> Element<'a, Message> {
+    pub fn view<'a>(self) -> svg::Svg<'a> {
         svg(self.handle())
             .width(SIZE)
             .height(SIZE)
-            .content_fit(ContentFit::Contain)
-            .rotation(rotation)
-            .into()
+            .style(|theme: &Theme, _| svg::Style {
+                color: Some(crate::theme::muted(theme)),
+            })
     }
 
     const fn name(self) -> &'static str {

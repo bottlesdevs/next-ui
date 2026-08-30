@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, Background, Border, ContentFit, Element, Event, Fill, Length, Padding, Point,
-    Rectangle, Shadow, Size, Theme,
+    Alignment, Background, Border, Element, Event, Fill, Length, Padding, Point, Rectangle, Shadow,
+    Size, Theme,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, renderer,
         widget::{Operation, Tree, operation, tree},
@@ -9,7 +9,7 @@ use iced::{
     keyboard::{self, key},
     time::Instant,
     touch,
-    widget::{column, container, row, svg, text},
+    widget::{column, container, row, text},
     window,
 };
 
@@ -140,10 +140,9 @@ fn header<'a, Message: 'a>(
 
     if let Some(icon) = icon {
         value_row = value_row.push(
-            svg(icon.handle())
+            icon.view()
                 .width(list_row::BODY_SIZE)
-                .height(list_row::BODY_SIZE)
-                .content_fit(ContentFit::Contain),
+                .height(list_row::BODY_SIZE),
         );
     }
 
@@ -567,7 +566,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             .children()
             .nth(1)
             .expect("selector caret slot");
-        draw_caret(renderer, caret_slot.bounds(), expansion);
+        draw_caret(renderer, theme, caret_slot.bounds(), expansion);
 
         if expansion > 0.0 {
             let panel = Rectangle {

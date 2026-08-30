@@ -1,4 +1,4 @@
-use iced::{ContentFit, Element, widget::svg};
+use iced::Element;
 
 use crate::icons::Icon;
 
@@ -43,12 +43,8 @@ impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for Element<'a, Messa
 
 impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for ListRow<'a, Message> {
     fn from(picker: PickerRow<'a, Message>) -> Self {
-        let row = ListRow::new(labels(picker.title, picker.description)).trailing(
-            svg(Icon::Folder.handle())
-                .width(25)
-                .height(20)
-                .content_fit(ContentFit::Contain),
-        );
+        let row = ListRow::new(labels(picker.title, picker.description))
+            .trailing(Icon::Folder.view().width(25).height(20));
         match picker.on_press {
             Some(on_press) => row.on_press(on_press),
             None => row.enabled(false),

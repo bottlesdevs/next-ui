@@ -1,5 +1,5 @@
 use iced::{
-    Center, ContentFit, Element, Length, Theme,
+    Center, Element, Length, Theme,
     theme::palette::Pair,
     widget::{column, container, row, svg, text, text::Fragment, text::IntoFragment},
 };
@@ -77,7 +77,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
     }
 }
 
-fn icon<'a, Message: 'a>(kind: Kind) -> Element<'a, Message> {
+fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
     let icon = match kind {
         Kind::Hint => Icon::Wand,
         Kind::Info => Icon::Info,
@@ -86,11 +86,12 @@ fn icon<'a, Message: 'a>(kind: Kind) -> Element<'a, Message> {
         Kind::Success => Icon::DoubleCheckmark,
     };
 
-    svg(icon.handle())
+    icon.view()
         .width(TITLE_SIZE)
         .height(TITLE_SIZE)
-        .content_fit(ContentFit::Contain)
-        .into()
+        .style(move |theme: &Theme, _| svg::Style {
+            color: Some(colors(theme, kind).text),
+        })
 }
 
 fn colors(theme: &Theme, kind: Kind) -> Pair {

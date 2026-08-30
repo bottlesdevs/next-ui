@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, ContentFit, Element, Fill, Length, Theme,
+    Background, Border, Center, Element, Fill, Length, Theme,
     theme::palette::Pair,
     widget::{Row, container, svg, text, tooltip},
 };
@@ -222,10 +222,9 @@ fn icon_element<'a, Message: 'a>(
     kind: ButtonKind,
     disabled: bool,
 ) -> Element<'a, Message> {
-    svg(icon.handle())
+    icon.view()
         .width(size)
         .height(size)
-        .content_fit(ContentFit::Contain)
         .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if disabled {

@@ -1,5 +1,5 @@
 use iced::{
-    Background, ContentFit, Element, Event, Fill, Length, Point, Rectangle, Size, Theme, Vector,
+    Background, Element, Event, Fill, Length, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
@@ -92,20 +92,20 @@ impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
     fn from(status: StatusBar<'a>) -> Self {
         let header = row![
             row![
-                status_icon(Icon::Chip),
+                status_icon(Icon::Chip, false),
                 text(status.architecture).size(TEXT_SIZE).muted(),
             ]
             .spacing(spacing::SM)
             .align_y(Vertical::Center),
             row![
-                status_icon(Icon::Run),
+                status_icon(Icon::Run, false),
                 text(status.runner).size(TEXT_SIZE).muted(),
             ]
             .spacing(spacing::SM)
             .align_y(Vertical::Center),
             Space::new().width(Fill),
             row![
-                status_icon(status.state.icon()),
+                status_icon(status.state.icon(), status.state == BottleStatus::Failed),
                 text(status.state.label())
                     .size(TEXT_SIZE)
                     .style(move |theme: &Theme| text::Style {
@@ -157,12 +157,16 @@ impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
     }
 }
 
-fn status_icon<'a, Message: 'a>(icon: Icon) -> Element<'a, Message> {
-    svg(icon.handle())
-        .width(ICON_SIZE)
-        .height(ICON_SIZE)
-        .content_fit(ContentFit::Contain)
-        .into()
+fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
+    let icon = icon.view().width(ICON_SIZE).height(ICON_SIZE);
+
+    if danger {
+        icon.style(|theme: &Theme, _| svg::Style {
+            color: Some(theme.palette().danger),
+        })
+    } else {
+        icon
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

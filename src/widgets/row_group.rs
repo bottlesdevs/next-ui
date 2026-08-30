@@ -596,6 +596,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
         for (index, expansion) in self.expansions.iter().enumerate() {
             draw_caret(
                 renderer,
+                theme,
                 disclosure_bounds(children[expansion.header_index], expansion.disclosure_index),
                 if state.open.contains(&index) {
                     1.0

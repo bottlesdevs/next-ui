@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, Color, ContentFit, Element, Fill, Theme,
+    Background, Border, Center, Color, Element, Fill, Theme,
     widget::{Id, column, row, svg, text, text_input},
 };
 
@@ -149,10 +149,9 @@ fn input_style(theme: &Theme, error: bool) -> text_input::Style {
 }
 
 fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a, Message> {
-    svg(icon.handle())
+    icon.view()
         .width(size)
         .height(size)
-        .content_fit(ContentFit::Contain)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if error {
                 theme.palette().danger

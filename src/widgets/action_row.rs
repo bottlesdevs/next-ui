@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, ContentFit, Element,
-    widget::{column, row, svg, text},
+    Alignment, Element,
+    widget::{column, row, text},
 };
 
 use crate::icons::Icon;
@@ -60,10 +60,9 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
 
         if let Some(icon) = action.icon {
             description = description.push(
-                svg(icon.handle())
+                icon.view()
                     .width(list_row::BODY_SIZE)
-                    .height(list_row::BODY_SIZE)
-                    .content_fit(ContentFit::Contain),
+                    .height(list_row::BODY_SIZE),
             );
         }
 
@@ -72,7 +71,9 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
         let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
         let trailing: Element<'a, Message> = match &action.state {
             State::Progress(progress) => ProgressRing::new(*progress).into(),
-            State::Ready(_) | State::Disabled => Icon::Arrow.rotated(std::f32::consts::PI),
+            State::Ready(_) | State::Disabled => {
+                Icon::Arrow.view().rotation(std::f32::consts::PI).into()
+            }
         };
         let row = ListRow::new(labels).trailing(trailing);
 

@@ -24,7 +24,7 @@ use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Err
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
-    widget::{column, container, row, scrollable, text},
+    widget::{column, container, row, scrollable, svg, text},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -402,7 +402,7 @@ impl State {
                 has_failures = true;
                 failures = failures.push(
                     row![
-                        Icon::Error.view(),
+                        error_icon(),
                         text(format!("{}: {error}", item.label)).detail(),
                     ]
                     .spacing(8)
@@ -412,7 +412,7 @@ impl State {
                 has_failures = true;
                 failures = failures.push(
                     row![
-                        Icon::Error.view(),
+                        error_icon(),
                         text(format!("{} is unavailable for this system", item.label)).detail(),
                     ]
                     .spacing(8)
@@ -425,7 +425,7 @@ impl State {
             has_failures = true;
             failures = failures.push(
                 row![
-                    Icon::Error.view(),
+                    error_icon(),
                     text(format!("Could not refresh resource catalogs: {error}")).detail(),
                 ]
                 .spacing(8)
@@ -698,13 +698,22 @@ fn onboarding_title<'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Messag
     .into()
 }
 
+fn error_icon<'a>() -> svg::Svg<'a> {
+    Icon::Error.view().style(|theme: &Theme, _| svg::Style {
+        color: Some(theme.palette().danger),
+    })
+}
+
 fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
     let step = &TUTORIAL_STEPS[index];
     let body = step.body.replace("{OS}", os_label());
-    let icon = iced::widget::svg(Icon::Bottles.handle())
+    let icon = Icon::Bottles
+        .view()
         .width(160)
         .height(160)
-        .content_fit(iced::ContentFit::Contain);
+        .style(|theme: &Theme, _| svg::Style {
+            color: Some(theme.palette().primary),
+        });
     let text_block = column![
         text(step.title)
             .size(32)
