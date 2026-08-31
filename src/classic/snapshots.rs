@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-use super::CONTENT_GRID_BREAKPOINT;
+const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
 #[derive(Clone)]
 pub enum Message {

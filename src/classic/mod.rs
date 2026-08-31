@@ -39,7 +39,6 @@ use layout::{PaneContext, Side, navigation_split, side_panel};
 use uuid::Uuid;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
-const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryTab {
