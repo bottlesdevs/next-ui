@@ -20,6 +20,8 @@ use crate::{
     },
 };
 
+const NARROW_CONTENT_MAX_WIDTH: f32 = 500.0;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibraryState {
     Idle,
@@ -170,16 +172,11 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let search = container(
-            container(SearchWidget::new(
-                "Search library",
-                &self.query,
-                Message::QueryChanged,
-            ))
-            .width(Fill)
-            .max_width(500),
-        )
-        .center_x(Fill);
+        let search = centered_narrow(SearchWidget::new(
+            "Search library",
+            &self.query,
+            Message::QueryChanged,
+        ));
 
         let notice = match self.search.state {
             LibraryState::Idle => Some((
@@ -193,26 +190,30 @@ impl State {
             LibraryState::Loaded => None,
         };
         if let Some((title, body)) = notice {
-            return column![search, InfoCard::new(Kind::Hint, title, body).width(Fill)]
-                .spacing(12)
-                .into();
+            return column![
+                search,
+                centered_narrow(InfoCard::new(Kind::Hint, title, body).width(Fill))
+            ]
+            .spacing(12)
+            .into();
         }
 
         let mut content = column![search].spacing(12);
         if let Some(error) = &self.last_error {
-            content = content
-                .push(InfoCard::new(Kind::Error, "Program launch failed", error).width(Fill));
+            content = content.push(centered_narrow(
+                InfoCard::new(Kind::Error, "Program launch failed", error).width(Fill),
+            ));
         }
         if self.search.entries.is_empty() {
             return content
-                .push(
+                .push(centered_narrow(
                     InfoCard::new(
                         Kind::Hint,
                         "Nothing here yet",
                         "Registered programs and linked storefront games will show up here.",
                     )
                     .width(Fill),
-                )
+                ))
                 .into();
         }
 
@@ -223,6 +224,16 @@ impl State {
 
         content.push(rows).into()
     }
+}
+
+fn centered_narrow<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(
+        container(content)
+            .width(Fill)
+            .max_width(NARROW_CONTENT_MAX_WIDTH),
+    )
+    .center_x(Fill)
+    .into()
 }
 
 fn entry_card(entry: &SearchEntry) -> Element<'_, Message> {
