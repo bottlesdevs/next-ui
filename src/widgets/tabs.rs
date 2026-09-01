@@ -6,16 +6,16 @@ use iced::{
     animation::{Animation, Easing},
     mouse,
     time::Instant,
-    widget::{Action, Space, button, canvas, column, container, row, stack, text},
+    widget::{Action, Row, Space, button, canvas, column, container, stack, text},
     window,
 };
 
 use super::{
-    control::{Control, State},
+    control::{ActionState, ActionSurface},
     spacing,
     text::TextExt as _,
 };
-use crate::theme::{self, Motion};
+use crate::theme;
 
 pub struct Tab<'a, T> {
     value: T,
@@ -42,7 +42,6 @@ pub struct Tabs<'a, T, Message> {
     tabs: Vec<Tab<'a, T>>,
     selected: Option<T>,
     on_select: Box<dyn Fn(T) -> Message + 'a>,
-    motion: Motion,
 }
 
 impl<'a, T, Message> Tabs<'a, T, Message> {
@@ -55,13 +54,7 @@ impl<'a, T, Message> Tabs<'a, T, Message> {
             tabs: tabs.into_iter().collect(),
             selected,
             on_select: Box::new(on_select),
-            motion: Motion::default(),
         }
-    }
-
-    pub fn motion(mut self, motion: Motion) -> Self {
-        self.motion = motion;
-        self
     }
 }
 
@@ -75,98 +68,72 @@ where
             tabs,
             selected,
             on_select,
-            motion,
         } = tabs;
         let labels = tabs.iter().map(|tab| tab.label).collect();
         let selected_index = selected
             .as_ref()
             .and_then(|selected| tabs.iter().position(|tab| &tab.value == selected));
-        let children = tabs.into_iter().map(|tab| {
-            let selected = selected.as_ref() == Some(&tab.value);
-            let message = tab.enabled.then(|| on_select(tab.value));
+        let children: Vec<Element<'a, Message>> = tabs
+            .into_iter()
+            .map(|tab| {
+                let selected = selected.as_ref() == Some(&tab.value);
+                let message = tab.enabled.then(|| on_select(tab.value));
 
-            Control::new(
-                column![text(tab.label).label(), Space::new().height(spacing::LG),]
-                    .align_x(Alignment::Center),
-            )
-            .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
-            .sensitive(tab.enabled)
-            .selected(selected)
-            .on_press_maybe(message)
-            .style(tab_style)
-            .into()
-        });
+                ActionSurface::new(
+                    column![text(tab.label).label(), Space::new().height(spacing::LG),]
+                        .align_x(Alignment::Center),
+                )
+                .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
+                .sensitive(tab.enabled)
+                .selected(selected)
+                .on_press_maybe(message)
+                .style(tab_style)
+                .into()
+            })
+            .collect();
 
-        container(stack![
-            row(children).spacing(spacing::LG),
+        let content: Element<'a, Message> = container(stack![
+            Row::with_children(children).spacing(spacing::LG),
             canvas::Canvas::new(TabIndicator {
-                selected_index,
+                selected: selected_index,
                 labels,
-                motion,
             })
             .width(Fill)
             .height(Fill),
         ])
         .center_x(Fill)
-        .into()
+        .into();
+
+        content
     }
 }
 
 const INDICATOR_HEIGHT: f32 = 3.0;
 
 struct TabIndicator<'a> {
-    selected_index: Option<usize>,
+    selected: Option<usize>,
     labels: Vec<&'a str>,
-    motion: Motion,
 }
 
 #[derive(Debug, Default)]
 struct IndicatorState {
     animation: Option<Animation<f32>>,
-    labels: Vec<String>,
 }
 
 impl IndicatorState {
-    fn sync(
-        &mut self,
-        selected_index: Option<usize>,
-        labels: &[&str],
-        now: Instant,
-        motion: Motion,
-    ) -> bool {
-        if motion.is_reduced() {
-            self.labels = labels.iter().map(|label| (*label).to_owned()).collect();
-            self.animation = None;
-            return false;
-        }
-
-        if !self
-            .labels
-            .iter()
-            .map(String::as_str)
-            .eq(labels.iter().copied())
-        {
-            self.labels = labels.iter().map(|label| (*label).to_owned()).collect();
-            self.animation = selected_index.map(|index| {
-                Animation::new(index as f32)
-                    .very_quick()
-                    .easing(Easing::EaseOut)
-            });
-            return true;
-        }
-
-        let Some(selected_index) = selected_index else {
+    fn sync(&mut self, selected: Option<usize>, now: Instant) -> bool {
+        let Some(selected) = selected else {
             return self.animation.take().is_some();
         };
-        let selected_index = selected_index as f32;
+        let selected = selected as f32;
         let animation = self.animation.get_or_insert_with(|| {
-            Animation::new(selected_index)
+            Animation::new(selected)
                 .very_quick()
                 .easing(Easing::EaseOut)
         });
 
-        if animation.value() != selected_index {
-            animation.go_mut(selected_index, now);
+        if animation.value() != selected {
+            animation.go_mut(selected, now);
         }
 
         animation.is_animating(now)
@@ -188,7 +155,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
             _ => Instant::now(),
         };
 
-        if state.sync(self.selected_index, &self.labels, now, self.motion) {
+        if state.sync(self.selected, now) {
             Some(Action::request_redraw())
         } else {
             None
@@ -203,7 +170,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let Some(selected_index) = self.selected_index else {
+        let Some(selected_index) = self.selected else {
             return Vec::new();
         };
         if self.labels.is_empty() {
@@ -211,11 +178,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
         }
 
         let now = Instant::now();
-        let animation = if self.motion.is_reduced() {
-            None
-        } else {
-            state.animation.as_ref()
-        };
+        let animation = state.animation.as_ref();
         let center = animation.map_or_else(
             || tab_center(renderer, &self.labels, selected_index),
             |animation| {
@@ -282,7 +245,7 @@ fn label_width(renderer: &Renderer, label: &str) -> f32 {
     paragraph.min_width()
 }
 
-fn tab_style(theme: &Theme, state: State) -> button::Style {
+fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = theme::colors(theme);
 
     button::Style {
@@ -303,11 +266,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reduced_motion_snaps_the_indicator() {
+    fn selection_changes_animate_the_indicator() {
         let mut state = IndicatorState::default();
         let now = Instant::now();
 
-        assert!(!state.sync(Some(1), &["One", "Two"], now, Motion::Reduced));
-        assert!(state.animation.is_none());
+        assert!(!state.sync(Some(0), now));
+        assert!(state.sync(Some(1), now));
+        assert_eq!(state.animation.as_ref().map(Animation::value), Some(1.0));
+        assert!(
+            state
+                .animation
+                .as_ref()
+                .is_some_and(|animation| animation.is_animating(now))
+        );
     }
 }

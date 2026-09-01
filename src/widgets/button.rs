@@ -7,7 +7,7 @@ use iced::{
 use crate::icons::{self, Icon};
 
 use super::{
-    control::{Control, State},
+    control::{ActionState, ActionSurface},
     spacing,
     text::TextExt as _,
 };
@@ -44,7 +44,11 @@ pub struct Button<'a, Message> {
 }
 
 impl<'a, Message> Button<'a, Message> {
-    pub fn new(content: impl Into<Element<'a, Message>>) -> Self {
+    pub fn new(label: impl text::IntoFragment<'a>) -> Self {
+        Self::custom(text(label))
+    }
+
+    pub fn custom(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
             tooltip: None,
@@ -65,7 +69,7 @@ impl<'a, Message> Button<'a, Message> {
             icon: Some(icon),
             shape: Shape::IconOnly,
             tooltip: Some(tooltip),
-            ..Self::new(text(""))
+            ..Self::custom(text(""))
         }
     }
 
@@ -176,7 +180,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
         let shape = button.shape;
         let kind = button.kind;
-        let mut control = Control::new(content)
+        let mut control = ActionSurface::new(content)
             .sensitive(!disabled)
             .on_press_maybe(button.on_press.filter(|_| !button.loading))
             .style(move |theme, status| appearance(theme, status, shape, kind));
@@ -240,7 +244,7 @@ fn icon_element<'a, Message: 'a>(
 
 fn appearance(
     theme: &Theme,
-    state: State,
+    state: ActionState,
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {

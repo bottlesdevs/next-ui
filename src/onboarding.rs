@@ -746,7 +746,7 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
 }
 
 fn onboarding_button<'a>(label: &'a str) -> Button<'a, Message> {
-    Button::new(text(label).label()).kind(ButtonKind::Primary)
+    Button::custom(text(label).label()).kind(ButtonKind::Primary)
 }
 
 fn onboarding_button_with_icon<'a>(label: &'a str) -> Button<'a, Message> {

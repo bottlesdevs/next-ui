@@ -4,7 +4,7 @@ use iced::{
 };
 
 use super::{
-    control::{Control, State, Style},
+    control::{ActionState, ActionStyle, ActionSurface},
     spacing,
     text::TextExt as _,
 };
@@ -116,7 +116,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self.lower(true)
     }
 
-    pub(crate) fn into_control(self, parent_enabled: bool) -> Control<'a, Message> {
+    pub(crate) fn into_control(self, parent_enabled: bool) -> ActionSurface<'a, Message> {
         let Content {
             element,
             enabled,
@@ -125,7 +125,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             focus_first,
             ..
         } = self.into_content();
-        let mut control = Control::new(element)
+        let mut control = ActionSurface::new(element)
             .width(Fill)
             .sensitive(parent_enabled && enabled)
             .selected(selected)
@@ -176,7 +176,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
     }
 }
 
-pub(crate) fn style(theme: &Theme, state: State) -> Style {
+pub(crate) fn style(theme: &Theme, state: ActionState) -> ActionStyle {
     let colors = crate::theme::colors(theme);
     let color = if state.pressed {
         colors.selection
@@ -188,11 +188,11 @@ pub(crate) fn style(theme: &Theme, state: State) -> Style {
         colors.surface
     };
 
-    Style {
+    ActionStyle {
         background: Some(Background::Color(color)),
         text_color: colors.text,
         border: Border::default().rounded(6),
         foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
-        ..Style::default()
+        ..ActionStyle::default()
     }
 }

@@ -8,9 +8,7 @@ use iced::{
 };
 
 use super::{
-    control::{
-        ActivationSignal, Control, Interaction, State as ControlState, Style as ControlStyle,
-    },
+    control::{ActionState, ActionStyle, ActionSurface, ActivationSignal, Interaction},
     draw_caret,
     expander_row::{ExpanderRow, header_row},
     list_row::{Content as RowContent, ListRow},
@@ -159,7 +157,7 @@ fn group_line<'a, Message: Clone + 'a>(
                     ..
                 } = header_row(header, expander_enabled).into_disclosure_content();
                 let activation = ActivationSignal::default();
-                let mut header = Control::new(header)
+                let mut header = ActionSurface::new(header)
                     .width(Length::Fill)
                     .sensitive(enabled && expander_enabled)
                     .activation_signal(activation.clone());
@@ -183,7 +181,7 @@ fn group_line<'a, Message: Clone + 'a>(
                     .padding(spacing::MD),
                 )
                 .into();
-                let body = Control::new(body)
+                let body = ActionSurface::new(body)
                     .width(Length::Fill)
                     .sensitive(enabled && expander_enabled && content_enabled)
                     .style(disabled_subtree_style)
@@ -243,19 +241,19 @@ fn expander_header_style(
     expanded: bool,
     bounds: Rectangle,
     cursor: mouse::Cursor,
-) -> ControlStyle {
+) -> ActionStyle {
     let mut state = interaction.state(sensitive, true, bounds, cursor);
     state.selected = selected;
     state.expanded = expanded;
     super::list_row::style(theme, state)
 }
 
-fn disabled_subtree_style(theme: &Theme, state: ControlState) -> ControlStyle {
-    ControlStyle {
+fn disabled_subtree_style(theme: &Theme, state: ActionState) -> ActionStyle {
+    ActionStyle {
         text_color: crate::theme::colors(theme).text,
         border: Border::default().rounded(RADIUS),
         foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
-        ..ControlStyle::default()
+        ..ActionStyle::default()
     }
 }
 

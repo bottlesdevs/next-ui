@@ -24,7 +24,7 @@ use crate::{
         button::{Button, ButtonKind},
         dialog::Dialog,
         row_group::RowGroup,
-        tabs::{Tab, Tabs},
+        tabs::{Tab, TabId, Tabs},
         text_row::TextRow,
         title::Title,
     },
@@ -546,8 +546,16 @@ impl State {
     fn primary_page(&self, context: PaneContext) -> Element<'_, Message> {
         let tabs = Tabs::new(
             [
-                Tab::new(PrimaryTab::Bottles, "Bottles"),
-                Tab::new(PrimaryTab::Library, "Library"),
+                Tab::new(
+                    TabId::new("primary.bottles"),
+                    PrimaryTab::Bottles,
+                    "Bottles",
+                ),
+                Tab::new(
+                    TabId::new("primary.library"),
+                    PrimaryTab::Library,
+                    "Library",
+                ),
             ],
             Some(self.primary_tab()),
             Message::PrimaryTabSelected,
@@ -704,14 +712,34 @@ impl State {
     fn detail_page(&self, context: PaneContext) -> Element<'_, Message> {
         #[cfg(feature = "fvs")]
         let detail_tabs = [
-            Tab::new(DetailTab::Programs, "Programs"),
-            Tab::new(DetailTab::Settings, "Settings"),
-            Tab::new(DetailTab::Snapshots, "Snapshots"),
+            Tab::new(
+                TabId::new("detail.programs"),
+                DetailTab::Programs,
+                "Programs",
+            ),
+            Tab::new(
+                TabId::new("detail.settings"),
+                DetailTab::Settings,
+                "Settings",
+            ),
+            Tab::new(
+                TabId::new("detail.snapshots"),
+                DetailTab::Snapshots,
+                "Snapshots",
+            ),
         ];
         #[cfg(not(feature = "fvs"))]
         let detail_tabs = [
-            Tab::new(DetailTab::Programs, "Programs"),
-            Tab::new(DetailTab::Settings, "Settings"),
+            Tab::new(
+                TabId::new("detail.programs"),
+                DetailTab::Programs,
+                "Programs",
+            ),
+            Tab::new(
+                TabId::new("detail.settings"),
+                DetailTab::Settings,
+                "Settings",
+            ),
         ];
         let tabs = Tabs::new(
             detail_tabs,

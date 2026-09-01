@@ -6,7 +6,7 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    control::{Control, State},
+    control::{ActionState, ActionSurface},
     spacing,
     text::TextExt as _,
 };
@@ -37,7 +37,7 @@ pub(super) fn item<'a, Message: Clone + 'a>(
     selected: bool,
     keyboard_highlighted: impl Fn() -> bool + 'a,
 ) -> Element<'a, Message> {
-    Control::new(content)
+    ActionSurface::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press_maybe(on_press)
@@ -53,7 +53,7 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     label: &'a str,
     message: Message,
 ) -> Element<'a, Message> {
-    Control::new(
+    ActionSurface::new(
         row![
             text(label),
             Icon::Arrow.view().rotation(std::f32::consts::PI)
@@ -68,7 +68,7 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     .into()
 }
 
-fn row_style(theme: &Theme, state: State) -> button::Style {
+fn row_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
     let highlighted = state.actionable
         && (state.keyboard_highlighted || state.hovered || state.pressed || state.focused);

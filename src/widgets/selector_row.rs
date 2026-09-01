@@ -384,7 +384,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
             let header_outcome =
                 state
                     .header
-                    .update(event, header.bounds(), cursor, true, true, false, shell);
+                    .update(event, header.bounds(), cursor, true, true, shell);
             pointer_captured |= header_outcome != Outcome::Ignored;
 
             let mut selected = None;
@@ -397,10 +397,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                         event,
                         option.bounds(),
                         cursor,
-                        true,
-                        true,
-                        false,
-                        shell,
+                        true, true, shell,
                     );
                     pointer_captured |= outcome != Outcome::Ignored;
 

@@ -4,11 +4,11 @@ mod menu;
 mod style;
 mod surface;
 
-pub(crate) use control::Control;
+pub(crate) use control::ActionSurface;
 #[cfg(test)]
 pub(crate) use control::Interaction;
 #[doc(hidden)]
-pub use control::event_cursor;
+pub(crate) use control::event_cursor;
 
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 

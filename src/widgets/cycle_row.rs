@@ -6,7 +6,7 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    control::Control,
+    control::ActionSurface,
     list_row::{self, ListRow},
     spacing, style,
     text::TextExt as _,
@@ -60,14 +60,14 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
     fn from(cycle: CycleRow<'a, Message>) -> Self {
         let enabled = cycle.previous.is_some() || cycle.next.is_some();
         let previous_enabled = cycle.previous.is_some();
-        let previous = Control::new(Icon::Arrow.view())
+        let previous = ActionSurface::new(Icon::Arrow.view())
             .padding(spacing::XS)
             .sensitive(previous_enabled)
             .style(style::action)
             .on_press_maybe(cycle.previous);
 
         let next_enabled = cycle.next.is_some();
-        let next = Control::new(Icon::Arrow.view().rotation(std::f32::consts::PI))
+        let next = ActionSurface::new(Icon::Arrow.view().rotation(std::f32::consts::PI))
             .padding(spacing::XS)
             .sensitive(next_enabled)
             .style(style::action)

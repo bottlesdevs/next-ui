@@ -12,7 +12,7 @@ use iced::{
 use crate::theme;
 
 use super::{
-    Control,
+    ActionSurface,
     control::{descendant_is_focused, focus_first_descendant},
     event_cursor,
 };
@@ -74,7 +74,7 @@ impl<'a, Message> WindowModal<'a, Message> {
 impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Message> {
     fn from(modal: WindowModal<'a, Message>) -> Self {
         let open = modal.dialog.is_some();
-        let base = Control::new(modal.base)
+        let base = ActionSurface::new(modal.base)
             .width(Fill)
             .height(Fill)
             .sensitive(!open);
@@ -307,7 +307,7 @@ fn cycle_focus<Message>(
 ) {
     move_focus_once(content, tree, layout, renderer, previous);
 
-    if !descendant_is_focused(content, tree, layout, renderer) {
+    if !descendant_is_focused(content.as_widget_mut(), tree, layout, renderer) {
         move_focus_once(content, tree, layout, renderer, previous);
     }
 }
@@ -368,7 +368,7 @@ mod tests {
     }
 
     fn host(open: bool) -> Element<'static, Message> {
-        WindowModal::new(Control::new(Space::new()).on_press(Message::Dismiss))
+        WindowModal::new(ActionSurface::new(Space::new()).on_press(Message::Dismiss))
             .dialog(open.then(|| Dialog::new(Space::new(), Message::Dismiss)))
             .into()
     }

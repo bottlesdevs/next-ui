@@ -3,7 +3,7 @@ use iced::{
     widget::{canvas, container, stack},
 };
 
-use super::{Control, style};
+use super::{ActionSurface, style};
 
 const BORDER_RADIUS: f32 = 6.0;
 const BORDER_WIDTH: f32 = 2.0;
@@ -66,7 +66,7 @@ impl<'a, Message: Clone + 'a> From<DropTarget<'a, Message>> for Element<'a, Mess
         .width(width)
         .height(height);
 
-        Control::new(content)
+        ActionSurface::new(content)
             .on_press(on_activate)
             .width(width)
             .height(height)

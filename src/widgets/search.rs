@@ -397,8 +397,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             viewport,
         );
 
-        let focused =
-            descendant_is_focused(&mut self.input, &mut tree.children[0], layout, renderer);
+        let focused = descendant_is_focused(
+            self.input.as_widget_mut(),
+            &mut tree.children[0],
+            layout,
+            renderer,
+        );
 
         if focused && !state.focused {
             state.dismissed = false;

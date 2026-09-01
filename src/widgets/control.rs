@@ -11,13 +11,13 @@ use iced::{
 };
 use std::{cell::Cell, rc::Rc};
 
-/// A one-shot activation event from a [`Control`] to its composite owner.
+/// A one-shot activation event from an [`ActionSurface`] to its composite owner.
 /// It does not own persistent widget state.
 pub(crate) type ActivationSignal = Rc<Cell<bool>>;
 
 /// The independent states used to resolve a control's appearance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct State {
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ActionState {
     pub(crate) sensitive: bool,
     pub(crate) actionable: bool,
     pub(crate) hovered: bool,
@@ -29,9 +29,9 @@ pub(crate) struct State {
     pub(crate) keyboard_highlighted: bool,
 }
 
-/// The complete appearance of a [`Control`].
+/// The complete appearance of an [`ActionSurface`].
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Style {
+pub(crate) struct ActionStyle {
     pub(crate) background: Option<Background>,
     pub(crate) text_color: Color,
     pub(crate) border: iced::Border,
@@ -41,7 +41,7 @@ pub(crate) struct Style {
     pub(crate) foreground: Option<Background>,
 }
 
-impl Default for Style {
+impl Default for ActionStyle {
     fn default() -> Self {
         Self {
             background: None,
@@ -54,7 +54,7 @@ impl Default for Style {
     }
 }
 
-impl From<button::Style> for Style {
+impl From<button::Style> for ActionStyle {
     fn from(style: button::Style) -> Self {
         Self {
             background: style.background,
@@ -75,16 +75,35 @@ pub(crate) enum Outcome {
     Activated,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PressOrigin {
+    Mouse(mouse::Button),
+    Touch(touch::Finger),
+    Key(key::Named),
+}
+
 /// Transient input and focus state shared by controls and composite widgets.
 #[derive(Debug, Default)]
 pub(crate) struct Interaction {
-    pressed: bool,
+    press: Option<PressOrigin>,
     focused: bool,
     hovered: bool,
     descendant_focused: bool,
 }
 
 impl Interaction {
+    fn sync_enabled(&mut self, sensitive: bool, actionable: bool) {
+        if !sensitive {
+            self.press = None;
+            self.focused = false;
+            self.hovered = false;
+            self.descendant_focused = false;
+        } else if !actionable {
+            self.press = None;
+            self.focused = false;
+        }
+    }
+
     pub(crate) fn update<Message>(
         &mut self,
         event: &Event,
@@ -92,16 +111,16 @@ impl Interaction {
         cursor: mouse::Cursor,
         sensitive: bool,
         actionable: bool,
-        child_captured: bool,
         shell: &mut Shell<'_, Message>,
     ) -> Outcome {
-        let previous = (self.pressed, self.focused, self.hovered);
+        let child_captured = shell.is_event_captured();
+        let previous = (self.press, self.focused, self.hovered);
         let pointer = event_cursor(event, cursor);
         let hovered = sensitive && pointer.is_over(bounds);
         let mut outcome = Outcome::Ignored;
 
-        if !sensitive {
-            self.pressed = false;
+        if !sensitive || matches!(event, Event::Window(window::Event::Unfocused)) {
+            self.press = None;
             self.focused = false;
             self.hovered = false;
             self.descendant_focused = false;
@@ -113,71 +132,57 @@ impl Interaction {
             }
 
             if !actionable {
-                self.pressed = false;
+                self.press = None;
                 self.focused = false;
             } else if child_captured {
+                if self
+                    .press
+                    .is_some_and(|press| event_origin(event) == Some(press))
+                {
+                    self.press = None;
+                }
+
                 if matches!(
-                    event,
-                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                        | Event::Touch(touch::Event::FingerPressed { .. })
+                    press_started(event),
+                    Some(PressOrigin::Mouse(_) | PressOrigin::Touch(_))
                 ) {
                     self.focused = false;
-                    self.pressed = false;
-                } else if matches!(
-                    event,
-                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-                        | Event::Touch(
-                            touch::Event::FingerLifted { .. } | touch::Event::FingerLost { .. }
-                        )
-                ) {
-                    self.pressed = false;
                 }
-            } else {
-                outcome = match event {
-                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                    | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                        self.focused = false;
+            } else if let Some(press) = press_started(event) {
+                if matches!(press, PressOrigin::Mouse(_) | PressOrigin::Touch(_)) {
+                    self.focused = false;
 
-                        if hovered {
-                            self.pressed = true;
-                            Outcome::Captured
-                        } else {
-                            Outcome::Ignored
-                        }
+                    if matches!(self.press, Some(PressOrigin::Key(_))) {
+                        self.press = None;
                     }
-                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-                    | Event::Touch(touch::Event::FingerLifted { .. })
-                        if self.pressed =>
-                    {
-                        self.pressed = false;
+                }
 
-                        if hovered {
-                            Outcome::Activated
-                        } else {
-                            Outcome::Captured
-                        }
-                    }
-                    Event::Touch(touch::Event::FingerLost { .. }) => {
-                        self.pressed = false;
-                        Outcome::Ignored
-                    }
-                    Event::Keyboard(keyboard::Event::KeyPressed {
-                        key: keyboard::Key::Named(key::Named::Enter | key::Named::Space),
-                        repeat: false,
-                        ..
-                    }) if self.focused => {
-                        self.pressed = true;
-                        Outcome::Captured
-                    }
-                    Event::Keyboard(keyboard::Event::KeyReleased {
-                        key: keyboard::Key::Named(key::Named::Enter | key::Named::Space),
-                        ..
-                    }) if self.focused && self.pressed => {
-                        self.pressed = false;
-                        Outcome::Activated
-                    }
-                    _ => Outcome::Ignored,
+                let can_start = match press {
+                    PressOrigin::Key(_) => self.focused,
+                    PressOrigin::Mouse(_) | PressOrigin::Touch(_) => hovered,
                 };
+
+                if can_start && self.press.is_none() {
+                    self.press = Some(press);
+                    outcome = Outcome::Captured;
+                }
+            } else if let Some(release) = press_released(event) {
+                if self.press == Some(release) {
+                    self.press = None;
+                    let released_over_action = match release {
+                        PressOrigin::Mouse(_) | PressOrigin::Touch(_) => hovered,
+                        PressOrigin::Key(_) => self.focused,
+                    };
+                    outcome = if released_over_action {
+                        Outcome::Activated
+                    } else {
+                        Outcome::Captured
+                    };
+                }
+            } else if let Event::Touch(touch::Event::FingerLost { id, .. }) = event
+                && self.press == Some(PressOrigin::Touch(*id))
+            {
+                self.press = None;
             }
 
             if matches!(
@@ -193,7 +198,7 @@ impl Interaction {
         }
 
         if !matches!(event, Event::Window(window::Event::RedrawRequested(_)))
-            && previous != (self.pressed, self.focused, self.hovered)
+            && previous != (self.press, self.focused, self.hovered)
         {
             shell.request_redraw();
         }
@@ -207,7 +212,7 @@ impl Interaction {
         actionable: bool,
         bounds: Rectangle,
         cursor: mouse::Cursor,
-    ) -> State {
+    ) -> ActionState {
         let focused = sensitive && actionable && self.focused;
         let hovered = sensitive
             && if cursor == mouse::Cursor::Unavailable {
@@ -216,11 +221,11 @@ impl Interaction {
                 cursor.is_over(bounds)
             };
 
-        State {
+        ActionState {
             sensitive,
             actionable,
             hovered,
-            pressed: sensitive && actionable && self.pressed,
+            pressed: sensitive && actionable && self.press.is_some(),
             focused,
             focus_within: sensitive && (focused || self.descendant_focused),
             selected: false,
@@ -259,12 +264,14 @@ impl operation::Focusable for Interaction {
 
     fn unfocus(&mut self) {
         self.focused = false;
-        self.pressed = false;
+        self.press = None;
     }
 }
 
 /// A single-child control with shared input, focus, and styling behavior.
-pub(crate) struct Control<'a, Message> {
+type StyleFn<'a> = dyn Fn(&Theme, ActionState) -> ActionStyle + 'a;
+
+pub(crate) struct ActionSurface<'a, Message> {
     content: Element<'a, Message>,
     on_press: Option<Message>,
     activation: Option<ActivationSignal>,
@@ -274,10 +281,10 @@ pub(crate) struct Control<'a, Message> {
     width: Length,
     height: Length,
     padding: Padding,
-    style: Box<dyn Fn(&Theme, State) -> Style + 'a>,
+    style: Box<StyleFn<'a>>,
 }
 
-impl<'a, Message> Control<'a, Message> {
+impl<'a, Message> ActionSurface<'a, Message> {
     pub(crate) fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
@@ -289,9 +296,9 @@ impl<'a, Message> Control<'a, Message> {
             width: Length::Shrink,
             height: Length::Shrink,
             padding: Padding::ZERO,
-            style: Box::new(|theme, _| Style {
+            style: Box::new(|theme, _| ActionStyle {
                 text_color: crate::theme::colors(theme).text,
-                ..Style::default()
+                ..ActionStyle::default()
             }),
         }
     }
@@ -341,9 +348,9 @@ impl<'a, Message> Control<'a, Message> {
         self
     }
 
-    pub(crate) fn style<S>(mut self, style: impl Fn(&Theme, State) -> S + 'a) -> Self
+    pub(crate) fn style<S>(mut self, style: impl Fn(&Theme, ActionState) -> S + 'a) -> Self
     where
-        S: Into<Style>,
+        S: Into<ActionStyle>,
     {
         self.style = Box::new(move |theme, state| style(theme, state).into());
         self
@@ -354,7 +361,7 @@ impl<'a, Message> Control<'a, Message> {
     }
 }
 
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Message> {
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ActionSurface<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<Interaction>()
     }
@@ -369,6 +376,9 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
 
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(std::slice::from_ref(&self.content));
+        tree.state
+            .downcast_mut::<Interaction>()
+            .sync_enabled(self.sensitive, self.actionable());
     }
 
     fn size(&self) -> Size<Length> {
@@ -428,6 +438,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
         viewport: &Rectangle,
     ) {
         let content_layout = layout.children().next().expect("control content layout");
+        let visible_bounds = layout.bounds().intersection(viewport).unwrap_or(Rectangle {
+            x: layout.bounds().x,
+            y: layout.bounds().y,
+            width: 0.0,
+            height: 0.0,
+        });
 
         if self.sensitive {
             self.content.as_widget_mut().update(
@@ -443,7 +459,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
 
             if self.focus_first_descendant
                 && !shell.is_event_captured()
-                && event_cursor(event, cursor).is_over(layout.bounds())
+                && event_cursor(event, cursor).is_over(visible_bounds)
                 && matches!(
                     event,
                     Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
@@ -460,14 +476,13 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
             }
         }
 
-        let child_captured = shell.is_event_captured();
         let interaction = tree.state.downcast_mut::<Interaction>();
 
         if matches!(event, Event::Window(window::Event::RedrawRequested(_))) {
             interaction.set_descendant_focused(
                 self.sensitive
                     && descendant_is_focused(
-                        &mut self.content,
+                        self.content.as_widget_mut(),
                         &mut tree.children[0],
                         content_layout,
                         renderer,
@@ -477,11 +492,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
 
         if interaction.update(
             event,
-            layout.bounds(),
+            visible_bounds,
             cursor,
             self.sensitive,
             self.actionable(),
-            child_captured,
             shell,
         ) == Outcome::Activated
         {
@@ -603,29 +617,82 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Control<'_, Mess
     }
 }
 
-impl<'a, Message: Clone + 'a> From<Control<'a, Message>> for Element<'a, Message> {
-    fn from(control: Control<'a, Message>) -> Self {
-        Element::new(control)
+impl<'a, Message: Clone + 'a> From<ActionSurface<'a, Message>> for Element<'a, Message> {
+    fn from(surface: ActionSurface<'a, Message>) -> Self {
+        Element::new(surface)
+    }
+}
+
+fn press_started(event: &Event) -> Option<PressOrigin> {
+    match event {
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+            Some(PressOrigin::Mouse(mouse::Button::Left))
+        }
+        Event::Touch(touch::Event::FingerPressed { id, .. }) => Some(PressOrigin::Touch(*id)),
+        Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(named @ (key::Named::Enter | key::Named::Space)),
+            repeat: false,
+            ..
+        }) => Some(PressOrigin::Key(*named)),
+        _ => None,
+    }
+}
+
+fn press_released(event: &Event) -> Option<PressOrigin> {
+    match event {
+        Event::Mouse(mouse::Event::ButtonReleased(button)) => Some(PressOrigin::Mouse(*button)),
+        Event::Touch(touch::Event::FingerLifted { id, .. }) => Some(PressOrigin::Touch(*id)),
+        Event::Keyboard(keyboard::Event::KeyReleased {
+            key: keyboard::Key::Named(named @ (key::Named::Enter | key::Named::Space)),
+            ..
+        }) => Some(PressOrigin::Key(*named)),
+        _ => None,
+    }
+}
+
+fn event_origin(event: &Event) -> Option<PressOrigin> {
+    match event {
+        Event::Mouse(
+            mouse::Event::ButtonPressed(button) | mouse::Event::ButtonReleased(button),
+        ) => Some(PressOrigin::Mouse(*button)),
+        Event::Touch(
+            touch::Event::FingerPressed { id, .. }
+            | touch::Event::FingerMoved { id, .. }
+            | touch::Event::FingerLifted { id, .. }
+            | touch::Event::FingerLost { id, .. },
+        ) => Some(PressOrigin::Touch(*id)),
+        Event::Keyboard(
+            keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(named @ (key::Named::Enter | key::Named::Space)),
+                ..
+            }
+            | keyboard::Event::KeyReleased {
+                key: keyboard::Key::Named(named @ (key::Named::Enter | key::Named::Space)),
+                ..
+            },
+        ) => Some(PressOrigin::Key(*named)),
+        _ => None,
     }
 }
 
 pub(crate) fn descendant_is_focused<Message>(
-    content: &mut Element<'_, Message>,
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
     tree: &mut Tree,
     layout: Layout<'_>,
     renderer: &iced::Renderer,
 ) -> bool {
-    let mut count = operation::focusable::count();
-    content.as_widget_mut().operate(
-        tree,
-        layout,
-        renderer,
-        &mut operation::black_box(&mut count),
-    );
-
     matches!(
-        Operation::finish(&count),
-        operation::Outcome::Some(count) if count.focused.is_some()
+        run_operation(
+            content,
+            tree,
+            layout,
+            renderer,
+            operation::focusable::count(),
+        ),
+        operation::Outcome::Some(operation::focusable::Count {
+            focused: Some(_),
+            ..
+        })
     )
 }
 
@@ -635,30 +702,90 @@ pub(crate) fn focus_first_descendant<Message>(
     layout: Layout<'_>,
     renderer: &iced::Renderer,
 ) {
-    content.operate(tree, layout, renderer, &mut FocusFirst(false));
+    unfocus_descendants(content, tree, layout, renderer);
+    move_descendant_focus(content, tree, layout, renderer, false);
 }
 
-struct FocusFirst(bool);
+pub(crate) fn unfocus_descendants<Message>(
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+) {
+    run_operation(
+        content,
+        tree,
+        layout,
+        renderer,
+        operation::focusable::unfocus::<()>(),
+    );
+}
 
-impl Operation for FocusFirst {
-    fn focusable(
-        &mut self,
-        _id: Option<&iced::widget::Id>,
-        _bounds: Rectangle,
-        state: &mut dyn operation::Focusable,
-    ) {
-        if !self.0 {
-            state.focus();
-            self.0 = true;
+pub(crate) fn cycle_descendant_focus<Message>(
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    previous: bool,
+) {
+    move_descendant_focus(content, tree, layout, renderer, previous);
+
+    if !descendant_is_focused(content, tree, layout, renderer) {
+        move_descendant_focus(content, tree, layout, renderer, previous);
+    }
+}
+
+fn move_descendant_focus<Message>(
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    previous: bool,
+) {
+    if previous {
+        run_operation(
+            content,
+            tree,
+            layout,
+            renderer,
+            operation::focusable::focus_previous::<()>(),
+        );
+    } else {
+        run_operation(
+            content,
+            tree,
+            layout,
+            renderer,
+            operation::focusable::focus_next::<()>(),
+        );
+    }
+}
+
+fn run_operation<Message, Output: 'static>(
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    operation: impl Operation<Output> + 'static,
+) -> operation::Outcome<Output> {
+    let mut operation: Box<dyn Operation<Output>> = Box::new(operation);
+
+    loop {
+        content.operate(
+            tree,
+            layout,
+            renderer,
+            &mut operation::black_box(operation.as_mut()),
+        );
+
+        match operation.finish() {
+            operation::Outcome::Chain(next) => operation = next,
+            outcome => return outcome,
         }
     }
-
-    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
-        operate(self);
-    }
 }
 
-pub fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
+pub(crate) fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
     match event {
         Event::Touch(
             touch::Event::FingerPressed { position, .. }

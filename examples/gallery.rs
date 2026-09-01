@@ -19,7 +19,11 @@ use next_ui::{
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const EMPTY_OPTIONS: &[&str] = &[];
-const TAB_LABELS: &[&str] = &["Bottles", "Library", "Settings"];
+const GALLERY_TABS: &[(&str, &str)] = &[
+    ("bottles", "Bottles"),
+    ("library", "Library"),
+    ("settings", "Settings"),
+];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
 const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
     ("Epic Games Store", "Install", Icon::Arrow),
@@ -221,10 +225,10 @@ impl Gallery {
         .spacing(18);
 
         let tabs = tabs::Tabs::new(
-            TAB_LABELS
+            GALLERY_TABS
                 .iter()
                 .enumerate()
-                .map(|(index, label)| tabs::Tab::new(index, label)),
+                .map(|(index, (id, label))| tabs::Tab::new(tabs::TabId::new(*id), index, label)),
             Some(self.selected_tab),
             Message::TabSelected,
         )

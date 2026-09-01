@@ -3,9 +3,9 @@ use iced::{
     widget::{button, text},
 };
 
-use super::control::State;
+use super::control::ActionState;
 
-pub(crate) fn action(theme: &Theme, state: State) -> button::Style {
+pub(crate) fn action(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
     let background = if state.pressed {
         Some(colors.selection)
