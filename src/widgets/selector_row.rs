@@ -1,38 +1,35 @@
+use std::{cell::Cell, collections::HashSet, rc::Rc};
+
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Length, Padding, Point, Rectangle, Shadow,
-    Size, Theme,
+    Alignment, Element, Event, Fill, Length, Point, Rectangle, Size, Theme,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, renderer,
-        widget::{Operation, Tree, operation, tree},
+        widget::{Id, Operation, Tree, tree},
     },
     animation::{Animation, Easing},
     keyboard::{self, key},
     time::Instant,
     touch,
-    widget::{column, container, row, text},
+    widget::{column, container, row, scrollable, text},
     window,
 };
 
-use crate::{
-    icons::Icon,
-    theme::{self, Motion},
-};
+use crate::{icons::Icon, theme};
 
 use super::{
-    control::{Interaction, Outcome},
+    control::{ActionSurface, ActivationSignal, descendant_is_focused},
     draw_caret,
+    list_navigation::{Navigation, navigate_index, reconcile_index, reveal},
     list_row::{self, ListRow},
-    reconcile_index, spacing,
+    menu, spacing,
+    surface::{Surface, SurfaceRole},
     text::TextExt as _,
 };
 
-const OPTION_PANEL_PADDING: Padding = Padding {
-    top: spacing::MD,
-    right: spacing::SM,
-    bottom: spacing::MD,
-    left: spacing::SM,
-};
+const PANEL_PADDING: [f32; 2] = [spacing::MD, spacing::SM];
 
+/// A single-Tab-stop row that owns an in-flow option disclosure and keyboard
+/// navigation.
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
     options: &'a [T],
@@ -40,13 +37,17 @@ pub struct SelectorRow<'a, T, Message> {
     on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
     label: Box<dyn Fn(&T) -> String + 'a>,
-    key: Option<Box<dyn Fn(&T) -> String + 'a>>,
+    key: Box<dyn Fn(&T) -> String + 'a>,
     icon: Option<Icon>,
-    motion: Motion,
 }
 
 impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
-    pub fn new(title: &'a str, options: &'a [T], selected: Option<&'a T>) -> Self {
+    pub fn new(
+        title: &'a str,
+        options: &'a [T],
+        selected: Option<&'a T>,
+        key: impl Fn(&T) -> String + 'a,
+    ) -> Self {
         Self {
             title,
             options,
@@ -54,9 +55,8 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
             on_selected: None,
             placeholder: "",
             label: Box::new(ToString::to_string),
-            key: None,
+            key: Box::new(key),
             icon: None,
-            motion: Motion::default(),
         }
     }
 
@@ -67,11 +67,6 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
 
     pub fn label(mut self, label: impl Fn(&T) -> String + 'a) -> Self {
         self.label = Box::new(label);
-        self
-    }
-
-    pub fn key(mut self, key: impl Fn(&T) -> String + 'a) -> Self {
-        self.key = Some(Box::new(key));
         self
     }
 
@@ -89,17 +84,12 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
         self.on_selected = on_selected.map(|on_selected| Box::new(on_selected) as _);
         self
     }
-
-    pub fn motion(mut self, motion: Motion) -> Self {
-        self.motion = motion;
-        self
-    }
 }
 
 impl<'a, T, Message> From<SelectorRow<'a, T, Message>> for Element<'a, Message>
 where
     T: Clone + PartialEq + ToString + 'a,
-    Message: 'a,
+    Message: Clone + 'a,
 {
     fn from(selector: SelectorRow<'a, T, Message>) -> Self {
         let SelectorRow {
@@ -111,12 +101,17 @@ where
             label,
             key,
             icon,
-            motion,
         } = selector;
         let selected =
             selected.and_then(|selected| options.iter().position(|option| option == selected));
         let labels: Vec<_> = options.iter().map(label).collect();
-        let keys = key.map_or_else(|| labels.clone(), |key| options.iter().map(key).collect());
+        let keys: Vec<_> = options.iter().map(key).collect();
+        let mut unique = HashSet::with_capacity(keys.len());
+        assert!(
+            keys.iter().all(|key| unique.insert(key.as_str())),
+            "SelectorRow keys must be unique"
+        );
+
         let value = selected
             .map(|index| labels[index].clone())
             .unwrap_or_else(|| placeholder.to_owned());
@@ -124,21 +119,68 @@ where
             Box::new(move |index: usize| on_selected(options[index].clone()))
                 as Box<dyn Fn(usize) -> Message>
         });
-        let children = std::iter::once(header(title, value, icon))
-            .chain(labels.into_iter().map(|label| {
-                container(text(label).label())
+        let enabled = on_selected.is_some() && !keys.is_empty();
+        let activated = Rc::new(Cell::new(false));
+        let expanded = Rc::new(Cell::new(false));
+        let highlighted = Rc::new(Cell::new(selected.or((!keys.is_empty()).then_some(0))));
+        let header = ActionSurface::new(header(title, value, icon))
+            .width(Fill)
+            .sensitive(enabled)
+            .activation_signal(activated.clone())
+            .style({
+                let expanded = expanded.clone();
+                move |theme, mut state| {
+                    state.expanded = expanded.get();
+                    list_row::style(theme, state)
+                }
+            });
+
+        let mut activations = Vec::with_capacity(keys.len());
+        let rows = labels
+            .into_iter()
+            .zip(keys.iter().cloned())
+            .enumerate()
+            .map(|(index, (label, key))| {
+                let activation = Rc::new(Cell::new(false));
+                activations.push(activation.clone());
+                let highlighted = highlighted.clone();
+                let row: Element<'a, Message> = container(
+                    ActionSurface::new(container(text(label).label()).width(Fill))
+                        .id(key.into())
+                        .width(Fill)
+                        .padding([spacing::SM, spacing::SM])
+                        .activation_signal(activation)
+                        .selected(selected == Some(index))
+                        .style(move |theme, mut state| {
+                            state.keyboard_highlighted = highlighted.get() == Some(index);
+                            menu::row_style(theme, state)
+                        }),
+                )
+                .width(Fill)
+                .into();
+                row
+            });
+        let panel = Surface::new(
+            SurfaceRole::Panel,
+            scrollable(
+                container(column(rows).width(Fill))
                     .width(Fill)
-                    .padding([spacing::SM, spacing::SM])
-                    .into()
-            }))
-            .collect();
+                    .padding(PANEL_PADDING),
+            )
+            .width(Fill)
+            .style(theme::scrollbar),
+        );
 
         Element::new(Selector {
-            children,
-            on_selected,
+            header: header.into(),
+            panel: panel.into(),
             selected,
             keys,
-            motion,
+            activations,
+            on_selected,
+            activated,
+            expanded,
+            highlighted,
         })
     }
 }
@@ -170,20 +212,32 @@ fn header<'a, Message: 'a>(
 }
 
 struct Selector<'a, Message> {
-    children: Vec<Element<'a, Message>>,
-    on_selected: Option<Box<dyn Fn(usize) -> Message + 'a>>,
+    header: Element<'a, Message>,
+    panel: Element<'a, Message>,
     selected: Option<usize>,
     keys: Vec<String>,
-    motion: Motion,
+    activations: Vec<ActivationSignal>,
+    on_selected: Option<Box<dyn Fn(usize) -> Message + 'a>>,
+    activated: ActivationSignal,
+    expanded: Rc<Cell<bool>>,
+    highlighted: Rc<Cell<Option<usize>>>,
 }
 
 impl<Message> Selector<'_, Message> {
-    fn option_count(&self) -> usize {
-        self.children.len().saturating_sub(1)
+    fn is_enabled(&self) -> bool {
+        self.on_selected.is_some() && !self.keys.is_empty()
     }
 
-    fn is_enabled(&self) -> bool {
-        self.on_selected.is_some() && self.option_count() > 0
+    fn select(&self, index: usize) -> Option<Message> {
+        self.on_selected
+            .as_ref()
+            .map(|on_selected| on_selected(index))
+    }
+
+    fn take_activation(&self) -> Option<usize> {
+        self.activations
+            .iter()
+            .position(|activation| activation.replace(false))
     }
 }
 
@@ -191,9 +245,8 @@ impl<Message> Selector<'_, Message> {
 struct State {
     expansion: Animation<bool>,
     highlighted: Option<usize>,
-    header: Interaction,
-    options: Vec<Interaction>,
     keys: Vec<String>,
+    reveal: Option<Id>,
 }
 
 impl Default for State {
@@ -201,9 +254,8 @@ impl Default for State {
         Self {
             expansion: Animation::new(false).very_quick().easing(Easing::EaseOut),
             highlighted: None,
-            header: Interaction::default(),
-            options: Vec::new(),
             keys: Vec::new(),
+            reveal: None,
         }
     }
 }
@@ -213,25 +265,9 @@ impl State {
         self.expansion.value()
     }
 
-    fn set_open(&mut self, open: bool, now: Instant, motion: Motion) {
+    fn set_open(&mut self, open: bool, now: Instant) {
         if self.is_open() != open {
-            if motion.is_reduced() {
-                self.expansion = Animation::new(open);
-            } else {
-                self.expansion.go_mut(open, now);
-            }
-
-            if !open {
-                for option in &mut self.options {
-                    *option = Interaction::default();
-                }
-            }
-        }
-    }
-
-    fn sync_motion(&mut self, now: Instant, motion: Motion) {
-        if motion.is_reduced() && self.expansion.is_animating(now) {
-            self.expansion = Animation::new(self.is_open());
+            self.expansion.go_mut(open, now);
         }
     }
 
@@ -240,53 +276,78 @@ impl State {
     }
 }
 
-impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
+fn navigate(
+    open: bool,
+    current: Option<usize>,
+    selected: Option<usize>,
+    count: usize,
+    navigation: Navigation,
+) -> Option<usize> {
+    let last = count.checked_sub(1)?;
+
+    if open {
+        navigate_index(current, count, navigation, false)
+    } else {
+        Some(match navigation {
+            Navigation::Next => selected.unwrap_or(0),
+            Navigation::Previous => selected.unwrap_or(last),
+            Navigation::First => 0,
+            Navigation::Last => last,
+        })
+    }
+}
+
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }
 
     fn state(&self) -> tree::State {
         let mut state = State::default();
-        state.options = (0..self.option_count())
-            .map(|_| Interaction::default())
-            .collect();
         state.keys.clone_from(&self.keys);
-
         if self.is_enabled() {
             state.highlighted = self.selected.or(Some(0));
         }
-
         tree::State::new(state)
     }
 
     fn children(&self) -> Vec<Tree> {
-        self.children.iter().map(Tree::new).collect()
+        vec![Tree::new(&self.header), Tree::new(&self.panel)]
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&self.children);
+        let reset_panel = tree.state.downcast_ref::<State>().keys != self.keys;
+        if tree.children.len() != 2 {
+            tree.children = self.children();
+        } else {
+            tree.children[0].diff(&self.header);
+            if reset_panel {
+                tree.children[1] = Tree::new(&self.panel);
+            } else {
+                tree.children[1].diff(&self.panel);
+            }
+        }
+
         let state = tree.state.downcast_mut::<State>();
-        let option_count = self.option_count();
+        let previous_highlight = state.highlighted;
         let highlighted = reconcile_index(&state.keys, state.highlighted, &self.keys);
-
-        if state.keys != self.keys {
-            state.options = (0..option_count).map(|_| Interaction::default()).collect();
-        } else {
-            state
-                .options
-                .resize_with(option_count, Interaction::default);
-        }
-
         state.keys.clone_from(&self.keys);
-        state.sync_motion(Instant::now(), self.motion);
-
-        if !self.is_enabled() {
-            state.set_open(false, Instant::now(), self.motion);
-            state.highlighted = None;
-            state.header = Interaction::default();
-        } else {
+        if self.is_enabled() {
             state.highlighted = highlighted.or(self.selected).or(Some(0));
+        } else {
+            state.set_open(false, Instant::now());
+            state.highlighted = None;
         }
+
+        if state.is_open()
+            && state.highlighted != previous_highlight
+            && let Some(index) = state.highlighted
+        {
+            state.reveal = Some(self.keys[index].clone().into());
+        }
+
+        self.expanded.set(state.is_open());
+        self.highlighted.set(state.highlighted);
     }
 
     fn size(&self) -> Size<Length> {
@@ -300,51 +361,46 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         limits: &layout::Limits,
     ) -> layout::Node {
         let limits = limits.width(Length::Fill).height(Length::Shrink);
-        let (header, options) = self.children.split_first_mut().expect("selector header");
-        let (header_tree, option_trees) = tree.children.split_first_mut().expect("selector header");
-        let header = header
+        let header = self
+            .header
             .as_widget_mut()
-            .layout(header_tree, renderer, &limits);
+            .layout(&mut tree.children[0], renderer, &limits);
         let header_height = header.size().height;
         let width = header.size().width;
+        let panel_limits = layout::Limits::new(
+            Size::new(width, 0.0),
+            Size::new(width, (limits.max().height - header_height).max(0.0)),
+        );
+        let panel = self
+            .panel
+            .as_widget_mut()
+            .layout(&mut tree.children[1], renderer, &panel_limits)
+            .move_to(Point::new(0.0, header_height));
         let expansion = tree.state.downcast_ref::<State>().expansion(Instant::now());
-        let option_panel = if expansion > 0.0 {
-            layout::flex::resolve(
-                layout::flex::Axis::Vertical,
-                renderer,
-                &limits.shrink(Size::new(0.0, header_height)),
-                Length::Fill,
-                Length::Shrink,
-                OPTION_PANEL_PADDING,
-                0.0,
-                Alignment::Start,
-                options,
-                option_trees,
-            )
-            .move_to(Point::new(0.0, header_height))
-        } else {
-            layout::Node::new(Size::ZERO)
-        };
-        let height = header_height + option_panel.size().height * expansion;
 
-        layout::Node::with_children(Size::new(width, height), vec![header, option_panel])
+        layout::Node::with_children(
+            Size::new(
+                width,
+                disclosed_height(header_height, panel.size().height, expansion),
+            ),
+            vec![header, panel],
+        )
     }
 
     fn operate(
         &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
-        _renderer: &iced::Renderer,
+        renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        if self.is_enabled() {
-            let header = layout.children().next().expect("selector header");
-            operation.focusable(
-                None,
-                header.bounds(),
-                &mut tree.state.downcast_mut::<State>().header,
-            );
-        }
+        let (header_layout, _) = layout_parts(layout);
+        self.header.as_widget_mut().operate(
+            &mut tree.children[0],
+            header_layout,
+            renderer,
+            operation,
+        );
     }
 
     fn update(
@@ -353,162 +409,164 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
-        _renderer: &iced::Renderer,
-        _clipboard: &mut dyn Clipboard,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        _viewport: &Rectangle,
+        viewport: &Rectangle,
     ) {
-        if !self.motion.is_reduced()
-            && let Event::Window(window::Event::RedrawRequested(now)) = event
-            && tree
-                .state
-                .downcast_ref::<State>()
-                .expansion
-                .is_animating(*now)
+        let (state, children) = (&mut tree.state, &mut tree.children);
+        let state = state.downcast_mut::<State>();
+        let (header_layout, panel_layout) = layout_parts(layout);
+
+        if let Event::Window(window::Event::RedrawRequested(now)) = event
+            && state.expansion.is_animating(*now)
         {
             shell.invalidate_layout();
             shell.request_redraw();
         }
 
-        if !self.is_enabled() {
-            return;
-        }
+        let header_focused = descendant_is_focused(
+            self.header.as_widget_mut(),
+            &mut children[0],
+            header_layout,
+            renderer,
+        );
 
-        let (header, options) = layout_parts(layout);
-        let state = tree.state.downcast_mut::<State>();
-        let was_open = state.is_open();
-        let was_highlighted = state.highlighted;
-
-        if !matches!(event, Event::Keyboard(_)) {
-            let mut pointer_captured = false;
-            let header_outcome =
-                state
-                    .header
-                    .update(event, header.bounds(), cursor, true, true, shell);
-            pointer_captured |= header_outcome != Outcome::Ignored;
-
-            let mut selected = None;
-
-            if state.is_open() {
-                for (index, (interaction, option)) in
-                    state.options.iter_mut().zip(&options).enumerate()
-                {
-                    let outcome = interaction.update(
-                        event,
-                        option.bounds(),
-                        cursor,
-                        true, true, shell,
-                    );
-                    pointer_captured |= outcome != Outcome::Ignored;
-
-                    if outcome == Outcome::Activated {
-                        selected = Some(index);
-                    }
-                }
-            }
-
-            if matches!(
-                event,
-                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                    | Event::Touch(touch::Event::FingerPressed { .. })
-            ) {
-                if pointer_captured {
-                    operation::Focusable::focus(&mut state.header);
-                } else if state.is_open() {
-                    state.set_open(false, Instant::now(), self.motion);
-                }
-            }
-
-            if header_outcome == Outcome::Activated {
-                state.set_open(!state.is_open(), Instant::now(), self.motion);
-                state.highlighted = self.selected.or(Some(0));
-            } else if let Some(index) = selected {
-                if let Some(on_selected) = &self.on_selected {
-                    shell.publish(on_selected(index));
-                }
-                state.set_open(false, Instant::now(), self.motion);
-                state.highlighted = Some(index);
-            }
-        }
-
-        match event {
-            Event::Keyboard(keyboard::Event::KeyPressed {
+        if self.is_enabled()
+            && header_focused
+            && let Event::Keyboard(keyboard::Event::KeyPressed {
                 key, repeat: false, ..
-            }) if operation::Focusable::is_focused(&state.header) => {
-                let last = self.option_count().checked_sub(1);
+            }) = event
+        {
+            if state.is_open() && matches!(key.as_ref(), keyboard::Key::Named(key::Named::Tab)) {
+                state.set_open(false, Instant::now());
+                self.expanded.set(false);
+                shell.invalidate_layout();
+                shell.request_redraw();
+                return;
+            }
 
-                match key.as_ref() {
-                    keyboard::Key::Named(key::Named::ArrowDown) => {
-                        if let Some(last) = last {
-                            state.highlighted = Some(if state.is_open() {
-                                state
-                                    .highlighted
-                                    .map_or(self.selected.unwrap_or(0), |index| {
-                                        (index + 1).min(last)
-                                    })
-                            } else {
-                                self.selected.unwrap_or(0)
-                            });
-                            state.set_open(true, Instant::now(), self.motion);
-                            shell.capture_event();
-                        }
-                    }
-                    keyboard::Key::Named(key::Named::ArrowUp) => {
-                        if let Some(last) = last {
-                            state.highlighted = Some(if state.is_open() {
-                                state
-                                    .highlighted
-                                    .unwrap_or_else(|| self.selected.unwrap_or(0))
-                                    .saturating_sub(1)
-                            } else {
-                                self.selected.unwrap_or(last)
-                            });
-                            state.set_open(true, Instant::now(), self.motion);
-                            shell.capture_event();
-                        }
-                    }
-                    keyboard::Key::Named(key::Named::Home) if last.is_some() => {
-                        state.set_open(true, Instant::now(), self.motion);
-                        state.highlighted = Some(0);
-                        shell.capture_event();
-                    }
-                    keyboard::Key::Named(key::Named::End) => {
-                        if let Some(last) = last {
-                            state.set_open(true, Instant::now(), self.motion);
-                            state.highlighted = Some(last);
-                            shell.capture_event();
-                        }
-                    }
-                    keyboard::Key::Named(key::Named::Enter | key::Named::Space) => {
-                        if state.is_open() {
-                            if let Some(index) = state.highlighted {
-                                if let Some(on_selected) = &self.on_selected {
-                                    shell.publish(on_selected(index));
-                                }
-                                state.set_open(false, Instant::now(), self.motion);
-                            }
-                        } else {
-                            state.set_open(true, Instant::now(), self.motion);
-                            state.highlighted = self.selected.or(Some(0));
-                        }
+            let navigation = match key.as_ref() {
+                keyboard::Key::Named(key::Named::ArrowDown) => Some(Navigation::Next),
+                keyboard::Key::Named(key::Named::ArrowUp) => Some(Navigation::Previous),
+                keyboard::Key::Named(key::Named::Home) => Some(Navigation::First),
+                keyboard::Key::Named(key::Named::End) => Some(Navigation::Last),
+                _ => None,
+            };
 
-                        shell.capture_event();
-                    }
-                    keyboard::Key::Named(key::Named::Escape) if state.is_open() => {
-                        state.set_open(false, Instant::now(), self.motion);
-                        shell.capture_event();
-                    }
-                    _ => {}
+            if let Some(navigation) = navigation {
+                state.highlighted = navigate(
+                    state.is_open(),
+                    state.highlighted,
+                    self.selected,
+                    self.keys.len(),
+                    navigation,
+                );
+                state.set_open(true, Instant::now());
+                if let Some(index) = state.highlighted {
+                    state.reveal = Some(self.keys[index].clone().into());
+                }
+                self.expanded.set(true);
+                self.highlighted.set(state.highlighted);
+                shell.capture_event();
+                shell.invalidate_layout();
+                shell.request_redraw();
+                return;
+            }
+
+            if state.is_open()
+                && matches!(
+                    key.as_ref(),
+                    keyboard::Key::Named(key::Named::Enter | key::Named::Space)
+                )
+                && let Some(index) = state.highlighted
+                && let Some(message) = self.select(index)
+            {
+                state.set_open(false, Instant::now());
+                self.expanded.set(false);
+                shell.publish(message);
+                shell.capture_event();
+                shell.invalidate_layout();
+                shell.request_redraw();
+                return;
+            }
+
+            if state.is_open() && matches!(key.as_ref(), keyboard::Key::Named(key::Named::Escape)) {
+                state.set_open(false, Instant::now());
+                self.expanded.set(false);
+                shell.capture_event();
+                shell.invalidate_layout();
+                shell.request_redraw();
+                return;
+            }
+        }
+
+        self.header.as_widget_mut().update(
+            &mut children[0],
+            event,
+            header_layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        );
+
+        if state.is_open() {
+            let panel_viewport = layout.bounds().intersection(viewport).unwrap_or_default();
+            self.panel.as_widget_mut().update(
+                &mut children[1],
+                event,
+                panel_layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                &panel_viewport,
+            );
+
+            if let Some(id) = state.reveal.take()
+                && reveal(
+                    self.panel.as_widget_mut(),
+                    &mut children[1],
+                    panel_layout,
+                    renderer,
+                    &id,
+                )
+            {
+                shell.request_redraw();
+            }
+
+            if let Some(index) = self.take_activation()
+                && let Some(message) = self.select(index)
+            {
+                state.highlighted = Some(index);
+                state.set_open(false, Instant::now());
+                self.expanded.set(false);
+                self.highlighted.set(state.highlighted);
+                shell.publish(message);
+                shell.invalidate_layout();
+                shell.request_redraw();
+                return;
+            }
+        }
+
+        if self.activated.replace(false) {
+            state.set_open(!state.is_open(), Instant::now());
+            if state.is_open() {
+                state.highlighted = self.selected.or(Some(0));
+                if let Some(index) = state.highlighted {
+                    state.reveal = Some(self.keys[index].clone().into());
                 }
             }
-            _ => {}
-        }
-
-        if state.is_open() != was_open {
+            self.expanded.set(state.is_open());
+            self.highlighted.set(state.highlighted);
             shell.invalidate_layout();
-        }
-
-        if state.is_open() != was_open || state.highlighted != was_highlighted {
+            shell.request_redraw();
+        } else if state.is_open() && outside_press(event, cursor, layout.bounds()) {
+            state.set_open(false, Instant::now());
+            self.expanded.set(false);
+            shell.invalidate_layout();
             shell.request_redraw();
         }
     }
@@ -518,28 +576,30 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         tree: &Tree,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
-        _viewport: &Rectangle,
-        _renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         let state = tree.state.downcast_ref::<State>();
-        let (header, options) = layout_parts(layout);
+        let (header_layout, panel_layout) = layout_parts(layout);
+        let header = self.header.as_widget().mouse_interaction(
+            &tree.children[0],
+            header_layout,
+            cursor,
+            viewport,
+            renderer,
+        );
 
-        if !self.is_enabled() {
-            return mouse::Interaction::default();
+        if state.is_open() {
+            header.max(self.panel.as_widget().mouse_interaction(
+                &tree.children[1],
+                panel_layout,
+                cursor,
+                viewport,
+                renderer,
+            ))
+        } else {
+            header
         }
-
-        let header_interaction =
-            state
-                .header
-                .mouse_interaction(true, true, header.bounds(), cursor);
-
-        options
-            .into_iter()
-            .zip(&state.options)
-            .filter(|_| state.is_open())
-            .fold(header_interaction, |current, (option, interaction)| {
-                current.max(interaction.mouse_interaction(true, true, option.bounds(), cursor))
-            })
     }
 
     fn draw(
@@ -547,156 +607,96 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         tree: &Tree,
         renderer: &mut iced::Renderer,
         theme: &Theme,
-        _renderer_style: &renderer::Style,
+        style: &renderer::Style,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
-        let colors = theme::colors(theme);
-        let bounds = layout.bounds();
+        let (header_layout, panel_layout) = layout_parts(layout);
         let expansion = state.expansion(Instant::now());
-        let mut control_state = state.header.state(self.is_enabled(), true, bounds, cursor);
-        control_state.expanded = expansion > 0.0;
-        let style = list_row::style(theme, control_state);
+        self.expanded.set(expansion > 0.0);
 
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds,
-                border: style.border,
-                shadow: style.shadow,
-                snap: style.snap,
-            },
-            style
-                .background
-                .unwrap_or(Background::Color(iced::Color::TRANSPARENT)),
-        );
+        if expansion > 0.0 {
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: layout.bounds(),
+                    border: iced::Border::default().rounded(6),
+                    snap: true,
+                    ..renderer::Quad::default()
+                },
+                iced::Background::Color(crate::theme::colors(theme).border),
+            );
+        }
 
-        let (header, options) = layout_parts(layout);
-        self.children[0].as_widget().draw(
+        self.header.as_widget().draw(
             &tree.children[0],
             renderer,
             theme,
-            &renderer::Style {
-                text_color: style.text_color,
-            },
-            header,
+            style,
+            header_layout,
             cursor,
             viewport,
         );
-        let header_content = header.children().next().expect("selector header content");
-        let caret_slot = header_content
+
+        let content = header_layout
             .children()
-            .nth(1)
-            .expect("selector caret slot");
+            .next()
+            .expect("selector action content");
+        let row = content.children().next().expect("selector header row");
+        let caret_slot = row.children().nth(1).expect("selector caret slot");
         draw_caret(renderer, theme, caret_slot.bounds(), expansion);
 
-        if expansion > 0.0 {
-            let panel = Rectangle {
-                x: bounds.x,
-                y: header.bounds().y + header.bounds().height,
-                width: bounds.width,
-                height: (bounds.height - header.bounds().height).max(0.0),
-            };
-
-            if let Some(clip) = panel.intersection(viewport) {
-                renderer.with_layer(clip, |renderer| {
-                    let hovered =
-                        options
-                            .iter()
-                            .zip(&state.options)
-                            .position(|(option, interaction)| {
-                                interaction
-                                    .state(true, true, option.bounds(), cursor)
-                                    .hovered
-                            });
-                    let highlighted = hovered.or(state.highlighted);
-                    let line = Rectangle {
-                        y: panel.y,
-                        height: 1.0,
-                        ..bounds
-                    };
-
-                    renderer.fill_quad(
-                        renderer::Quad {
-                            bounds: line,
-                            border: Border::default(),
-                            shadow: Shadow::default(),
-                            snap: true,
+        if expansion > 0.0
+            && let Some(clip) = layout.bounds().intersection(viewport)
+        {
+            renderer.with_layer(clip, |renderer| {
+                self.panel.as_widget().draw(
+                    &tree.children[1],
+                    renderer,
+                    theme,
+                    style,
+                    panel_layout,
+                    cursor,
+                    &clip,
+                );
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle {
+                            y: panel_layout.bounds().y,
+                            height: 1.0,
+                            ..layout.bounds()
                         },
-                        colors.selection,
-                    );
-
-                    for (index, option_layout) in options.into_iter().enumerate() {
-                        let mut option_state =
-                            state.options[index].state(true, true, option_layout.bounds(), cursor);
-                        option_state.keyboard_highlighted =
-                            hovered.is_none() && highlighted == Some(index);
-                        let is_highlighted =
-                            option_state.hovered || option_state.keyboard_highlighted;
-
-                        if is_highlighted {
-                            renderer.fill_quad(
-                                renderer::Quad {
-                                    bounds: option_layout.bounds(),
-                                    border: Border::default().rounded(6),
-                                    shadow: Shadow::default(),
-                                    snap: true,
-                                },
-                                Background::Color(colors.selection),
-                            );
-                        }
-
-                        self.children[index + 1].as_widget().draw(
-                            &tree.children[index + 1],
-                            renderer,
-                            theme,
-                            &renderer::Style {
-                                text_color: if is_highlighted {
-                                    colors.text
-                                } else {
-                                    colors.muted
-                                },
-                            },
-                            option_layout,
-                            cursor,
-                            &clip,
-                        );
-                    }
-                });
-            }
-        }
-
-        if let Some(foreground) = style.foreground {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds,
-                    border: style.border,
-                    shadow: Shadow::default(),
-                    snap: style.snap,
-                },
-                foreground,
-            );
+                        snap: true,
+                        ..renderer::Quad::default()
+                    },
+                    iced::Background::Color(crate::theme::colors(theme).selection),
+                );
+            });
         }
     }
 }
 
-impl<'a, Message: 'a> From<Selector<'a, Message>> for Element<'a, Message> {
-    fn from(selector: Selector<'a, Message>) -> Self {
-        Element::new(selector)
-    }
-}
-
-fn layout_parts<'a>(layout: Layout<'a>) -> (Layout<'a>, Vec<Layout<'a>>) {
+fn layout_parts(layout: Layout<'_>) -> (Layout<'_>, Layout<'_>) {
     let mut children = layout.children();
-    let header = children.next().expect("selector header");
-    let options = children
-        .next()
-        .expect("selector option panel")
-        .children()
-        .collect();
+    (
+        children.next().expect("selector header"),
+        children.next().expect("selector panel"),
+    )
+}
 
-    (header, options)
+fn outside_press(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
+    match event {
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => cursor
+            .position()
+            .is_some_and(|position| !bounds.contains(position)),
+        Event::Touch(touch::Event::FingerPressed { position, .. }) => !bounds.contains(*position),
+        _ => false,
+    }
+}
+
+fn disclosed_height(header: f32, panel: f32, expansion: f32) -> f32 {
+    header + panel * expansion.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -704,28 +704,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reduced_motion_snaps_selector_expansion() {
-        let now = Instant::now();
-        let mut state = State::default();
-
-        state.set_open(true, now, Motion::Reduced);
-
-        assert!(state.is_open());
-        assert_eq!(state.expansion(now), 1.0);
-        assert!(!state.expansion.is_animating(now));
-    }
-
-    #[test]
-    fn changing_to_reduced_motion_finishes_an_active_expansion() {
-        let now = Instant::now();
-        let mut state = State::default();
-        state.set_open(true, now, Motion::Full);
-        assert!(state.expansion.is_animating(now));
-
-        state.sync_motion(now, Motion::Reduced);
-
-        assert!(state.is_open());
-        assert_eq!(state.expansion(now), 1.0);
-        assert!(!state.expansion.is_animating(now));
+    #[should_panic(expected = "SelectorRow keys must be unique")]
+    fn duplicate_keys_are_rejected() {
+        let options = ["first", "second"];
+        let _: Element<'_, ()> =
+            SelectorRow::new("Duplicate", &options, None, |_| "same".into()).into();
     }
 }

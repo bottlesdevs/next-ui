@@ -2,41 +2,67 @@ use iced::{
     Event, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree},
+        widget::{Id, Operation, Tree},
     },
     keyboard::{self, key},
     touch,
 };
 
-use super::{control::focus_first_descendant, spacing};
+use super::{
+    control::{descendant_is_focused, focus_descendant, unfocus_descendants},
+    list_navigation::reveal,
+    spacing,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Dismissal {
+pub(super) enum DismissReason {
     OutsidePress,
     Escape,
-    ContentMessage,
+    ContentMessage { keyboard: bool },
+    FocusLost,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DismissOutcome {
+    PassThrough,
+    Captured,
+    CapturedAndRestoreFocus,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum PopupFocusState {
+    #[default]
+    None,
+    Requested,
+    Target(usize),
+}
+
+pub(super) struct PopupFocus<'a> {
+    pub(super) state: &'a mut PopupFocusState,
+    pub(super) restore_anchor: &'a mut bool,
+    pub(super) targets: &'a [Id],
 }
 
 /// Positions arbitrary content relative to another widget.
-pub(super) struct AnchoredOverlay<'a, Message> {
+pub(super) struct PopupCore<'a, Message> {
     anchor: Rectangle,
     viewport: Rectangle,
     content: &'a mut dyn Widget<Message, Theme, iced::Renderer>,
     tree: &'a mut Tree,
     viewport_inset: f32,
-    focus_content: Option<&'a mut bool>,
-    on_dismiss: Box<dyn FnMut(Dismissal) -> bool + 'a>,
+    focus: PopupFocus<'a>,
+    on_dismiss: Box<dyn FnMut(DismissReason) -> DismissOutcome + 'a>,
 }
 
-impl<'a, Message> AnchoredOverlay<'a, Message> {
+impl<'a, Message> PopupCore<'a, Message> {
     pub(super) fn new(
         anchor: Rectangle,
         viewport: Rectangle,
         content: &'a mut dyn Widget<Message, Theme, iced::Renderer>,
         tree: &'a mut Tree,
         viewport_inset: f32,
-        focus_content: Option<&'a mut bool>,
-        on_dismiss: impl FnMut(Dismissal) -> bool + 'a,
+        focus: PopupFocus<'a>,
+        on_dismiss: impl FnMut(DismissReason) -> DismissOutcome + 'a,
     ) -> Self {
         Self {
             anchor,
@@ -44,19 +70,31 @@ impl<'a, Message> AnchoredOverlay<'a, Message> {
             content,
             tree,
             viewport_inset,
-            focus_content,
+            focus,
             on_dismiss: Box::new(on_dismiss),
         }
     }
 
-    fn dismiss(&mut self, reason: Dismissal) -> bool {
-        let capture = (self.on_dismiss)(reason);
+    fn dismiss(&mut self, reason: DismissReason) -> DismissOutcome {
+        let outcome = (self.on_dismiss)(reason);
 
-        if capture && let Some(focus_content) = &mut self.focus_content {
-            **focus_content = false;
+        *self.focus.state = PopupFocusState::None;
+        if outcome == DismissOutcome::CapturedAndRestoreFocus {
+            *self.focus.restore_anchor = true;
         }
 
-        capture
+        outcome
+    }
+
+    fn focus(&mut self, index: usize, layout: Layout<'_>, renderer: &iced::Renderer) {
+        let Some(target) = self.focus.targets.get(index) else {
+            *self.focus.state = PopupFocusState::None;
+            return;
+        };
+
+        focus_descendant(self.content, self.tree, layout, renderer, target.clone());
+        *self.focus.state = PopupFocusState::Target(index);
+        reveal(self.content, self.tree, layout, renderer, target);
     }
 }
 
@@ -84,18 +122,18 @@ fn geometry(anchor: Rectangle, viewport: Rectangle, inset: f32) -> Geometry {
     }
 }
 
-fn dismissal(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> Option<Dismissal> {
+fn dismissal(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> Option<DismissReason> {
     match event {
         Event::Mouse(mouse::Event::ButtonPressed(_)) => (!cursor.is_over(bounds)
             && cursor.position().is_some())
-        .then_some(Dismissal::OutsidePress),
+        .then_some(DismissReason::OutsidePress),
         Event::Touch(touch::Event::FingerPressed { position, .. }) => {
-            (!bounds.contains(*position)).then_some(Dismissal::OutsidePress)
+            (!bounds.contains(*position)).then_some(DismissReason::OutsidePress)
         }
         Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Escape),
             ..
-        }) => Some(Dismissal::Escape),
+        }) => Some(DismissReason::Escape),
         _ => None,
     }
 }
@@ -125,18 +163,18 @@ impl Geometry {
 }
 
 impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
-    for AnchoredOverlay<'_, Message>
+    for PopupCore<'_, Message>
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
         let bounds = Rectangle::with_size(bounds);
         let viewport = self.viewport.intersection(&bounds).unwrap_or(bounds);
         let geometry = geometry(self.anchor, viewport, self.viewport_inset);
         let max_height = geometry.below.max(geometry.above).max(0.0);
-        let content = self.content.layout(
-            self.tree,
-            renderer,
-            &layout::Limits::new(Size::ZERO, Size::new(geometry.max_width, max_height)),
-        );
+        let min = Size::ZERO;
+        let max = Size::new(geometry.max_width, max_height);
+        let content = self
+            .content
+            .layout(self.tree, renderer, &layout::Limits::new(min, max));
         let size = content.size();
 
         content.move_to(geometry.position(
@@ -157,21 +195,42 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         shell: &mut Shell<'_, Message>,
     ) {
         if let Some(reason) = dismissal(event, cursor, layout.bounds()) {
-            if self.dismiss(reason) {
+            let outcome = self.dismiss(reason);
+            unfocus_descendants(self.content, self.tree, layout, renderer);
+
+            if outcome != DismissOutcome::PassThrough {
                 shell.capture_event();
-                shell.request_redraw();
             }
+            shell.request_redraw();
 
             return;
         }
 
-        if let Some(focus_content) = &mut self.focus_content
-            && **focus_content
-        {
-            focus_first_descendant(self.content, self.tree, layout, renderer);
-
-            **focus_content = false;
+        if *self.focus.state == PopupFocusState::Requested {
+            self.focus(0, layout, renderer);
             shell.request_redraw();
+        }
+
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(key::Named::Tab),
+            modifiers,
+            repeat: false,
+            ..
+        }) = event
+            && let PopupFocusState::Target(current) = *self.focus.state
+            && !self.focus.targets.is_empty()
+            && descendant_is_focused(self.content, self.tree, layout, renderer)
+        {
+            let count = self.focus.targets.len();
+            let next = if modifiers.shift() {
+                (current + count - 1) % count
+            } else {
+                (current + 1) % count
+            };
+            self.focus(next, layout, renderer);
+            shell.capture_event();
+            shell.request_redraw();
+            return;
         }
 
         let mut messages = Vec::new();
@@ -188,8 +247,23 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             &self.viewport,
         );
 
-        if !panel_shell.is_empty() && self.dismiss(Dismissal::ContentMessage) {
-            panel_shell.capture_event();
+        let lost_focus = matches!(*self.focus.state, PopupFocusState::Target(_))
+            && !descendant_is_focused(self.content, self.tree, layout, renderer);
+
+        if lost_focus && panel_shell.is_empty() && !panel_shell.is_event_captured() {
+            self.dismiss(DismissReason::FocusLost);
+            panel_shell.request_redraw();
+        }
+
+        if !panel_shell.is_empty() {
+            let outcome = self.dismiss(DismissReason::ContentMessage {
+                keyboard: matches!(event, Event::Keyboard(_)),
+            });
+            unfocus_descendants(self.content, self.tree, layout, renderer);
+
+            if outcome != DismissOutcome::PassThrough {
+                panel_shell.capture_event();
+            }
             panel_shell.request_redraw();
         }
 
@@ -315,7 +389,7 @@ mod tests {
                 mouse::Cursor::Unavailable,
                 Rectangle::new(Point::new(10.0, 10.0), Size::new(100.0, 100.0)),
             ),
-            Some(Dismissal::OutsidePress)
+            Some(DismissReason::OutsidePress)
         );
     }
 }

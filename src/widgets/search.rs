@@ -1,4 +1,4 @@
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, collections::HashSet, rc::Rc};
 
 use iced::{
     Alignment, Background, Border, Color, Element, Event, Fill, Length, Rectangle, Size, Theme,
@@ -14,11 +14,12 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{AnchoredOverlay, Dismissal},
+    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    control::descendant_is_focused,
+    control::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
+    list_navigation::{Navigation, navigate_index, reconcile_index, reveal},
     menu::{footer as panel_footer, item as menu_item, row_content},
-    reconcile_index, spacing,
+    spacing,
     surface::{SurfaceRole, scoped_overlay},
     text::TextExt as _,
 };
@@ -33,6 +34,7 @@ pub struct SearchResult<'a, Message> {
 }
 
 impl<'a, Message> SearchResult<'a, Message> {
+    /// Creates a result whose key preserves highlighting across result changes.
     pub fn new(key: impl Into<String>, title: &'a str, on_select: Message) -> Self {
         Self {
             key: key.into(),
@@ -123,7 +125,7 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             .width(Fill)
             .padding(0)
             .size(18)
-            .style(input_style);
+            .style(|theme, _| input_style(theme));
 
         if let Some(id) = search.id {
             input = input.id(id);
@@ -137,7 +139,14 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         .width(Fill)
         .padding([spacing::SM, spacing::MD])
         .style(search_style);
-        let (panel, visible, keys, selections, highlight) = panel(search.state, search.footer);
+        let PanelParts {
+            panel,
+            visible,
+            keys,
+            selections,
+            highlight,
+            focus_targets,
+        } = panel(search.state, search.footer);
 
         Element::new(SearchWidget {
             input: input.into(),
@@ -148,22 +157,27 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
             highlight,
             query: search.query,
             on_submit: search.on_submit,
+            focus_targets,
         })
     }
+}
+
+struct PanelParts<'a, Message> {
+    panel: SearchPanel<'a, Message>,
+    visible: bool,
+    keys: Vec<String>,
+    selections: Vec<Message>,
+    highlight: Rc<Cell<Option<usize>>>,
+    focus_targets: Vec<Id>,
 }
 
 fn panel<'a, Message: Clone + 'a>(
     state: SearchState<'a, Message>,
     footer: Option<(&'a str, Message)>,
-) -> (
-    SearchPanel<'a, Message>,
-    bool,
-    Vec<String>,
-    Vec<Message>,
-    Rc<Cell<Option<usize>>>,
-) {
+) -> PanelParts<'a, Message> {
     let mut keys = Vec::new();
     let mut selections = Vec::new();
+    let mut focus_targets = Vec::new();
     let highlight = Rc::new(Cell::new(None));
     let visible = !matches!(state, SearchState::Hidden);
     let body: Element<'a, Message> = match state {
@@ -173,7 +187,12 @@ fn panel<'a, Message: Clone + 'a>(
             for (index, result) in results.into_iter().enumerate() {
                 keys.push(result.key.clone());
                 selections.push(result.on_select.clone());
-                rows = rows.push(result_row(result, Rc::clone(&highlight), index));
+                rows = rows.push(result_row(
+                    result,
+                    Rc::clone(&highlight),
+                    index,
+                    &mut focus_targets,
+                ));
             }
 
             container(rows).width(Fill).padding(spacing::MD).into()
@@ -184,27 +203,41 @@ fn panel<'a, Message: Clone + 'a>(
         SearchState::Hidden => column![].into(),
     };
 
-    let footer = footer
-        .filter(|_| visible)
-        .map(|(label, message)| panel_footer(label, message));
+    let footer: Option<Element<'a, Message>> =
+        footer.filter(|_| visible).map(|(label, message)| {
+            let id = search_target("footer", "");
+            focus_targets.push(id.clone());
+            panel_footer(label, message).id(id).into()
+        });
+    let mut unique = HashSet::with_capacity(keys.len());
+    assert!(
+        keys.iter().all(|key| unique.insert(key.as_str())),
+        "Search result keys must be unique"
+    );
 
-    (
-        SearchPanel::new(scrollable(body).width(Fill), footer),
+    PanelParts {
+        panel: SearchPanel::new(scrollable(body).width(Fill), footer),
         visible,
         keys,
         selections,
         highlight,
-    )
+        focus_targets,
+    }
 }
 
 fn result_row<'a, Message: Clone + 'a>(
     result: SearchResult<'a, Message>,
     highlight: Rc<Cell<Option<usize>>>,
     index: usize,
+    focus_targets: &mut Vec<Id>,
 ) -> Element<'a, Message> {
+    let primary = search_target("result", &result.key);
+    focus_targets.push(primary.clone());
     let mut content = row_content(result.title.into(), result.subtitle, result.icon);
 
     if let Some((label, icon, message)) = result.action {
+        let action = search_target("action", &result.key);
+        focus_targets.push(action.clone());
         content = content.push(
             Button::new(label)
                 .trailing_icon(icon)
@@ -214,13 +247,23 @@ fn result_row<'a, Message: Clone + 'a>(
                     0.0
                 })
                 .kind(ButtonKind::Surface)
+                .id(action)
                 .on_press(message),
         );
     }
 
-    menu_item(content, Some(result.on_select), false, move || {
-        highlight.get() == Some(index)
-    })
+    container(
+        menu_item(content, Some(result.on_select), false, move || {
+            highlight.get() == Some(index)
+        })
+        .id(primary),
+    )
+    .width(Fill)
+    .into()
+}
+
+fn search_target(role: &str, key: &str) -> Id {
+    format!("next-ui-search-{role}-{}:{key}", key.len()).into()
 }
 
 fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Message> {
@@ -245,15 +288,31 @@ struct SearchWidget<'a, Message> {
     highlight: Rc<Cell<Option<usize>>>,
     query: &'a str,
     on_submit: Option<Message>,
+    focus_targets: Vec<Id>,
 }
 
 #[derive(Debug, Default)]
 struct SearchLocal {
-    focused: bool,
+    input_focused: bool,
+    panel_focus: PopupFocusState,
     dismissed: bool,
+    restore_input_focus: bool,
     highlighted: Option<usize>,
     keys: Vec<String>,
+    focus_targets: Vec<Id>,
     query: String,
+}
+
+impl SearchLocal {
+    fn popup_open(&self, visible: bool) -> bool {
+        visible
+            && !self.dismissed
+            && (self.input_focused || self.panel_focus != PopupFocusState::None)
+    }
+}
+
+fn navigate(current: Option<usize>, count: usize, navigation: Navigation) -> Option<usize> {
+    navigate_index(current, count, navigation, true)
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_, Message> {
@@ -273,18 +332,40 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
     }
 
     fn diff(&self, tree: &mut Tree) {
+        let reset_panel = tree.state.downcast_ref::<SearchLocal>().keys != self.keys;
         tree.children[0].diff(&self.input);
-        tree.children[1].diff(&self.panel as &dyn Widget<_, _, _>);
+        if reset_panel {
+            tree.children[1] = Tree::new(&self.panel as &dyn Widget<_, _, _>);
+        } else {
+            tree.children[1].diff(&self.panel as &dyn Widget<_, _, _>);
+        }
         let state = tree.state.downcast_mut::<SearchLocal>();
+        let previous_highlight = state.highlighted;
+        let focus_targets_changed = state.focus_targets != self.focus_targets;
         state.highlighted = reconcile_index(&state.keys, state.highlighted, &self.keys)
             .or((!self.keys.is_empty()).then_some(0));
         state.keys.clone_from(&self.keys);
+        state.focus_targets.clone_from(&self.focus_targets);
         self.highlight.set(state.highlighted);
+
+        if (reset_panel || focus_targets_changed) && state.panel_focus != PopupFocusState::None {
+            state.panel_focus = PopupFocusState::None;
+            state.restore_input_focus = true;
+        }
 
         if state.query != self.query {
             state.query.clear();
             state.query.push_str(self.query);
             state.dismissed = false;
+        }
+
+        if !self.visible {
+            state.panel_focus = PopupFocusState::None;
+        } else if state.highlighted != previous_highlight
+            && let Some(index) = state.highlighted
+        {
+            self.panel
+                .reveal(search_target("result", &self.keys[index]));
         }
     }
 
@@ -327,35 +408,88 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_mut::<SearchLocal>();
-        let popup_open = self.visible && state.focused && !state.dismissed;
+        let restoring_input = state.restore_input_focus;
 
-        if state.focused
+        if restoring_input {
+            focus_first_descendant(
+                self.input.as_widget_mut(),
+                &mut tree.children[0],
+                layout,
+                renderer,
+            );
+            state.restore_input_focus = false;
+            shell.request_redraw();
+        }
+
+        if state.dismissed
+            && matches!(
+                event,
+                Event::Mouse(mouse::Event::ButtonPressed(_))
+                    | Event::Touch(iced::touch::Event::FingerPressed { .. })
+            )
+            && event_cursor(event, cursor).is_over(layout.bounds())
+        {
+            state.dismissed = false;
+        }
+
+        let popup_open = state.popup_open(self.visible);
+
+        if state.input_focused
+            && popup_open
+            && !self.focus_targets.is_empty()
+            && let Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(key::Named::Tab),
+                modifiers,
+                repeat: false,
+                ..
+            }) = event
+            && !modifiers.shift()
+        {
+            state.panel_focus = PopupFocusState::Requested;
+            unfocus_descendants(
+                self.input.as_widget_mut(),
+                &mut tree.children[0],
+                layout,
+                renderer,
+            );
+            state.input_focused = false;
+            shell.capture_event();
+            shell.request_redraw();
+            return;
+        }
+
+        if state.input_focused
             && let Event::Keyboard(keyboard::Event::KeyPressed {
                 key, repeat: false, ..
             }) = event
         {
             let result_count = self.selections.len();
+            let navigation_key = matches!(
+                key.as_ref(),
+                keyboard::Key::Named(
+                    key::Named::ArrowDown
+                        | key::Named::ArrowUp
+                        | key::Named::Home
+                        | key::Named::End
+                )
+            );
             let handled = match key.as_ref() {
                 keyboard::Key::Named(key::Named::ArrowDown) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(
-                        state
-                            .highlighted
-                            .map_or(0, |index| (index + 1) % result_count),
-                    );
+                    state.highlighted = navigate(state.highlighted, result_count, Navigation::Next);
                     true
                 }
                 keyboard::Key::Named(key::Named::ArrowUp) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(state.highlighted.map_or(result_count - 1, |index| {
-                        (index + result_count - 1) % result_count
-                    }));
+                    state.highlighted =
+                        navigate(state.highlighted, result_count, Navigation::Previous);
                     true
                 }
                 keyboard::Key::Named(key::Named::Home) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(0);
+                    state.highlighted =
+                        navigate(state.highlighted, result_count, Navigation::First);
                     true
                 }
                 keyboard::Key::Named(key::Named::End) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(result_count - 1);
+                    state.highlighted = navigate(state.highlighted, result_count, Navigation::Last);
                     true
                 }
                 keyboard::Key::Named(key::Named::Enter) => {
@@ -371,14 +505,14 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
                         false
                     }
                 }
-                keyboard::Key::Named(key::Named::Escape) if popup_open => {
-                    state.dismissed = true;
-                    true
-                }
                 _ => false,
             };
 
             if handled {
+                if navigation_key && let Some(index) = state.highlighted {
+                    self.panel
+                        .reveal(search_target("result", &self.keys[index]));
+                }
                 self.highlight.set(state.highlighted);
                 shell.capture_event();
                 shell.request_redraw();
@@ -397,18 +531,22 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             viewport,
         );
 
-        let focused = descendant_is_focused(
+        let input_focused = descendant_is_focused(
             self.input.as_widget_mut(),
             &mut tree.children[0],
             layout,
             renderer,
         );
 
-        if focused && !state.focused {
+        if input_focused && !state.input_focused && !restoring_input {
             state.dismissed = false;
+            if let Some(index) = state.highlighted {
+                self.panel
+                    .reveal(search_target("result", &self.keys[index]));
+            }
         }
 
-        state.focused = focused;
+        state.input_focused = input_focused;
     }
 
     fn mouse_interaction(
@@ -460,7 +598,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         let (state, children) = (&mut tree.state, &mut tree.children);
         let state = state.downcast_mut::<SearchLocal>();
 
-        if !self.visible || !state.focused || state.dismissed {
+        if !state.popup_open(self.visible) {
             return None;
         }
 
@@ -469,19 +607,34 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
         self.panel.width = anchor.width;
 
-        Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
+        let SearchLocal {
+            panel_focus,
+            dismissed,
+            restore_input_focus,
+            ..
+        } = state;
+
+        Some(overlay::Element::new(Box::new(PopupCore::new(
             anchor,
             *viewport,
             &mut self.panel,
             &mut children[1],
             0.0,
-            None,
+            PopupFocus {
+                state: panel_focus,
+                restore_anchor: restore_input_focus,
+                targets: &self.focus_targets,
+            },
             move |reason| {
-                if reason == Dismissal::ContentMessage {
-                    state.dismissed = true;
-                    true
-                } else {
-                    false
+                *dismissed = true;
+                match reason {
+                    DismissReason::OutsidePress | DismissReason::FocusLost => {
+                        DismissOutcome::PassThrough
+                    }
+                    DismissReason::ContentMessage { keyboard: false } => DismissOutcome::Captured,
+                    DismissReason::Escape | DismissReason::ContentMessage { keyboard: true } => {
+                        DismissOutcome::CapturedAndRestoreFocus
+                    }
                 }
             },
         ))))
@@ -491,6 +644,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
 struct SearchPanel<'a, Message> {
     children: Vec<Element<'a, Message>>,
     width: f32,
+    reveal: Cell<Option<Id>>,
 }
 
 impl<'a, Message> SearchPanel<'a, Message> {
@@ -498,7 +652,12 @@ impl<'a, Message> SearchPanel<'a, Message> {
         Self {
             children: std::iter::once(body.into()).chain(footer).collect(),
             width: 0.0,
+            reveal: Cell::new(None),
         }
+    }
+
+    fn reveal(&self, id: Id) {
+        self.reveal.set(Some(id));
     }
 }
 
@@ -596,6 +755,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for SearchPanel<'_, Message
                 tree, event, layout, cursor, renderer, clipboard, shell, viewport,
             );
         }
+
+        if let Some(id) = self.reveal.take()
+            && reveal(self, tree, layout, renderer, &id)
+        {
+            shell.request_redraw();
+        }
     }
 
     fn mouse_interaction(
@@ -666,9 +831,30 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for SearchPanel<'_, Message
     }
 }
 
+fn search_style(theme: &Theme) -> container::Style {
+    let colors = crate::theme::colors(theme);
+    crate::theme::surface(iced::theme::palette::Pair {
+        color: colors.border,
+        text: colors.text,
+    })
+}
+
+fn input_style(theme: &Theme) -> text_input::Style {
+    let colors = crate::theme::colors(theme);
+
+    text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
+        icon: colors.muted,
+        placeholder: colors.muted,
+        value: colors.text,
+        selection: colors.accent,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::reconcile_index;
+    use super::*;
 
     #[test]
     fn preserves_highlight_across_result_changes() {
@@ -689,25 +875,50 @@ mod tests {
             None
         );
     }
-}
 
-fn search_style(theme: &Theme) -> container::Style {
-    let colors = crate::theme::colors(theme);
-    crate::theme::surface(iced::theme::palette::Pair {
-        color: colors.border,
-        text: colors.text,
-    })
-}
+    #[test]
+    fn reordering_results_restores_focus_to_the_input() {
+        fn search(results: [&'static str; 2]) -> Element<'static, ()> {
+            Search::new("Search", "query", |_| ())
+                .state(SearchState::Results(
+                    results.map(|key| SearchResult::new(key, key, ())).into(),
+                ))
+                .into()
+        }
 
-fn input_style(theme: &Theme, _: text_input::Status) -> text_input::Style {
-    let colors = crate::theme::colors(theme);
+        let first = search(["first", "second"]);
+        let mut tree = Tree::new(&first);
+        let state = tree.state.downcast_mut::<SearchLocal>();
+        state.keys = ["first", "second"].map(String::from).into();
+        state.highlighted = Some(0);
+        state.panel_focus = PopupFocusState::Target(0);
 
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border::default(),
-        icon: colors.muted,
-        placeholder: colors.muted,
-        value: colors.text,
-        selection: colors.accent,
+        tree.diff(search(["second", "first"]));
+
+        let state = tree.state.downcast_ref::<SearchLocal>();
+        assert_eq!(state.highlighted, Some(1));
+        assert_eq!(state.panel_focus, PopupFocusState::None);
+        assert!(state.restore_input_focus);
+    }
+
+    #[test]
+    #[should_panic(expected = "Search result keys must be unique")]
+    fn duplicate_result_keys_are_rejected() {
+        let _: Element<'_, ()> = Search::new("Search", "", |_| ())
+            .state(SearchState::Results(vec![
+                SearchResult::new("same", "First", ()),
+                SearchResult::new("same", "Second", ()),
+            ]))
+            .into();
+    }
+
+    #[test]
+    fn input_keeps_the_original_border_and_selection() {
+        let theme = crate::theme::dark();
+        let colors = crate::theme::colors(&theme);
+        let style = input_style(&theme);
+
+        assert_eq!(style.border, Border::default());
+        assert_eq!(style.selection, colors.accent);
     }
 }

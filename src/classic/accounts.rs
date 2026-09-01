@@ -360,14 +360,18 @@ impl State {
             }
 
             link_menu = link_menu.item(
-                PopoverItem::new(provider.name.clone())
+                PopoverItem::new(&provider.id, provider.name.clone())
                     .icon(provider_icon(&provider))
                     .action("Link", Message::BeginLogin(provider)),
             );
         }
 
         link_menu = link_menu.item(
-            PopoverItem::new("Not listed, install a provider plugin").on_select(Message::Noop),
+            PopoverItem::new(
+                "install-provider-plugin",
+                "Not listed, install a provider plugin",
+            )
+            .on_select(Message::Noop),
         );
 
         let mut content = column![accounts, container(link_menu).width(iced::Fill)].spacing(18);

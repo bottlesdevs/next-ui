@@ -273,23 +273,26 @@ impl Gallery {
                 .on_press(()),
         )
         .item(
-            popover::PopoverItem::new("Current profile")
+            popover::PopoverItem::new("current-profile", "Current profile")
                 .subtitle("Selected")
                 .icon(Icon::Person)
                 .selected(true)
                 .on_select(Message::Noop),
         )
         .item(
-            popover::PopoverItem::new("Available account")
+            popover::PopoverItem::new("available-account", "Available account")
                 .subtitle("Child action captures the row click")
                 .action("Link", Message::Noop),
         )
         .item(
-            popover::PopoverItem::new("Unavailable account")
+            popover::PopoverItem::new("unavailable-account", "Unavailable account")
                 .disabled_action("Taken")
                 .tooltip(text("Already linked to another profile")),
         )
-        .item(popover::PopoverItem::new("Manage profiles").on_select(Message::Noop));
+        .item(
+            popover::PopoverItem::new("manage-profiles", "Manage profiles")
+                .on_select(Message::Noop),
+        );
         let popovers = column![popover].spacing(12);
         let fields = column![
             text_row::TextRow::new("Input Name", &self.text_rows[0])
@@ -306,14 +309,18 @@ impl Gallery {
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
-            selector_row::SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected,)
-                .on_selected(Message::OptionSelected)
-                .placeholder("Placeholder")
-                .icon(Icon::Person)
-                .motion(Motion::Full),
-            selector_row::SelectorRow::new("Empty selector", EMPTY_OPTIONS, None)
-                .placeholder("No options available")
-                .motion(Motion::Full),
+            selector_row::SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected, |option| {
+                (*option).to_owned()
+            },)
+            .on_selected(Message::OptionSelected)
+            .placeholder("Placeholder")
+            .icon(Icon::Person)
+            .motion(Motion::Full),
+            selector_row::SelectorRow::new("Empty selector", EMPTY_OPTIONS, None, |option| {
+                (*option).to_owned()
+            })
+            .placeholder("No options available")
+            .motion(Motion::Full),
             action_row::ActionRow::new("Title", action_row::State::Ready(Message::Noop))
                 .description("Description"),
             action_row::ActionRow::new("Unavailable action", action_row::State::Disabled)

@@ -36,7 +36,7 @@ pub(super) fn item<'a, Message: Clone + 'a>(
     on_press: Option<Message>,
     selected: bool,
     keyboard_highlighted: impl Fn() -> bool + 'a,
-) -> Element<'a, Message> {
+) -> ActionSurface<'a, Message> {
     ActionSurface::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
@@ -46,13 +46,12 @@ pub(super) fn item<'a, Message: Clone + 'a>(
             state.keyboard_highlighted = keyboard_highlighted();
             row_style(theme, state)
         })
-        .into()
 }
 
 pub(super) fn footer<'a, Message: Clone + 'a>(
     label: &'a str,
     message: Message,
-) -> Element<'a, Message> {
+) -> ActionSurface<'a, Message> {
     ActionSurface::new(
         row![
             text(label),
@@ -65,10 +64,9 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     .padding(spacing::MD)
     .on_press(message)
     .style(row_style)
-    .into()
 }
 
-fn row_style(theme: &Theme, state: ActionState) -> button::Style {
+pub(super) fn row_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
     let highlighted = state.actionable
         && (state.keyboard_highlighted || state.hovered || state.pressed || state.focused);

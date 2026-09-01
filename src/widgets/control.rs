@@ -2,7 +2,7 @@ use iced::{
     Background, Color, Element, Event, Length, Padding, Rectangle, Shadow, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, operation, tree},
+        widget::{Id, Operation, Tree, operation, tree},
     },
     keyboard::{self, key},
     touch,
@@ -273,6 +273,7 @@ type StyleFn<'a> = dyn Fn(&Theme, ActionState) -> ActionStyle + 'a;
 
 pub(crate) struct ActionSurface<'a, Message> {
     content: Element<'a, Message>,
+    id: Option<Id>,
     on_press: Option<Message>,
     activation: Option<ActivationSignal>,
     sensitive: bool,
@@ -288,6 +289,7 @@ impl<'a, Message> ActionSurface<'a, Message> {
     pub(crate) fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
+            id: None,
             on_press: None,
             activation: None,
             sensitive: true,
@@ -305,6 +307,11 @@ impl<'a, Message> ActionSurface<'a, Message> {
 
     pub(crate) fn on_press(mut self, message: Message) -> Self {
         self.on_press = Some(message);
+        self
+    }
+
+    pub(crate) fn id(mut self, id: Id) -> Self {
+        self.id = Some(id);
         self
     }
 
@@ -412,10 +419,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ActionSurface<'_
         let interaction = tree.state.downcast_mut::<Interaction>();
 
         if self.actionable() && !self.focus_first_descendant {
-            operation.focusable(None, layout.bounds(), interaction);
+            operation.focusable(self.id.as_ref(), layout.bounds(), interaction);
         }
 
-        operation.container(None, layout.bounds());
+        operation.container(self.id.as_ref(), layout.bounds());
         operation.traverse(&mut |operation| {
             self.content.as_widget_mut().operate(
                 &mut tree.children[0],
@@ -704,6 +711,22 @@ pub(crate) fn focus_first_descendant<Message>(
 ) {
     unfocus_descendants(content, tree, layout, renderer);
     move_descendant_focus(content, tree, layout, renderer, false);
+}
+
+pub(crate) fn focus_descendant<Message>(
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    id: Id,
+) {
+    run_operation(
+        content,
+        tree,
+        layout,
+        renderer,
+        operation::focusable::focus::<()>(id),
+    );
 }
 
 pub(crate) fn unfocus_descendants<Message>(

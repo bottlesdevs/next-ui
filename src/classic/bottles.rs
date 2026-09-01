@@ -237,9 +237,14 @@ impl State {
         } else {
             name.on_input(Message::BottleNameChanged)
         };
-        let runner = SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
-            .icon(Icon::Run)
-            .motion(motion);
+        let runner = SelectorRow::new(
+            "Runner",
+            &self.runners,
+            self.selected_runner.as_ref(),
+            |runner| runner.id.to_string(),
+        )
+        .icon(Icon::Run)
+        .motion(motion);
         let runner = if creating {
             runner
         } else {
@@ -248,10 +253,18 @@ impl State {
         let content = column![
             name,
             runner,
-            SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0])).motion(motion),
-            SelectorRow::new("Architecture", &ARCHITECTURES, Some(&ARCHITECTURES[0]))
-                .icon(Icon::Chip)
-                .motion(motion),
+            SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0]), |purpose| {
+                (*purpose).to_owned()
+            })
+            .motion(motion),
+            SelectorRow::new(
+                "Architecture",
+                &ARCHITECTURES,
+                Some(&ARCHITECTURES[0]),
+                |architecture| (*architecture).to_owned(),
+            )
+            .icon(Icon::Chip)
+            .motion(motion),
             PickerRow::new("Use Recipe").description("Choose the location"),
         ]
         .spacing(12);

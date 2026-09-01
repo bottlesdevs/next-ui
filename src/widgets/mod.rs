@@ -1,34 +1,21 @@
 mod anchored_overlay;
 mod control;
+mod list_navigation;
 mod menu;
 mod style;
 mod surface;
 
-pub(crate) use control::ActionSurface;
-#[cfg(test)]
-pub(crate) use control::Interaction;
-#[doc(hidden)]
-pub(crate) use control::event_cursor;
-
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 
-#[doc(hidden)]
+pub(crate) use control::{ActionSurface, event_cursor};
+
+/// Shared spacing scale used by toolkit widgets and application layouts.
 pub mod spacing {
     pub const XS: f32 = 6.0;
     pub const SM: f32 = 12.0;
     pub const MD: f32 = 18.0;
     pub const LG: f32 = 24.0;
     pub const XG: f32 = 32.0;
-}
-
-fn reconcile_index<T: PartialEq>(
-    old_keys: &[T],
-    old_index: Option<usize>,
-    new_keys: &[T],
-) -> Option<usize> {
-    old_index
-        .and_then(|index| old_keys.get(index))
-        .and_then(|key| new_keys.iter().position(|candidate| candidate == key))
 }
 
 fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, expansion: f32) {

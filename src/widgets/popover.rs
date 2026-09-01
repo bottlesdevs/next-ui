@@ -2,7 +2,7 @@ use iced::{
     Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, tree},
+        widget::{Id, Operation, Tree, tree},
     },
     widget::{column, container, scrollable, svg, text::Fragment, text::IntoFragment, tooltip},
 };
@@ -10,7 +10,7 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::AnchoredOverlay,
+    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
     menu::{item as menu_item, row_content},
     spacing,
@@ -41,7 +41,11 @@ impl<'a, Message> Popover<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
     fn from(popover: Popover<'a, Message>) -> Self {
-        let rows = popover.items.into_iter().map(item_row);
+        let mut focus_targets = Vec::new();
+        let rows = popover
+            .items
+            .into_iter()
+            .map(|item| item_row(item, &mut focus_targets));
         let content = container(scrollable(container(column(rows).width(Fill)).width(Fill)))
             .width(Length::Fixed(WIDTH))
             .padding(spacing::MD);
@@ -49,6 +53,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
         Element::new(PopoverWidget {
             trigger: popover.trigger,
             panel: Surface::new(SurfaceRole::Overlay, content).into(),
+            focus_targets,
         })
     }
 }
@@ -124,7 +129,12 @@ impl<'a, Message> PopoverItem<'a, Message> {
     }
 }
 
-fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<'a, Message> {
+fn item_row<'a, Message: Clone + 'a>(
+    item: PopoverItem<'a, Message>,
+    focus_targets: &mut Vec<Id>,
+) -> Element<'a, Message> {
+    let primary = item.on_select.as_ref().map(|_| Id::unique());
+    focus_targets.extend(primary.iter().cloned());
     let mut content = row_content(item.title, item.subtitle, item.icon);
 
     if item.selected {
@@ -136,16 +146,23 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
     }
 
     if let Some((label, message)) = item.action {
+        let id = Id::unique();
+        focus_targets.push(id.clone());
         content = content.push(
             Button::new(label)
                 .kind(ButtonKind::Surface)
+                .id(id)
                 .on_press(message),
         );
     } else if let Some(label) = item.disabled_action {
         content = content.push(Button::new(label).kind(ButtonKind::Surface));
     }
 
-    let row = menu_item(content, item.on_select, item.selected, || false);
+    let mut row = menu_item(content, item.on_select, item.selected, || false);
+    if let Some(id) = primary {
+        row = row.id(id);
+    }
+    let row: Element<'a, Message> = row.into();
 
     match item.tooltip {
         Some(tip) => tooltip(row, tip, tooltip::Position::Top)
@@ -159,6 +176,7 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
 struct PopoverWidget<'a, Message> {
     trigger: Element<'a, ()>,
     panel: Element<'a, Message>,
+    focus_targets: Vec<Id>,
 }
 
 fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
@@ -168,8 +186,34 @@ fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
 #[derive(Debug, Default)]
 struct State {
     open: bool,
-    focus_content: bool,
     focus_trigger: bool,
+    panel_focus: PopupFocusState,
+}
+
+impl State {
+    fn open(&mut self, focus_content: bool) {
+        self.open = true;
+        self.focus_trigger = false;
+        self.panel_focus = if focus_content {
+            PopupFocusState::Requested
+        } else {
+            PopupFocusState::None
+        };
+    }
+
+    fn dismiss(&mut self) {
+        self.open = false;
+        self.focus_trigger = true;
+        self.panel_focus = PopupFocusState::None;
+    }
+
+    fn toggle(&mut self, focus_content: bool) {
+        if self.open {
+            self.dismiss();
+        } else {
+            self.open(focus_content);
+        }
+    }
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
@@ -262,9 +306,18 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         if trigger_shell.is_empty() {
             shell.merge(trigger_shell, |()| unreachable!("empty trigger shell"));
         } else {
-            state.open = !state.open;
-            state.focus_content = state.open && matches!(event, Event::Keyboard(_));
-            state.focus_trigger = !state.open;
+            let opening = !state.open;
+            let focus_panel =
+                opening && !self.focus_targets.is_empty() && matches!(event, Event::Keyboard(_));
+            if focus_panel {
+                super::control::unfocus_descendants(
+                    self.trigger.as_widget_mut(),
+                    &mut tree.children[0],
+                    layout,
+                    renderer,
+                );
+            }
+            state.toggle(focus_panel);
             shell.capture_event();
             shell.request_redraw();
         }
@@ -331,22 +384,33 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
 
         let State {
             open,
-            focus_content,
             focus_trigger,
+            panel_focus,
         } = state;
         let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
 
-        Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
+        Some(overlay::Element::new(Box::new(PopupCore::new(
             anchor,
             *viewport,
             self.panel.as_widget_mut(),
             &mut children[1],
             spacing::SM,
-            Some(focus_content),
-            move |_| {
+            PopupFocus {
+                state: panel_focus,
+                restore_anchor: focus_trigger,
+                targets: &self.focus_targets,
+            },
+            move |reason| {
                 *open = false;
-                *focus_trigger = true;
-                true
+                match reason {
+                    DismissReason::FocusLost | DismissReason::OutsidePress => {
+                        DismissOutcome::PassThrough
+                    }
+                    DismissReason::ContentMessage { keyboard: false } => DismissOutcome::Captured,
+                    DismissReason::Escape | DismissReason::ContentMessage { keyboard: true } => {
+                        DismissOutcome::CapturedAndRestoreFocus
+                    }
+                }
             },
         ))))
     }
@@ -374,7 +438,7 @@ mod tests {
         let mut tree = Tree::new(&popover);
         tree.state.downcast_mut::<State>().open = true;
 
-        tree.diff(&self::popover());
+        tree.diff(self::popover());
 
         assert!(tree.state.downcast_ref::<State>().open);
         assert_eq!(tree.children.len(), 2);

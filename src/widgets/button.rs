@@ -1,7 +1,7 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
     theme::palette::Pair,
-    widget::{Row, container, svg, text, tooltip},
+    widget::{Id, Row, container, svg, text, tooltip},
 };
 
 use crate::icons::{self, Icon};
@@ -39,6 +39,7 @@ pub struct Button<'a, Message> {
     shape: Shape,
     diameter: f32,
     kind: ButtonKind,
+    id: Option<Id>,
     on_press: Option<Message>,
     loading: bool,
 }
@@ -59,6 +60,7 @@ impl<'a, Message> Button<'a, Message> {
             shape: Shape::Rectangular,
             diameter: 52.0,
             kind: ButtonKind::Secondary,
+            id: None,
             on_press: None,
             loading: false,
         }
@@ -115,6 +117,11 @@ impl<'a, Message> Button<'a, Message> {
 
     pub fn on_press(mut self, message: Message) -> Self {
         self.on_press = Some(message);
+        self
+    }
+
+    pub(crate) fn id(mut self, id: Id) -> Self {
+        self.id = Some(id);
         self
     }
 
@@ -185,6 +192,10 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .on_press_maybe(button.on_press.filter(|_| !button.loading))
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
+        if let Some(id) = button.id {
+            control = control.id(id);
+        }
+
         control = match shape {
             Shape::Rectangular | Shape::Pill => control.padding(if kind == ButtonKind::Primary {
                 [spacing::MD, spacing::XG]
@@ -231,9 +242,7 @@ fn icon_element<'a, Message: 'a>(
         .height(size)
         .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
-            color: Some(if disabled {
-                crate::theme::colors(theme).muted
-            } else if kind == ButtonKind::Primary {
+            color: Some(if disabled || kind == ButtonKind::Primary {
                 crate::theme::colors(theme).muted
             } else {
                 colors(theme, false, false, false, kind).text
