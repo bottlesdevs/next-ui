@@ -13,19 +13,12 @@ use iced::{
 };
 
 #[cfg(target_os = "linux")]
-use crate::widgets::info_card::{InfoCard, Kind};
+use crate::widget::{InfoCard, InfoCardKind};
 use crate::{
-    icons::Icon,
-    theme::Motion,
-    widgets::{
-        action_row::{ActionRow, State as ActionRowState},
-        cycle_row::CycleRow,
-        expander_row::ExpanderRow,
-        info_row::InfoRow,
-        list_row::{self, ListRow},
-        row_group::RowGroup,
+    Icon,
+    widget::{
+        ActionRow, ActionRowState, CycleRow, ExpanderRow, InfoRow, ListRow, RowGroup, SwitcherRow,
         spacing,
-        switcher_row::SwitcherRow,
     },
 };
 
@@ -118,7 +111,7 @@ impl State {
         match message {}
     }
 
-    pub fn view<'a>(&'a self, ctx: &Context<'a>, motion: Motion) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, ctx: &Context<'a>) -> Element<'a, Message> {
         let Some(state) = ctx.bottle_state else {
             return column![].into();
         };
@@ -126,14 +119,10 @@ impl State {
             responsive(move |size| {
                 let columns =
                     usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
-                let bottle_name = ListRow::new(list_row::labels("Bottle Name", state.name()))
-                    .trailing(
-                        Icon::Pencil
-                            .view()
-                            .width(list_row::BODY_SIZE)
-                            .height(list_row::BODY_SIZE),
-                    )
-                    .enabled(false);
+                let bottle_name: ListRow<'_, Message> =
+                    ListRow::from(InfoRow::new("Bottle Name").description(state.name()))
+                        .trailing(Icon::Pencil.view().width(16).height(16))
+                        .enabled(false);
                 let unavailable = || {
                     InfoRow::new("Not available yet")
                         .description("This setting is not supported yet.")
@@ -152,19 +141,19 @@ impl State {
                                 ))
                                 .icon(Icon::Run),
                         )
-                        .add(unavailable())
+                        .row(unavailable())
                         .content_enabled(false),
                     )
                     .expander(
                         ExpanderRow::new("Dependencies")
                             .description("Install fonts, codecs, libraries...")
-                            .add(unavailable())
+                            .row(unavailable())
                             .content_enabled(false),
                     )
                     .expander(
                         ExpanderRow::new("Drives")
                             .description("Define your custom drives")
-                            .add(unavailable())
+                            .row(unavailable())
                             .content_enabled(false),
                     );
 
@@ -172,32 +161,27 @@ impl State {
                     .title("Graphics")
                     .columns(columns)
                     .row(
-                        SwitcherRow::new("DLSS", false)
-                            .description("Deep Learning Super Sampling")
-                            .motion(motion),
+                        SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"),
                     )
                     .row(
                         SwitcherRow::new("vkBasalt", false)
-                            .description("Add post-processing effects")
-                            .motion(motion),
+                            .description("Add post-processing effects"),
                     )
                     .row(
                         SwitcherRow::new("Discrete GPU", false)
-                            .description("Force use your dedicated GPU")
-                            .motion(motion),
+                            .description("Force use your dedicated GPU"),
                     )
                     .expander(
                         ExpanderRow::with_header(
                             SwitcherRow::new("FSR", false)
-                                .description("FidelityFX Super Resolution")
-                                .motion(motion),
+                                .description("FidelityFX Super Resolution"),
                         )
                         .columns(2)
-                        .add(
+                        .row(
                             ActionRow::new("Quality", ActionRowState::Disabled)
                                 .description("Balanced"),
                         )
-                        .add(CycleRow::new("Sharpening", "5")),
+                        .row(CycleRow::new("Sharpening", "5")),
                     );
 
                 #[cfg(target_os = "linux")]
@@ -206,7 +190,6 @@ impl State {
                     graphics.row(
                         SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                             .description("Use the SteamOS compositor")
-                            .motion(motion)
                             .on_toggle(Message::ToggleGamescope),
                     )
                 };
@@ -214,10 +197,9 @@ impl State {
                 let graphics = graphics.expander(
                     ExpanderRow::with_header(
                         SwitcherRow::new("Display Settings", false)
-                            .description("Resolution and other options")
-                            .motion(motion),
+                            .description("Resolution and other options"),
                     )
-                    .add(unavailable())
+                    .row(unavailable())
                     .content_enabled(false),
                 );
 
@@ -227,7 +209,6 @@ impl State {
                     graphics.row(
                         SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                             .description("Show a performance overlay")
-                            .motion(motion)
                             .on_toggle(Message::ToggleMangoHud),
                     )
                 };
@@ -239,8 +220,12 @@ impl State {
         #[cfg(target_os = "linux")]
         let content = if let Some(error) = &self.last_error {
             content.push(
-                InfoCard::new(Kind::Error, "Could not update bottle settings", error)
-                    .width(iced::Fill),
+                InfoCard::new(
+                    InfoCardKind::Error,
+                    "Could not update bottle settings",
+                    error,
+                )
+                .width(iced::Fill),
             )
         } else {
             content

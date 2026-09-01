@@ -56,7 +56,7 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         self
     }
 
-    pub fn add(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
+    pub fn row(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
         self.content.push(row.into());
         self
     }

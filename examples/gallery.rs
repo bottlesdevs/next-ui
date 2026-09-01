@@ -1,29 +1,22 @@
 use iced::{
     Center, Element, Fill, Subscription, Task, Theme,
-    keyboard::{self, key},
     widget::{Space, column, container, image, row, scrollable, text},
 };
-use next_ui::widgets::text::TextExt as _;
-use next_ui::widgets::{
-    action_row, artwork_card, button, card, cycle_row, dialog, drop_target, expander_row,
-    header_bar,
-    info_card::{self, Kind},
-    info_row, picker_row, popover, row_group, search, selector_row, status_bar, switcher_row, tabs,
-    text_row, title,
-};
 use next_ui::{
-    icons::Icon,
-    theme::{self, Motion},
-    ui::chrome,
+    Icon, theme,
+    widget::{
+        ActionRow, ActionRowState, ArtworkCard, BottleStatus, Button, ButtonKind, Card, CardAction,
+        CycleRow, Dialog, DropTarget, ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow,
+        ListRow, PickerRow, Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult,
+        SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _,
+        TextRow, Title, WindowModal,
+    },
+    window,
 };
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const EMPTY_OPTIONS: &[&str] = &[];
-const GALLERY_TABS: &[(&str, &str)] = &[
-    ("bottles", "Bottles"),
-    ("library", "Library"),
-    ("settings", "Settings"),
-];
+const GALLERY_TABS: &[&str] = &["Bottles", "Library", "Settings"];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
 const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
     ("Epic Games Store", "Install", Icon::Arrow),
@@ -85,12 +78,11 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    Window(chrome::Action),
+    Window(window::Action),
     OpenDialog,
     DismissDialog,
     Previous,
     Next,
-    MoveFocus(bool),
     Noop,
 }
 
@@ -105,19 +97,12 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::Window(chrome::Action::RequestClose) => return iced::exit(),
+            Message::Window(window::Action::RequestClose) => return iced::exit(),
             Message::Window(action) => return action.task().unwrap_or_else(Task::none),
             Message::OpenDialog => self.dialog_open = true,
             Message::DismissDialog => self.dialog_open = false,
             Message::Previous => self.value = self.value.saturating_sub(1),
             Message::Next => self.value = (self.value + 1).min(DLSS_LEVELS.len() - 1),
-            Message::MoveFocus(previous) => {
-                return if previous {
-                    iced::widget::operation::focus_previous()
-                } else {
-                    iced::widget::operation::focus_next()
-                };
-            }
             Message::Noop => {}
         }
 
@@ -125,15 +110,7 @@ impl Gallery {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        keyboard::listen().filter_map(|event| match event {
-            keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(key::Named::Tab),
-                modifiers,
-                repeat: false,
-                ..
-            } => Some(Message::MoveFocus(modifiers.shift())),
-            _ => None,
-        })
+        window::subscription().map(Message::Window)
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -147,29 +124,27 @@ impl Gallery {
         .spacing(6);
 
         let titles = row![
-            title::Title::new("Title").subtitle("Subtitle"),
-            title::Title::new("Title").status("Status"),
+            Title::new("Title").subtitle("Subtitle"),
+            Title::new("Title").status("Status"),
         ]
         .spacing(24);
 
         let buttons = row![
-            button::Button::new("Play")
-                .icon(Icon::Play)
+            Button::new("Play").icon(Icon::Play).on_press(Message::Noop),
+            Button::new("Pill").pill().on_press(Message::Noop),
+            Button::icon_only("Play", Icon::Play).on_press(Message::Noop),
+            Button::custom(row![Icon::Wand.view(), text("Custom")].spacing(6))
                 .on_press(Message::Noop),
-            button::Button::new("Pill").pill().on_press(Message::Noop),
-            button::Button::icon_only("Play", Icon::Play).on_press(Message::Noop),
-            button::Button::new("Disabled"),
-            button::Button::new("Loading")
-                .on_press(Message::Noop)
-                .loading(true),
-            button::Button::new("Open dialog").on_press(Message::OpenDialog),
+            Button::new("Disabled"),
+            Button::new("Loading").on_press(Message::Noop).loading(true),
+            Button::new("Open dialog").on_press(Message::OpenDialog),
         ]
         .spacing(12);
 
         let cards = column![
-            drop_target_example(),
+            row![drop_target_example(true), drop_target_example(false)].spacing(18),
             row![
-                card::Card::new(
+                Card::new(
                     column![
                         text("Text card").title(),
                         text("Subtitle").subtitle().muted(),
@@ -179,22 +154,17 @@ impl Gallery {
                 )
                 .width(Fill)
                 .padding(24),
-                artwork_card::ArtworkCard::new("Artwork card", "Ready")
+                ArtworkCard::new("Artwork card", "Ready")
                     .menu(
-                        artwork_card::CardAction::new("More actions", Icon::EllipsisVertical)
+                        CardAction::new("More actions", Icon::EllipsisVertical)
                             .on_press(Message::Noop),
                     )
-                    .primary(
-                        artwork_card::CardAction::new("Play", Icon::Play).on_press(Message::Noop),
-                    )
+                    .primary(CardAction::new("Play", Icon::Play).on_press(Message::Noop))
                     .banner(sample_image()),
-                artwork_card::ArtworkCard::new("Program card", "Last played today")
-                    .secondary(
-                        artwork_card::CardAction::new("Settings", Icon::Gear)
-                            .on_press(Message::Noop),
-                    )
+                ArtworkCard::new("Program card", "Last played today")
+                    .secondary(CardAction::new("Settings", Icon::Gear).on_press(Message::Noop),)
                     .primary(
-                        artwork_card::CardAction::new("Play", Icon::Play)
+                        CardAction::new("Play", Icon::Play)
                             .on_press(Message::Noop)
                             .loading(true),
                     )
@@ -202,21 +172,28 @@ impl Gallery {
             ]
             .spacing(18),
             row![
-                info_card::InfoCard::new(Kind::Hint, "Hint", "Helpful contextual information.")
-                    .width(Fill),
-                info_card::InfoCard::new(Kind::Info, "Info", "General information for the user.")
-                    .width(Fill),
+                InfoCard::new(
+                    InfoCardKind::Hint,
+                    "Hint",
+                    "Helpful contextual information.",
+                )
+                .width(Fill),
+                InfoCard::new(
+                    InfoCardKind::Info,
+                    "Info",
+                    "General information for the user.",
+                )
+                .width(Fill),
             ]
             .spacing(12),
             row![
-                info_card::InfoCard::new(Kind::Error, "Error", "Something needs attention.")
+                InfoCard::new(InfoCardKind::Error, "Error", "Something needs attention.")
                     .width(Fill),
-                info_card::InfoCard::new(Kind::Warning, "Warning", "Proceed with care.")
-                    .width(Fill),
+                InfoCard::new(InfoCardKind::Warning, "Warning", "Proceed with care.").width(Fill),
             ]
             .spacing(12),
             row![
-                info_card::InfoCard::new(Kind::Success, "Success", "The operation completed.")
+                InfoCard::new(InfoCardKind::Success, "Success", "The operation completed.",)
                     .width(Fill),
                 Space::new().width(Fill),
             ]
@@ -224,133 +201,129 @@ impl Gallery {
         ]
         .spacing(18);
 
-        let tabs = tabs::Tabs::new(
+        let tabs = Tabs::new(
             GALLERY_TABS
                 .iter()
                 .enumerate()
-                .map(|(index, (id, label))| tabs::Tab::new(tabs::TabId::new(*id), index, label)),
+                .map(|(index, label)| Tab::new(index, label)),
             Some(self.selected_tab),
             Message::TabSelected,
-        )
-        .motion(Motion::Full);
+        );
 
         let search = column![
-            search::Search::new(
+            Search::new(
                 "Search for software and games…",
                 &self.search,
                 Message::SearchChanged,
-            ),
-            search::Search::new(
+            )
+            .on_submit(Message::Noop),
+            Search::new(
                 "Search for software and games…",
                 &self.search,
                 Message::SearchChanged,
             )
             .state(self.search_state())
             .footer("Not listed, install manually", Message::Noop),
-            search::Search::new(
+            Search::new(
                 "Focus to see loading state…",
                 &self.search,
                 Message::SearchChanged,
             )
-            .state(search::SearchState::Loading),
-            search::Search::new(
+            .state(SearchState::Loading),
+            Search::new(
                 "Focus to see error state…",
                 &self.search,
                 Message::SearchChanged,
             )
-            .state(search::SearchState::Error(
-                "The catalog could not be loaded"
-            )),
+            .state(SearchState::Error("The catalog could not be loaded")),
         ]
         .spacing(18);
 
         let selected = self
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
-        let popover = popover::Popover::new(
-            button::Button::new("Open menu")
+        let popover = Popover::new(
+            Button::new("Open menu")
                 .trailing_icon(Icon::DownCaret)
                 .on_press(()),
         )
         .item(
-            popover::PopoverItem::new("current-profile", "Current profile")
+            PopoverItem::new("Current profile")
                 .subtitle("Selected")
                 .icon(Icon::Person)
                 .selected(true)
                 .on_select(Message::Noop),
         )
         .item(
-            popover::PopoverItem::new("available-account", "Available account")
+            PopoverItem::new("Available account")
                 .subtitle("Child action captures the row click")
                 .action("Link", Message::Noop),
         )
         .item(
-            popover::PopoverItem::new("unavailable-account", "Unavailable account")
+            PopoverItem::new("Unavailable account")
                 .disabled_action("Taken")
                 .tooltip(text("Already linked to another profile")),
         )
-        .item(
-            popover::PopoverItem::new("manage-profiles", "Manage profiles")
-                .on_select(Message::Noop),
-        );
+        .item(PopoverItem::new("Manage profiles").on_select(Message::Noop));
         let popovers = column![popover].spacing(12);
         let fields = column![
-            text_row::TextRow::new("Input Name", &self.text_rows[0])
+            TextRow::new("Input Name", &self.text_rows[0])
                 .placeholder("Placeholder")
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(0, value)),
-            text_row::TextRow::new("Input Name", &self.text_rows[1])
+            TextRow::new("Input Name", &self.text_rows[1])
                 .placeholder("Placeholder")
                 .icon(Icon::Person)
                 .secure(true)
                 .on_input(|value| Message::TextRowChanged(1, value)),
-            text_row::TextRow::new("Input Name", &self.text_rows[2])
+            TextRow::new("Input Name", &self.text_rows[2])
                 .placeholder("Placeholder")
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
-            selector_row::SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected, |option| {
+            SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected, |option| {
                 (*option).to_owned()
             },)
             .on_selected(Message::OptionSelected)
             .placeholder("Placeholder")
-            .icon(Icon::Person)
-            .motion(Motion::Full),
-            selector_row::SelectorRow::new("Empty selector", EMPTY_OPTIONS, None, |option| {
+            .icon(Icon::Person),
+            SelectorRow::new("Empty selector", EMPTY_OPTIONS, None, |option| {
                 (*option).to_owned()
             })
-            .placeholder("No options available")
-            .motion(Motion::Full),
-            action_row::ActionRow::new("Title", action_row::State::Ready(Message::Noop))
+            .placeholder("No options available"),
+            ActionRow::new("Title", ActionRowState::Ready(Message::Noop))
                 .description("Description"),
-            action_row::ActionRow::new("Unavailable action", action_row::State::Disabled)
+            ActionRow::new("Unavailable action", ActionRowState::Disabled)
                 .description("This action cannot currently run"),
-            info_row::InfoRow::new("Title")
+            ActionRow::new("In progress", ActionRowState::Progress(0.65))
+                .description("65% complete"),
+            InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
-            switcher_row::SwitcherRow::new("Title", self.switched_on)
+            ListRow::new(text("Direct ListRow with arbitrary content"))
+                .leading(Icon::Info.view().width(16).height(16))
+                .on_press(Message::Noop),
+            SwitcherRow::new("Title", self.switched_on)
                 .on_toggle(Message::Switched)
-                .description("Description")
-                .motion(Motion::Full),
-            cycle_row::CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
+                .description("Description"),
+            CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
                 .on_previous_maybe((self.value > 0).then_some(Message::Previous))
                 .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
-            picker_row::PickerRow::new("Title")
+            PickerRow::new("Title")
                 .description("Choose the location")
                 .on_press(Message::Noop),
-            expander_row::ExpanderRow::with_header(
-                switcher_row::SwitcherRow::new("FSR", self.switched_on)
+            ExpanderRow::with_header(
+                SwitcherRow::new("FSR", self.switched_on)
                     .on_toggle(Message::Switched)
-                    .description("FidelityFX Super Resolution")
-                    .motion(Motion::Full),
+                    .description("FidelityFX Super Resolution"),
             )
             .columns(2)
-            .add(
-                action_row::ActionRow::new("Quality", action_row::State::Ready(Message::Noop),)
+            .row(
+                ActionRow::new("Quality", ActionRowState::Ready(Message::Noop))
                     .description("Balanced"),
             )
-            .add(
-                cycle_row::CycleRow::new("Sharpening", "5")
+            .row(
+                CycleRow::new("Sharpening", "5")
                     .on_previous_maybe((self.value > 0).then_some(Message::Previous))
                     .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
             )
@@ -358,39 +331,47 @@ impl Gallery {
         ]
         .spacing(24);
 
-        let row_group = row_group::RowGroup::new()
+        let standalone_controls = row![
+            column![text("Progress ring").medium(), ProgressRing::new(0.65),].spacing(12),
+            column![
+                text("Switcher").medium(),
+                Switcher::new(self.switched_on).on_toggle(Message::Switched),
+            ]
+            .spacing(12),
+        ]
+        .spacing(48);
+
+        let row_group = RowGroup::new()
             .title("Graphics")
             .description("Rows wrap according to the configured column count.")
             .columns(2)
             .row(
-                switcher_row::SwitcherRow::new("DLSS", self.switched_on)
+                SwitcherRow::new("DLSS", self.switched_on)
                     .on_toggle(Message::Switched)
-                    .description("Deep Learning Super Sampling")
-                    .motion(Motion::Full),
+                    .description("Deep Learning Super Sampling"),
             )
             .row(
-                picker_row::PickerRow::new("Shader directory")
+                PickerRow::new("Shader directory")
                     .description("Choose the location")
                     .on_press(Message::Noop),
             )
             .row(
-                action_row::ActionRow::new("Discrete GPU", action_row::State::Ready(Message::Noop))
+                ActionRow::new("Discrete GPU", ActionRowState::Ready(Message::Noop))
                     .description("Configure graphics adapter"),
             )
             .expander(
-                expander_row::ExpanderRow::with_header(
-                    switcher_row::SwitcherRow::new("FSR", self.group_switched_on)
+                ExpanderRow::with_header(
+                    SwitcherRow::new("FSR", self.group_switched_on)
                         .on_toggle(Message::GroupSwitched)
-                        .description("FidelityFX Super Resolution")
-                        .motion(Motion::Full),
+                        .description("FidelityFX Super Resolution"),
                 )
                 .columns(2)
-                .add(
-                    action_row::ActionRow::new("Quality", action_row::State::Ready(Message::Noop))
+                .row(
+                    ActionRow::new("Quality", ActionRowState::Ready(Message::Noop))
                         .description("Balanced"),
                 )
-                .add(
-                    cycle_row::CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
+                .row(
+                    CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
                         .on_previous_maybe((self.value > 0).then_some(Message::Previous))
                         .on_next_maybe(
                             (self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),
@@ -399,49 +380,37 @@ impl Gallery {
                 .content_enabled(self.group_switched_on),
             );
 
-        let multiple_expanders = row_group::RowGroup::new()
+        let multiple_expanders = RowGroup::new()
             .title("Non-overlapping expanders")
             .description("Both expanders can remain open because their panels do not overlap")
             .columns(3)
             .expander(
-                expander_row::ExpanderRow::new("First expander")
+                ExpanderRow::new("First expander")
                     .description("One-column panel")
-                    .add(
-                        action_row::ActionRow::new(
-                            "First action",
-                            action_row::State::Ready(Message::Noop),
-                        )
-                        .description("Inside the first column"),
+                    .row(
+                        ActionRow::new("First action", ActionRowState::Ready(Message::Noop))
+                            .description("Inside the first column"),
                     ),
             )
             .expander(
-                expander_row::ExpanderRow::new("Second expander")
+                ExpanderRow::new("Second expander")
                     .description("Two-column panel")
                     .columns(2)
-                    .add(
-                        action_row::ActionRow::new(
-                            "Second action",
-                            action_row::State::Ready(Message::Noop),
-                        )
-                        .description("First panel column"),
+                    .row(
+                        ActionRow::new("Second action", ActionRowState::Ready(Message::Noop))
+                            .description("First panel column"),
                     )
-                    .add(
-                        action_row::ActionRow::new(
-                            "Third action",
-                            action_row::State::Ready(Message::Noop),
-                        )
-                        .description("Second panel column"),
+                    .row(
+                        ActionRow::new("Third action", ActionRowState::Ready(Message::Noop))
+                            .description("Second panel column"),
                     ),
             )
             .row(
-                action_row::ActionRow::new(
-                    "Independent action",
-                    action_row::State::Ready(Message::Noop),
-                )
-                .description("Beside the two expanders"),
+                ActionRow::new("Independent action", ActionRowState::Ready(Message::Noop))
+                    .description("Beside the two expanders"),
             );
 
-        let expander_matrix = row_group::RowGroup::new()
+        let expander_matrix = RowGroup::new()
             .title("2 × 2 expander grid")
             .description("Opening a sibling closes the overlapping panel on the same grid line")
             .columns(2)
@@ -451,18 +420,17 @@ impl Gallery {
             .expander(action_grid_expander("Expander D"));
 
         let status = column![
-            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::BottleStatus::Running,)
-                .log(LOG),
-            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::BottleStatus::Stopped,)
-                .log(LOG),
-            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::BottleStatus::Starting,),
-            status_bar::StatusBar::new("Win64", "soda-7.0.9", status_bar::BottleStatus::Failed,),
+            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Running).log(LOG),
+            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Stopped).log(LOG),
+            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Starting),
+            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Stopping),
+            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Failed),
         ]
         .spacing(18);
 
-        let header = header_bar::HeaderBar::new(Message::Window(chrome::Action::Drag)).middle(
+        let header = HeaderBar::new(Message::Window(window::Action::Drag)).middle(
             iced::widget::container(
-                search::Search::new(
+                Search::new(
                     "Search for software and games…",
                     &self.search,
                     Message::SearchChanged,
@@ -483,6 +451,7 @@ impl Gallery {
                     section("Search", search),
                     section("Popovers", popovers),
                     section("Rows", fields),
+                    section("Standalone controls", standalone_controls),
                     section("Row group", row_group),
                     section("Overlap-aware expanders", multiple_expanders),
                     section("Expander matrix", expander_matrix),
@@ -506,13 +475,13 @@ impl Gallery {
         .height(Fill);
 
         let page: Element<'_, Message> =
-            chrome::WindowFrame::new(column![header, gallery], Message::Window).into();
+            window::WindowFrame::new(column![header, gallery], Message::Window).into();
         let dialog = self.dialog_open.then(|| {
-            dialog::Dialog::new(
+            Dialog::new(
                 column![
-                    title::Title::new("Dialog").subtitle("Modal content can use any widget."),
-                    button::Button::new("Close")
-                        .kind(button::ButtonKind::Primary)
+                    Title::new("Dialog").subtitle("Modal content can use any widget."),
+                    Button::new("Close")
+                        .kind(ButtonKind::Primary)
                         .on_press(Message::DismissDialog),
                 ]
                 .spacing(18),
@@ -520,35 +489,35 @@ impl Gallery {
             )
         });
 
-        dialog::WindowModal::new(page).dialog(dialog).into()
+        WindowModal::new(page).dialog(dialog).into()
     }
 
-    fn search_state(&self) -> search::SearchState<'_, Message> {
+    fn search_state(&self) -> SearchState<'_, Message> {
         let query = self.search.trim().to_lowercase();
 
         if query.is_empty() {
-            return search::SearchState::Hidden;
+            return SearchState::Hidden;
         }
 
         let results: Vec<_> = SEARCH_CATALOG
             .iter()
             .filter(|(title, _, _)| title.to_lowercase().contains(&query))
             .map(|(title, action, action_icon)| {
-                search::SearchResult::new(*title, *title, Message::Noop)
+                SearchResult::new(*title, title, Message::Noop)
                     .icon(Icon::Bottles)
                     .action(action, *action_icon, Message::Noop)
             })
             .collect();
 
         if results.is_empty() {
-            search::SearchState::Empty
+            SearchState::Empty
         } else {
-            search::SearchState::Results(results)
+            SearchState::Results(results)
         }
     }
 }
 
-fn drop_target_example<'a>() -> drop_target::DropTarget<'a, Message> {
+fn drop_target_example<'a>(active: bool) -> DropTarget<'a, Message> {
     const ICON_CONTAINER_SIZE: f32 = 44.0;
 
     let icon = container(Icon::Plus.view().width(16).height(16))
@@ -558,32 +527,49 @@ fn drop_target_example<'a>() -> drop_target::DropTarget<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(theme.extended_palette().background.weak.color)
+                .background(theme::colors(theme).surface)
                 .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
         });
     let labels = column![
-        text("New Program").size(17).medium(),
-        text("Install or add a program.").size(14),
+        text(if active {
+            "New Program"
+        } else {
+            "Unavailable target"
+        })
+        .size(17)
+        .medium(),
+        text(if active {
+            "Install or add a program."
+        } else {
+            "Activation is disabled."
+        })
+        .size(14),
     ]
     .spacing(6);
 
     let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Fill);
 
-    drop_target::DropTarget::new(content, Message::Noop)
-        .width(Fill)
-        .padding([72.0, 24.0])
+    if active {
+        DropTarget::new(content, Message::OpenDialog)
+            .width(Fill)
+            .padding([72.0, 24.0])
+    } else {
+        DropTarget::disabled(content)
+            .width(Fill)
+            .padding([72.0, 24.0])
+    }
 }
 
-fn action_grid_expander(title: &'static str) -> expander_row::ExpanderRow<'static, Message> {
+fn action_grid_expander(title: &'static str) -> ExpanderRow<'static, Message> {
     ["Action 1", "Action 2", "Action 3", "Action 4"]
         .into_iter()
         .fold(
-            expander_row::ExpanderRow::new(title)
+            ExpanderRow::new(title)
                 .description("Contains four actions")
                 .columns(2),
             |expander, title| {
-                expander.add(
-                    action_row::ActionRow::new(title, action_row::State::Ready(Message::Noop))
+                expander.row(
+                    ActionRow::new(title, ActionRowState::Ready(Message::Noop))
                         .description("Available action"),
                 )
             },
