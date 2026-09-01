@@ -17,7 +17,7 @@ mod snapshots;
 use crate::{
     Experience,
     icons::Icon,
-    theme,
+    theme::{self, Motion},
     ui::chrome,
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
@@ -147,6 +147,7 @@ pub struct State {
     accounts: accounts::State,
     settings: settings::State,
     draining: bool,
+    motion: Motion,
 }
 
 #[derive(Clone)]
@@ -205,7 +206,7 @@ impl Message {
 }
 
 impl State {
-    pub fn new(core: &Bottles) -> (Self, Task<Message>) {
+    pub fn new(core: &Bottles, motion: Motion) -> (Self, Task<Message>) {
         let bottle_manager = core.bottles().clone();
         let profiles_manager = core.profiles().clone();
         let read_model = ReadModel::new(&bottle_manager, &profiles_manager);
@@ -226,6 +227,7 @@ impl State {
             accounts: accounts::State::default(),
             settings: settings::State::new(),
             draining: false,
+            motion,
         };
 
         (state, library_boot)
@@ -502,10 +504,12 @@ impl State {
                 Panel::NewBottle => Side::Start,
             },
             self.panel_open,
+            self.motion,
             |base_context| {
                 navigation_split(
                     base_context,
                     matches!(self.route, Route::Bottle { .. }),
+                    self.motion,
                     |context| self.primary_page(context),
                     |context| self.detail_page(context),
                 )
@@ -547,7 +551,8 @@ impl State {
             ],
             Some(self.primary_tab()),
             Message::PrimaryTabSelected,
-        );
+        )
+        .motion(self.motion);
         let header = context
             .header(Message::Window(chrome::Action::Drag))
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
@@ -685,7 +690,10 @@ impl State {
                         .then_some(Message::Bottles(bottles::Message::CreateBottle)),
                 ),
             );
-        let content = self.bottles.creation_view().map(Message::Bottles);
+        let content = self
+            .bottles
+            .creation_view(self.motion)
+            .map(Message::Bottles);
 
         column![header, scroll_panel(content)]
             .width(Fill)
@@ -712,7 +720,8 @@ impl State {
                 _ => DetailTab::Programs,
             }),
             Message::DetailTabSelected,
-        );
+        )
+        .motion(self.motion);
         let mut header = context.header(Message::Window(chrome::Action::Drag));
 
         if context.is_standalone() {
@@ -758,7 +767,10 @@ impl State {
                     column![].into()
                 }
             }
-            DetailTab::Settings => self.settings.view(&settings_ctx).map(Message::Settings),
+            DetailTab::Settings => self
+                .settings
+                .view(&settings_ctx, self.motion)
+                .map(Message::Settings),
             #[cfg(feature = "fvs")]
             DetailTab::Snapshots => self.snapshots.view().map(Message::Snapshots),
         };

@@ -11,7 +11,11 @@ use next_ui::widgets::{
     info_row, picker_row, popover, row_group, search, selector_row, status_bar, switcher_row, tabs,
     text_row, title,
 };
-use next_ui::{icons::Icon, theme, ui::chrome};
+use next_ui::{
+    icons::Icon,
+    theme::{self, Motion},
+    ui::chrome,
+};
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
 const EMPTY_OPTIONS: &[&str] = &[];
@@ -223,7 +227,8 @@ impl Gallery {
                 .map(|(index, label)| tabs::Tab::new(index, label)),
             Some(self.selected_tab),
             Message::TabSelected,
-        );
+        )
+        .motion(Motion::Full);
 
         let search = column![
             search::Search::new(
@@ -300,9 +305,11 @@ impl Gallery {
             selector_row::SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected,)
                 .on_selected(Message::OptionSelected)
                 .placeholder("Placeholder")
-                .icon(Icon::Person),
+                .icon(Icon::Person)
+                .motion(Motion::Full),
             selector_row::SelectorRow::new("Empty selector", EMPTY_OPTIONS, None)
-                .placeholder("No options available"),
+                .placeholder("No options available")
+                .motion(Motion::Full),
             action_row::ActionRow::new("Title", action_row::State::Ready(Message::Noop))
                 .description("Description"),
             action_row::ActionRow::new("Unavailable action", action_row::State::Disabled)
@@ -312,7 +319,8 @@ impl Gallery {
                 .icon(Icon::Timer),
             switcher_row::SwitcherRow::new("Title", self.switched_on)
                 .on_toggle(Message::Switched)
-                .description("Description"),
+                .description("Description")
+                .motion(Motion::Full),
             cycle_row::CycleRow::new("DLSS Level", DLSS_LEVELS[self.value])
                 .on_previous_maybe((self.value > 0).then_some(Message::Previous))
                 .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
@@ -322,7 +330,8 @@ impl Gallery {
             expander_row::ExpanderRow::with_header(
                 switcher_row::SwitcherRow::new("FSR", self.switched_on)
                     .on_toggle(Message::Switched)
-                    .description("FidelityFX Super Resolution"),
+                    .description("FidelityFX Super Resolution")
+                    .motion(Motion::Full),
             )
             .columns(2)
             .add(
@@ -345,7 +354,8 @@ impl Gallery {
             .row(
                 switcher_row::SwitcherRow::new("DLSS", self.switched_on)
                     .on_toggle(Message::Switched)
-                    .description("Deep Learning Super Sampling"),
+                    .description("Deep Learning Super Sampling")
+                    .motion(Motion::Full),
             )
             .row(
                 picker_row::PickerRow::new("Shader directory")
@@ -360,7 +370,8 @@ impl Gallery {
                 expander_row::ExpanderRow::with_header(
                     switcher_row::SwitcherRow::new("FSR", self.group_switched_on)
                         .on_toggle(Message::GroupSwitched)
-                        .description("FidelityFX Super Resolution"),
+                        .description("FidelityFX Super Resolution")
+                        .motion(Motion::Full),
                 )
                 .columns(2)
                 .add(

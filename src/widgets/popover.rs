@@ -14,7 +14,7 @@ use super::{
     button::{Button, ButtonKind},
     menu::{item as menu_item, row_content},
     spacing,
-    surface::{Kind as SurfaceKind, Surface},
+    surface::{Surface, SurfaceRole},
 };
 
 const WIDTH: f32 = 240.0;
@@ -48,7 +48,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
 
         Element::new(PopoverWidget {
             trigger: popover.trigger,
-            panel: Surface::new(SurfaceKind::Overlay, content).into(),
+            panel: Surface::new(SurfaceRole::Overlay, content).into(),
         })
     }
 }
@@ -130,7 +130,7 @@ fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<
     if item.selected {
         content = content.push(Icon::Checkmark.view().width(16).height(16).style(
             |theme: &Theme, _| svg::Style {
-                color: Some(theme.palette().primary),
+                color: Some(crate::theme::colors(theme).accent),
             },
         ));
     }

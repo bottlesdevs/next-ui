@@ -19,7 +19,7 @@ use super::{
     control::descendant_is_focused,
     menu::{footer as panel_footer, item as menu_item, row_content},
     reconcile_index, spacing,
-    surface::{Kind as SurfaceKind, scoped_overlay},
+    surface::{SurfaceRole, scoped_overlay},
     text::TextExt as _,
 };
 
@@ -226,9 +226,9 @@ fn result_row<'a, Message: Clone + 'a>(
 fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Message> {
     container(text(label).label().style(move |theme: &Theme| text::Style {
         color: Some(if error {
-            theme.extended_palette().danger.base.color
+            crate::theme::colors(theme).danger
         } else {
-            theme.extended_palette().secondary.weak.text
+            crate::theme::colors(theme).muted
         }),
     }))
     .width(Fill)
@@ -625,9 +625,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for SearchPanel<'_, Message
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        let theme = SurfaceKind::Overlay.draw_background(renderer, theme, layout.bounds());
+        let theme = SurfaceRole::Overlay.draw_background(renderer, theme, layout.bounds());
         let style = renderer::Style {
-            text_color: theme.palette().text,
+            text_color: crate::theme::colors(&theme).text,
         };
 
         for ((child, tree), layout) in self
@@ -658,7 +658,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for SearchPanel<'_, Message
             viewport,
             translation,
         )
-        .map(|content| scoped_overlay(SurfaceKind::Overlay, content))
+        .map(|content| scoped_overlay(SurfaceRole::Overlay, content))
     }
 }
 
@@ -688,18 +688,22 @@ mod tests {
 }
 
 fn search_style(theme: &Theme) -> container::Style {
-    crate::theme::surface(theme.extended_palette().background.neutral)
+    let colors = crate::theme::colors(theme);
+    crate::theme::surface(iced::theme::palette::Pair {
+        color: colors.border,
+        text: colors.text,
+    })
 }
 
 fn input_style(theme: &Theme, _: text_input::Status) -> text_input::Style {
-    let colors = theme.extended_palette();
+    let colors = crate::theme::colors(theme);
 
     text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default(),
-        icon: colors.secondary.weak.text,
-        placeholder: colors.secondary.weak.text,
-        value: theme.palette().text,
-        selection: theme.palette().primary,
+        icon: colors.muted,
+        placeholder: colors.muted,
+        value: colors.text,
+        selection: colors.accent,
     }
 }

@@ -12,7 +12,7 @@ use iced::{
 };
 
 use crate::{
-    theme,
+    theme::{self, Motion},
     ui::chrome::WINDOW_CONTROL_AT_START,
     widgets::{event_cursor, header_bar::HeaderBar, spacing},
 };
@@ -100,24 +100,33 @@ impl Side {
 pub(super) fn navigation_split<'a, Message: 'a>(
     parent: PaneContext,
     show_detail: bool,
+    motion: Motion,
     master: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
     detail: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
 ) -> Element<'a, Message> {
-    adaptive_split(Kind::Navigation(parent), show_detail, master, detail)
+    adaptive_split(
+        Kind::Navigation(parent),
+        show_detail,
+        motion,
+        master,
+        detail,
+    )
 }
 
 pub(super) fn side_panel<'a, Message: 'a>(
     side: Side,
     open: bool,
+    motion: Motion,
     base: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
     panel: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
 ) -> Element<'a, Message> {
-    adaptive_split(Kind::SidePanel(side), open, base, panel)
+    adaptive_split(Kind::SidePanel(side), open, motion, base, panel)
 }
 
 fn adaptive_split<'a, Message: 'a>(
     kind: Kind,
     show_second: bool,
+    motion: Motion,
     first: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
     second: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
 ) -> Element<'a, Message> {
@@ -131,6 +140,7 @@ fn adaptive_split<'a, Message: 'a>(
             show_second,
             wide,
             kind,
+            motion,
         })
     })
     .into()
@@ -141,6 +151,7 @@ struct AnimatedSplit<'a, Message> {
     show_second: bool,
     wide: bool,
     kind: Kind,
+    motion: Motion,
 }
 
 impl<'a, Message> AnimatedSplit<'a, Message> {
@@ -165,8 +176,8 @@ impl State {
         self.transition.interpolate(0.0, 1.0, now)
     }
 
-    fn sync(&mut self, show_second: bool, wide: bool, kind: Kind, now: Instant) {
-        if !wide && matches!(kind, Kind::SidePanel(_)) {
+    fn sync(&mut self, show_second: bool, wide: bool, kind: Kind, now: Instant, motion: Motion) {
+        if motion.is_reduced() || (!wide && matches!(kind, Kind::SidePanel(_))) {
             *self = Self::new(show_second);
         } else if self.transition.value() != show_second {
             self.transition.go_mut(show_second, now);
@@ -194,6 +205,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
             self.wide,
             self.kind,
             Instant::now(),
+            self.motion,
         );
     }
 
@@ -680,12 +692,18 @@ mod tests {
         let now = Instant::now();
         let mut state = State::new(false);
 
-        state.sync(true, false, Kind::SidePanel(Side::Start), now);
+        state.sync(true, false, Kind::SidePanel(Side::Start), now, Motion::Full);
         assert!(state.transition.value());
         assert!(!state.transition.is_animating(now));
         assert_eq!(state.progress(now), 1.0);
 
-        state.sync(false, false, Kind::SidePanel(Side::Start), now);
+        state.sync(
+            false,
+            false,
+            Kind::SidePanel(Side::Start),
+            now,
+            Motion::Full,
+        );
         assert!(!state.transition.value());
         assert!(!state.transition.is_animating(now));
         assert_eq!(state.progress(now), 0.0);
@@ -696,10 +714,34 @@ mod tests {
         let now = Instant::now();
         let mut state = State::new(false);
 
-        state.sync(true, false, Kind::Navigation(root_context()), now);
+        state.sync(
+            true,
+            false,
+            Kind::Navigation(root_context()),
+            now,
+            Motion::Full,
+        );
 
         assert!(state.transition.value());
         assert!(state.transition.is_animating(now));
         assert_eq!(state.progress(now), 0.0);
+    }
+
+    #[test]
+    fn reduced_motion_snaps_navigation_changes() {
+        let now = Instant::now();
+        let mut state = State::new(false);
+
+        state.sync(
+            true,
+            false,
+            Kind::Navigation(root_context()),
+            now,
+            Motion::Reduced,
+        );
+
+        assert!(state.transition.value());
+        assert!(!state.transition.is_animating(now));
+        assert_eq!(state.progress(now), 1.0);
     }
 }

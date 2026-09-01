@@ -6,17 +6,18 @@ use iced::{
 use super::control::State;
 
 pub(crate) fn action(theme: &Theme, state: State) -> button::Style {
+    let colors = crate::theme::colors(theme);
     let background = if state.pressed {
-        Some(theme.extended_palette().background.stronger.color)
+        Some(colors.selection)
     } else if state.hovered || state.focused {
-        Some(theme.extended_palette().background.strong.color)
+        Some(colors.hover)
     } else {
         None
     };
 
     button::Style {
         background: background.map(Background::Color),
-        text_color: theme.palette().text,
+        text_color: colors.text,
         border: Border::default().rounded(6),
         ..button::Style::default()
     }
@@ -24,6 +25,6 @@ pub(crate) fn action(theme: &Theme, state: State) -> button::Style {
 
 pub(crate) fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
-        color: Some(theme.extended_palette().secondary.weak.text),
+        color: Some(crate::theme::colors(theme).muted),
     }
 }

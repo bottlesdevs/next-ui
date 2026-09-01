@@ -108,7 +108,7 @@ impl<Message> canvas::Program<Message> for Outline {
                 },
                 ..canvas::Stroke::default()
                     .with_width(BORDER_WIDTH)
-                    .with_color(theme.extended_palette().background.neutral.color)
+                    .with_color(crate::theme::colors(theme).border)
             },
         );
 

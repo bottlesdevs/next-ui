@@ -15,7 +15,7 @@ use super::{
     expander_row::{ExpanderRow, header_row},
     list_row::{Content as RowContent, ListRow},
     spacing,
-    surface::{Kind as SurfaceKind, Surface},
+    surface::{Surface, SurfaceRole},
     text::TextExt as _,
 };
 
@@ -173,7 +173,7 @@ fn group_line<'a, Message: Clone + 'a>(
                     requested_columns.min(columns)
                 };
                 let body: Element<'a, Message> = Surface::new(
-                    SurfaceKind::Panel,
+                    SurfaceRole::Panel,
                     container(
                         content
                             .into_iter()
@@ -252,7 +252,7 @@ fn expander_header_style(
 
 fn disabled_subtree_style(theme: &Theme, state: ControlState) -> ControlStyle {
     ControlStyle {
-        text_color: theme.palette().text,
+        text_color: crate::theme::colors(theme).text,
         border: Border::default().rounded(RADIUS),
         foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
         ..ControlStyle::default()
@@ -515,9 +515,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for GroupLine<'_, Message> 
     ) {
         let state = tree.state.downcast_ref::<State>();
         let children: Vec<_> = layout.children().collect();
-        let palette = theme.extended_palette();
-        let color = palette.background.neutral.color;
-        let background = palette.background.base.color;
+        let colors = crate::theme::colors(theme);
+        let color = colors.panel;
+        let background = colors.background;
 
         for index in &state.open {
             let expansion = &self.expansions[*index];

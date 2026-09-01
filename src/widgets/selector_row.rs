@@ -13,7 +13,10 @@ use iced::{
     window,
 };
 
-use crate::icons::Icon;
+use crate::{
+    icons::Icon,
+    theme::{self, Motion},
+};
 
 use super::{
     control::{Interaction, Outcome},
@@ -39,6 +42,7 @@ pub struct SelectorRow<'a, T, Message> {
     label: Box<dyn Fn(&T) -> String + 'a>,
     key: Option<Box<dyn Fn(&T) -> String + 'a>>,
     icon: Option<Icon>,
+    motion: Motion,
 }
 
 impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
@@ -52,6 +56,7 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
             label: Box::new(ToString::to_string),
             key: None,
             icon: None,
+            motion: Motion::default(),
         }
     }
 
@@ -84,6 +89,11 @@ impl<'a, T: ToString, Message> SelectorRow<'a, T, Message> {
         self.on_selected = on_selected.map(|on_selected| Box::new(on_selected) as _);
         self
     }
+
+    pub fn motion(mut self, motion: Motion) -> Self {
+        self.motion = motion;
+        self
+    }
 }
 
 impl<'a, T, Message> From<SelectorRow<'a, T, Message>> for Element<'a, Message>
@@ -101,6 +111,7 @@ where
             label,
             key,
             icon,
+            motion,
         } = selector;
         let selected =
             selected.and_then(|selected| options.iter().position(|option| option == selected));
@@ -127,6 +138,7 @@ where
             on_selected,
             selected,
             keys,
+            motion,
         })
     }
 }
@@ -162,6 +174,7 @@ struct Selector<'a, Message> {
     on_selected: Option<Box<dyn Fn(usize) -> Message + 'a>>,
     selected: Option<usize>,
     keys: Vec<String>,
+    motion: Motion,
 }
 
 impl<Message> Selector<'_, Message> {
@@ -200,15 +213,25 @@ impl State {
         self.expansion.value()
     }
 
-    fn set_open(&mut self, open: bool, now: Instant) {
+    fn set_open(&mut self, open: bool, now: Instant, motion: Motion) {
         if self.is_open() != open {
-            self.expansion.go_mut(open, now);
+            if motion.is_reduced() {
+                self.expansion = Animation::new(open);
+            } else {
+                self.expansion.go_mut(open, now);
+            }
 
             if !open {
                 for option in &mut self.options {
                     *option = Interaction::default();
                 }
             }
+        }
+    }
+
+    fn sync_motion(&mut self, now: Instant, motion: Motion) {
+        if motion.is_reduced() && self.expansion.is_animating(now) {
+            self.expansion = Animation::new(self.is_open());
         }
     }
 
@@ -255,9 +278,10 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         }
 
         state.keys.clone_from(&self.keys);
+        state.sync_motion(Instant::now(), self.motion);
 
         if !self.is_enabled() {
-            state.set_open(false, Instant::now());
+            state.set_open(false, Instant::now(), self.motion);
             state.highlighted = None;
             state.header = Interaction::default();
         } else {
@@ -334,7 +358,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) {
-        if let Event::Window(window::Event::RedrawRequested(now)) = event
+        if !self.motion.is_reduced()
+            && let Event::Window(window::Event::RedrawRequested(now)) = event
             && tree
                 .state
                 .downcast_ref::<State>()
@@ -393,18 +418,18 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                 if pointer_captured {
                     operation::Focusable::focus(&mut state.header);
                 } else if state.is_open() {
-                    state.set_open(false, Instant::now());
+                    state.set_open(false, Instant::now(), self.motion);
                 }
             }
 
             if header_outcome == Outcome::Activated {
-                state.set_open(!state.is_open(), Instant::now());
+                state.set_open(!state.is_open(), Instant::now(), self.motion);
                 state.highlighted = self.selected.or(Some(0));
             } else if let Some(index) = selected {
                 if let Some(on_selected) = &self.on_selected {
                     shell.publish(on_selected(index));
                 }
-                state.set_open(false, Instant::now());
+                state.set_open(false, Instant::now(), self.motion);
                 state.highlighted = Some(index);
             }
         }
@@ -427,7 +452,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             } else {
                                 self.selected.unwrap_or(0)
                             });
-                            state.set_open(true, Instant::now());
+                            state.set_open(true, Instant::now(), self.motion);
                             shell.capture_event();
                         }
                     }
@@ -441,18 +466,18 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             } else {
                                 self.selected.unwrap_or(last)
                             });
-                            state.set_open(true, Instant::now());
+                            state.set_open(true, Instant::now(), self.motion);
                             shell.capture_event();
                         }
                     }
                     keyboard::Key::Named(key::Named::Home) if last.is_some() => {
-                        state.set_open(true, Instant::now());
+                        state.set_open(true, Instant::now(), self.motion);
                         state.highlighted = Some(0);
                         shell.capture_event();
                     }
                     keyboard::Key::Named(key::Named::End) => {
                         if let Some(last) = last {
-                            state.set_open(true, Instant::now());
+                            state.set_open(true, Instant::now(), self.motion);
                             state.highlighted = Some(last);
                             shell.capture_event();
                         }
@@ -463,17 +488,17 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                                 if let Some(on_selected) = &self.on_selected {
                                     shell.publish(on_selected(index));
                                 }
-                                state.set_open(false, Instant::now());
+                                state.set_open(false, Instant::now(), self.motion);
                             }
                         } else {
-                            state.set_open(true, Instant::now());
+                            state.set_open(true, Instant::now(), self.motion);
                             state.highlighted = self.selected.or(Some(0));
                         }
 
                         shell.capture_event();
                     }
                     keyboard::Key::Named(key::Named::Escape) if state.is_open() => {
-                        state.set_open(false, Instant::now());
+                        state.set_open(false, Instant::now(), self.motion);
                         shell.capture_event();
                     }
                     _ => {}
@@ -531,6 +556,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
+        let colors = theme::colors(theme);
         let bounds = layout.bounds();
         let expansion = state.expansion(Instant::now());
         let mut control_state = state.header.state(self.is_enabled(), true, bounds, cursor);
@@ -601,7 +627,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             shadow: Shadow::default(),
                             snap: true,
                         },
-                        theme.extended_palette().background.stronger.color,
+                        colors.selection,
                     );
 
                     for (index, option_layout) in options.into_iter().enumerate() {
@@ -620,9 +646,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                                     shadow: Shadow::default(),
                                     snap: true,
                                 },
-                                Background::Color(
-                                    theme.extended_palette().background.stronger.color,
-                                ),
+                                Background::Color(colors.selection),
                             );
                         }
 
@@ -632,9 +656,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
                             theme,
                             &renderer::Style {
                                 text_color: if is_highlighted {
-                                    theme.palette().text
+                                    colors.text
                                 } else {
-                                    theme.extended_palette().secondary.base.text
+                                    colors.muted
                                 },
                             },
                             option_layout,
@@ -676,4 +700,35 @@ fn layout_parts<'a>(layout: Layout<'a>) -> (Layout<'a>, Vec<Layout<'a>>) {
         .collect();
 
     (header, options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduced_motion_snaps_selector_expansion() {
+        let now = Instant::now();
+        let mut state = State::default();
+
+        state.set_open(true, now, Motion::Reduced);
+
+        assert!(state.is_open());
+        assert_eq!(state.expansion(now), 1.0);
+        assert!(!state.expansion.is_animating(now));
+    }
+
+    #[test]
+    fn changing_to_reduced_motion_finishes_an_active_expansion() {
+        let now = Instant::now();
+        let mut state = State::default();
+        state.set_open(true, now, Motion::Full);
+        assert!(state.expansion.is_animating(now));
+
+        state.sync_motion(now, Motion::Reduced);
+
+        assert!(state.is_open());
+        assert_eq!(state.expansion(now), 1.0);
+        assert!(!state.expansion.is_animating(now));
+    }
 }

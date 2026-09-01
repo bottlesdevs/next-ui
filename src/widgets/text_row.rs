@@ -114,7 +114,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
                 text(error)
                     .size(list_row::BODY_SIZE)
                     .style(|theme: &Theme| text::Style {
-                        color: Some(theme.palette().danger),
+                        color: Some(crate::theme::colors(theme).danger),
                     }),
             );
         }
@@ -132,19 +132,19 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
 }
 
 fn input_style(theme: &Theme, error: bool) -> text_input::Style {
-    let muted = theme.extended_palette().secondary.base.text;
+    let colors = crate::theme::colors(theme);
 
     text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default().color(if error {
-            theme.palette().danger
+            colors.danger
         } else {
             Color::TRANSPARENT
         }),
-        icon: muted,
-        placeholder: muted,
-        value: muted,
-        selection: theme.palette().primary,
+        icon: colors.muted,
+        placeholder: colors.muted,
+        value: colors.muted,
+        selection: colors.accent,
     }
 }
 
@@ -154,9 +154,9 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
         .height(size)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if error {
-                theme.palette().danger
+                crate::theme::colors(theme).danger
             } else {
-                theme.extended_palette().secondary.base.text
+                crate::theme::colors(theme).muted
             }),
         })
         .into()

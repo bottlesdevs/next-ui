@@ -9,7 +9,10 @@ use iced::{
     window,
 };
 
-use crate::icons::SIZE;
+use crate::{
+    icons::SIZE,
+    theme::{self, Motion},
+};
 
 const STROKE_WIDTH: f32 = 2.5;
 const START_ANGLE: f32 = -PI / 2.0;
@@ -17,6 +20,7 @@ const START_ANGLE: f32 = -PI / 2.0;
 /// Circular percentage indicator, e.g. for an in-flight download or account link.
 pub struct ProgressRing {
     progress: f32,
+    motion: Motion,
 }
 
 impl ProgressRing {
@@ -24,7 +28,13 @@ impl ProgressRing {
     pub fn new(progress: f32) -> Self {
         Self {
             progress: progress.clamp(0.0, 1.0),
+            motion: Motion::default(),
         }
+    }
+
+    pub fn motion(mut self, motion: Motion) -> Self {
+        self.motion = motion;
+        self
     }
 }
 
@@ -32,6 +42,7 @@ impl<'a, Message: 'a> From<ProgressRing> for Element<'a, Message> {
     fn from(ring: ProgressRing) -> Self {
         canvas::Canvas::new(AnimatedRing {
             progress: ring.progress,
+            motion: ring.motion,
         })
         .width(SIZE)
         .height(SIZE)
@@ -41,6 +52,7 @@ impl<'a, Message: 'a> From<ProgressRing> for Element<'a, Message> {
 
 struct AnimatedRing {
     progress: f32,
+    motion: Motion,
 }
 
 #[derive(Debug, Default)]
@@ -49,7 +61,12 @@ struct RingState {
 }
 
 impl RingState {
-    fn sync(&mut self, progress: f32, now: Instant) -> bool {
+    fn sync(&mut self, progress: f32, now: Instant, motion: Motion) -> bool {
+        if motion.is_reduced() {
+            self.animation = None;
+            return false;
+        }
+
         let animation = self
             .animation
             .get_or_insert_with(|| Animation::new(progress).quick().easing(Easing::EaseOut));
@@ -73,7 +90,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         _cursor: mouse::Cursor,
     ) -> Option<Action<Message>> {
         if let Event::Window(window::Event::RedrawRequested(now)) = event
-            && state.sync(self.progress, *now)
+            && state.sync(self.progress, *now, self.motion)
         {
             Some(Action::request_redraw())
         } else {
@@ -89,20 +106,24 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let progress = state.animation.as_ref().map_or(self.progress, |animation| {
-            animation.interpolate_with(|value| value, Instant::now())
-        });
+        let progress = if self.motion.is_reduced() {
+            self.progress
+        } else {
+            state.animation.as_ref().map_or(self.progress, |animation| {
+                animation.interpolate_with(|value| value, Instant::now())
+            })
+        };
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = bounds.width.min(bounds.height) / 2.0 - STROKE_WIDTH / 2.0;
-        let palette = theme.extended_palette();
+        let colors = theme::colors(theme);
         let track = canvas::Path::circle(center, radius);
 
         frame.stroke(
             &track,
             canvas::Stroke::default()
                 .with_width(STROKE_WIDTH)
-                .with_color(palette.background.neutral.color),
+                .with_color(colors.border),
         );
 
         if progress >= 1.0 {
@@ -117,7 +138,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
                 &checkmark,
                 canvas::Stroke::default()
                     .with_width(STROKE_WIDTH)
-                    .with_color(theme.palette().primary)
+                    .with_color(colors.accent)
                     .with_line_cap(canvas::LineCap::Round)
                     .with_line_join(canvas::LineJoin::Round),
             );
@@ -135,11 +156,26 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
                 &arc,
                 canvas::Stroke::default()
                     .with_width(STROKE_WIDTH)
-                    .with_color(theme.palette().primary)
+                    .with_color(colors.accent)
                     .with_line_cap(canvas::LineCap::Round),
             );
         }
 
         vec![frame.into_geometry()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduced_motion_does_not_retain_a_ring_animation() {
+        let mut state = RingState {
+            animation: Some(Animation::new(0.0)),
+        };
+
+        assert!(!state.sync(0.5, Instant::now(), Motion::Reduced));
+        assert!(state.animation.is_none());
     }
 }

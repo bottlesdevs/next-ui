@@ -16,6 +16,7 @@ use iced::{
 use crate::widgets::info_card::{InfoCard, Kind};
 use crate::{
     icons::Icon,
+    theme::Motion,
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
         cycle_row::CycleRow,
@@ -117,7 +118,7 @@ impl State {
         match message {}
     }
 
-    pub fn view<'a>(&'a self, ctx: &Context<'a>) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, ctx: &Context<'a>, motion: Motion) -> Element<'a, Message> {
         let Some(state) = ctx.bottle_state else {
             return column![].into();
         };
@@ -171,20 +172,25 @@ impl State {
                     .title("Graphics")
                     .columns(columns)
                     .row(
-                        SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"),
+                        SwitcherRow::new("DLSS", false)
+                            .description("Deep Learning Super Sampling")
+                            .motion(motion),
                     )
                     .row(
                         SwitcherRow::new("vkBasalt", false)
-                            .description("Add post-processing effects"),
+                            .description("Add post-processing effects")
+                            .motion(motion),
                     )
                     .row(
                         SwitcherRow::new("Discrete GPU", false)
-                            .description("Force use your dedicated GPU"),
+                            .description("Force use your dedicated GPU")
+                            .motion(motion),
                     )
                     .expander(
                         ExpanderRow::with_header(
                             SwitcherRow::new("FSR", false)
-                                .description("FidelityFX Super Resolution"),
+                                .description("FidelityFX Super Resolution")
+                                .motion(motion),
                         )
                         .columns(2)
                         .add(
@@ -200,6 +206,7 @@ impl State {
                     graphics.row(
                         SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                             .description("Use the SteamOS compositor")
+                            .motion(motion)
                             .on_toggle(Message::ToggleGamescope),
                     )
                 };
@@ -207,7 +214,8 @@ impl State {
                 let graphics = graphics.expander(
                     ExpanderRow::with_header(
                         SwitcherRow::new("Display Settings", false)
-                            .description("Resolution and other options"),
+                            .description("Resolution and other options")
+                            .motion(motion),
                     )
                     .add(unavailable())
                     .content_enabled(false),
@@ -219,6 +227,7 @@ impl State {
                     graphics.row(
                         SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                             .description("Show a performance overlay")
+                            .motion(motion)
                             .on_toggle(Message::ToggleMangoHud),
                     )
                 };

@@ -10,7 +10,8 @@ use next_config::Config;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    classic, onboarding, theme,
+    classic, onboarding,
+    theme::{self, Motion},
     ui::chrome,
     widgets::{
         button::{Button, ButtonKind},
@@ -58,6 +59,8 @@ type AppResult<T> = Result<T, AppError>;
 pub struct AppConfig {
     #[serde(default)]
     pub experience: Option<Experience>,
+    #[serde(default)]
+    pub reduce_motion: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +72,7 @@ pub enum Experience {
 pub(crate) struct App {
     phase: Phase,
     theme: Theme,
+    motion: Motion,
 }
 
 enum Phase {
@@ -177,6 +181,7 @@ impl App {
             Self {
                 phase: Phase::Booting,
                 theme: theme::for_mode(ThemeMode::default()),
+                motion: Motion::Full,
             },
             Task::batch([
                 Task::perform(boot(), AppMessage::Booted),
@@ -383,10 +388,11 @@ impl App {
 
     fn finish_boot(&mut self, boot: Boot) -> Task<AppMessage> {
         let Boot { config, core } = boot;
+        self.motion = Motion::from(config.reduce_motion);
 
         match config.experience {
             None => {
-                let state = onboarding::State::new(core.addons().clone());
+                let state = onboarding::State::new(core.addons().clone(), self.motion);
                 self.phase = Phase::Onboarding {
                     core,
                     state: Box::new(state),
@@ -407,7 +413,7 @@ impl App {
                 }
                 *saving = Some(experience);
                 *notice = None;
-                save_experience(experience)
+                save_experience(experience, self.motion)
             }
             Phase::Workspace {
                 workspace,
@@ -460,7 +466,7 @@ impl App {
             unreachable!("the switch target came from a workspace")
         };
         *transition = WorkspaceTransition::Saving(target);
-        save_experience(target)
+        save_experience(target, self.motion)
     }
 
     fn finish_experience_save(
@@ -523,7 +529,7 @@ impl App {
     fn open_workspace(&mut self, core: Arc<Bottles>, experience: Experience) -> Task<AppMessage> {
         let (workspace, task) = match experience {
             Experience::Classic => {
-                let (state, task) = classic::State::new(core.as_ref());
+                let (state, task) = classic::State::new(core.as_ref(), self.motion);
                 (
                     Workspace::Classic(Box::new(state)),
                     task.map(|message| {
@@ -581,8 +587,8 @@ impl App {
     }
 }
 
-fn save_experience(experience: Experience) -> Task<AppMessage> {
-    Task::perform(save_config(experience), move |result| {
+fn save_experience(experience: Experience, motion: Motion) -> Task<AppMessage> {
+    Task::perform(save_config(experience, motion), move |result| {
         AppMessage::ExperienceSaved { experience, result }
     })
 }
@@ -613,16 +619,17 @@ async fn load_config_from(path: &Path) -> AppResult<AppConfig> {
     }
 }
 
-async fn save_config(experience: Experience) -> AppResult<()> {
+async fn save_config(experience: Experience, motion: Motion) -> AppResult<()> {
     let path = config_path()?;
-    save_config_to(&path, experience).await
+    save_config_to(&path, experience, motion).await
 }
 
-async fn save_config_to(path: &Path, experience: Experience) -> AppResult<()> {
+async fn save_config_to(path: &Path, experience: Experience, motion: Motion) -> AppResult<()> {
     next_config::save(
         path,
         &AppConfig {
             experience: Some(experience),
+            reduce_motion: motion.is_reduced(),
         },
     )
     .await
@@ -814,6 +821,7 @@ mod tests {
         let config = futures_lite::future::block_on(load_config_from(&path)).unwrap();
 
         assert_eq!(config.experience, None);
+        assert!(!config.reduce_motion);
     }
 
     #[test]
@@ -821,9 +829,12 @@ mod tests {
         let path = std::env::temp_dir().join(format!("next-ui-{}.toml", uuid::Uuid::new_v4()));
 
         futures_lite::future::block_on(async {
-            save_config_to(&path, Experience::Classic).await.unwrap();
+            save_config_to(&path, Experience::Classic, Motion::Reduced)
+                .await
+                .unwrap();
             let config = load_config_from(&path).await.unwrap();
             assert_eq!(config.experience, Some(Experience::Classic));
+            assert!(config.reduce_motion);
         });
 
         std::fs::remove_file(path).unwrap();

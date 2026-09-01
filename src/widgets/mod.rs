@@ -46,7 +46,7 @@ fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, exp
     renderer.draw_svg(
         iced::advanced::svg::Svg {
             handle,
-            color: Some(theme.extended_palette().secondary.weak.text),
+            color: Some(crate::theme::colors(theme).muted),
             rotation: (std::f32::consts::PI * expansion).into(),
             opacity: 1.0,
         },

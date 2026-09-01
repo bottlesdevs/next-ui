@@ -69,17 +69,16 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
 }
 
 fn row_style(theme: &Theme, state: State) -> button::Style {
+    let colors = crate::theme::colors(theme);
     let highlighted = state.actionable
         && (state.keyboard_highlighted || state.hovered || state.pressed || state.focused);
 
     button::Style {
-        background: highlighted.then_some(Background::Color(
-            theme.extended_palette().background.stronger.color,
-        )),
+        background: highlighted.then_some(Background::Color(colors.selection)),
         text_color: if highlighted {
-            theme.palette().text
+            colors.text
         } else {
-            theme.extended_palette().secondary.weak.text
+            colors.muted
         },
         border: Border::default().rounded(6),
         ..button::Style::default()

@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::{
     icons::Icon,
     operation,
+    theme::Motion,
     widgets::{
         action_row::{ActionRow, State as ActionRowState},
         artwork_card::{ArtworkCard, CardAction},
@@ -228,7 +229,7 @@ impl State {
         .into()
     }
 
-    pub fn creation_view(&self) -> Element<'_, Message> {
+    pub fn creation_view(&self, motion: Motion) -> Element<'_, Message> {
         let creating = self.is_creating();
         let name = TextRow::new("Bottle Name", &self.bottle_name).icon(Icon::Person);
         let name = if creating {
@@ -237,7 +238,8 @@ impl State {
             name.on_input(Message::BottleNameChanged)
         };
         let runner = SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
-            .icon(Icon::Run);
+            .icon(Icon::Run)
+            .motion(motion);
         let runner = if creating {
             runner
         } else {
@@ -246,9 +248,10 @@ impl State {
         let content = column![
             name,
             runner,
-            SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0])),
+            SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0])).motion(motion),
             SelectorRow::new("Architecture", &ARCHITECTURES, Some(&ARCHITECTURES[0]))
-                .icon(Icon::Chip),
+                .icon(Icon::Chip)
+                .motion(motion),
             PickerRow::new("Use Recipe").description("Choose the location"),
         ]
         .spacing(12);
@@ -297,7 +300,7 @@ fn new_program_target<'a>() -> DropTarget<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(theme.extended_palette().background.weak.color)
+                .background(crate::theme::colors(theme).surface)
                 .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
         });
     let labels = column![

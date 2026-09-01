@@ -7,7 +7,7 @@ use crate::{
     Experience,
     icons::Icon,
     operation::{self, Event as OperationEvent, Outcome},
-    theme,
+    theme::{self, Motion},
     ui::chrome,
     widgets::{
         action_row::{ActionRow, State as RowState},
@@ -119,6 +119,7 @@ pub struct State {
     download_generation: u64,
     setup_phase: SetupPhase,
     catalog_error: Option<Arc<CoreError>>,
+    motion: Motion,
 }
 
 #[derive(Clone)]
@@ -136,7 +137,7 @@ pub enum Message {
 }
 
 impl State {
-    pub fn new(addons: Addons) -> Self {
+    pub fn new(addons: Addons, motion: Motion) -> Self {
         Self {
             step: Step::Welcome,
             experience: Experience::Classic,
@@ -145,6 +146,7 @@ impl State {
             download_generation: 0,
             setup_phase: SetupPhase::Idle,
             catalog_error: None,
+            motion,
         }
     }
 
@@ -369,7 +371,8 @@ impl State {
         if matches!(self.setup_phase, SetupPhase::Preparing(_)) {
             group = group.row(
                 ActionRow::new("Resource catalog", RowState::Progress(0.0))
-                    .description("Preparing"),
+                    .description("Preparing")
+                    .motion(self.motion),
             );
         }
 
@@ -385,10 +388,13 @@ impl State {
             group = match &item.state {
                 DownloadState::Running(_) => group.row(
                     ActionRow::new(&item.label, RowState::Progress(item.progress))
-                        .description(description),
+                        .description(description)
+                        .motion(self.motion),
                 ),
                 DownloadState::Succeeded => group.row(
-                    ActionRow::new(&item.label, RowState::Progress(1.0)).description(description),
+                    ActionRow::new(&item.label, RowState::Progress(1.0))
+                        .description(description)
+                        .motion(self.motion),
                 ),
                 DownloadState::Pending
                 | DownloadState::Cancelled
@@ -689,7 +695,7 @@ fn onboarding_title<'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Messag
                 ..iced::Font::DEFAULT
             })
             .style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().primary),
+                color: Some(crate::theme::colors(theme).accent),
             }),
         text(subtitle).size(16).medium().muted(),
     ]
@@ -700,7 +706,7 @@ fn onboarding_title<'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Messag
 
 fn error_icon<'a>() -> svg::Svg<'a> {
     Icon::Error.view().style(|theme: &Theme, _| svg::Style {
-        color: Some(theme.palette().danger),
+        color: Some(crate::theme::colors(theme).danger),
     })
 }
 
@@ -712,7 +718,7 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
         .width(160)
         .height(160)
         .style(|theme: &Theme, _| svg::Style {
-            color: Some(theme.palette().primary),
+            color: Some(crate::theme::colors(theme).accent),
         });
     let text_block = column![
         text(step.title)
@@ -722,7 +728,7 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
                 ..iced::Font::DEFAULT
             })
             .style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().primary),
+                color: Some(crate::theme::colors(theme).accent),
             }),
         text(body).body().muted()
     ]

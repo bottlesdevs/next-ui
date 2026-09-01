@@ -9,6 +9,7 @@ use iced::{
 };
 
 use super::control::{Control, State};
+use crate::theme::{self, Motion};
 
 const WIDTH: f32 = 52.0;
 const HEIGHT: f32 = 32.0;
@@ -17,6 +18,7 @@ const KNOB: f32 = 24.0;
 pub struct Switcher<'a, Message> {
     is_on: bool,
     on_toggle: Option<Box<dyn Fn(bool) -> Message + 'a>>,
+    motion: Motion,
 }
 
 impl<'a, Message> Switcher<'a, Message> {
@@ -24,6 +26,7 @@ impl<'a, Message> Switcher<'a, Message> {
         Self {
             is_on,
             on_toggle: None,
+            motion: Motion::default(),
         }
     }
 
@@ -36,6 +39,11 @@ impl<'a, Message> Switcher<'a, Message> {
         self.on_toggle = on_toggle.map(|on_toggle| Box::new(on_toggle) as _);
         self
     }
+
+    pub fn motion(mut self, motion: Motion) -> Self {
+        self.motion = motion;
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Message> {
@@ -44,6 +52,7 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
         let knob = canvas::Canvas::new(AnimatedKnob {
             is_on: switcher.is_on,
             enabled: active,
+            motion: switcher.motion,
         })
         .width(Fill)
         .height(Fill);
@@ -65,6 +74,7 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
 struct AnimatedKnob {
     is_on: bool,
     enabled: bool,
+    motion: Motion,
 }
 
 #[derive(Debug, Default)]
@@ -73,7 +83,12 @@ struct KnobState {
 }
 
 impl KnobState {
-    fn sync(&mut self, is_on: bool, now: Instant) -> bool {
+    fn sync(&mut self, is_on: bool, now: Instant, motion: Motion) -> bool {
+        if motion.is_reduced() {
+            self.animation = None;
+            return false;
+        }
+
         let animation = self
             .animation
             .get_or_insert_with(|| Animation::new(is_on).very_quick().easing(Easing::EaseOut));
@@ -97,7 +112,7 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
         _cursor: mouse::Cursor,
     ) -> Option<Action<Message>> {
         if let Event::Window(window::Event::RedrawRequested(now)) = event
-            && state.sync(self.is_on, *now)
+            && state.sync(self.is_on, *now, self.motion)
         {
             Some(Action::request_redraw())
         } else {
@@ -113,19 +128,20 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let progress = state.animation.as_ref().map_or_else(
-            || if self.is_on { 1.0 } else { 0.0 },
-            |animation| animation.interpolate(0.0, 1.0, Instant::now()),
-        );
-        let diameter = bounds.height;
-        let color = if self.enabled {
-            palette::mix(
-                theme.extended_palette().background.stronger.color,
-                theme.palette().primary,
-                progress,
-            )
+        let target = if self.is_on { 1.0 } else { 0.0 };
+        let progress = if self.motion.is_reduced() {
+            target
         } else {
-            theme.extended_palette().secondary.weak.text
+            state.animation.as_ref().map_or(target, |animation| {
+                animation.interpolate(0.0, 1.0, Instant::now())
+            })
+        };
+        let diameter = bounds.height;
+        let colors = theme::colors(theme);
+        let color = if self.enabled {
+            palette::mix(colors.selection, colors.accent, progress)
+        } else {
+            colors.muted
         };
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
@@ -146,10 +162,23 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
 
 fn track_style(theme: &Theme, _state: State) -> button::Style {
     button::Style {
-        background: Some(Background::Color(
-            theme.extended_palette().background.weaker.color,
-        )),
+        background: Some(Background::Color(theme::colors(theme).background)),
         border: Border::default().rounded(HEIGHT / 2.0),
         ..button::Style::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduced_motion_does_not_retain_a_knob_animation() {
+        let mut state = KnobState {
+            animation: Some(Animation::new(false)),
+        };
+
+        assert!(!state.sync(true, Instant::now(), Motion::Reduced));
+        assert!(state.animation.is_none());
     }
 }

@@ -5,7 +5,7 @@ use iced::{
 
 use super::{
     spacing,
-    surface::{Kind as SurfaceKind, Surface},
+    surface::{Surface, SurfaceRole},
     text::TextExt as _,
 };
 
@@ -47,7 +47,7 @@ impl<'a, Message> Card<'a, Message> {
 impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
     fn from(card: Card<'a, Message>) -> Self {
         Surface::new(
-            SurfaceKind::Card,
+            SurfaceRole::Card,
             container(card.content)
                 .padding(card.padding)
                 .width(card.width)
@@ -83,8 +83,7 @@ pub(crate) fn image_content<'a, Message: 'a>(
             .width(Fill)
             .height(BANNER_HEIGHT)
             .style(|theme: &Theme| {
-                container::Style::default()
-                    .background(theme.extended_palette().background.neutral.color)
+                container::Style::default().background(crate::theme::colors(theme).border)
             })
             .into(),
     };

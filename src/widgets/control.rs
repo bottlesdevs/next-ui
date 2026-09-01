@@ -290,7 +290,7 @@ impl<'a, Message> Control<'a, Message> {
             height: Length::Shrink,
             padding: Padding::ZERO,
             style: Box::new(|theme, _| Style {
-                text_color: theme.palette().text,
+                text_color: crate::theme::colors(theme).text,
                 ..Style::default()
             }),
         }

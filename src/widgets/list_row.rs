@@ -177,20 +177,20 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
 }
 
 pub(crate) fn style(theme: &Theme, state: State) -> Style {
-    let palette = theme.extended_palette();
+    let colors = crate::theme::colors(theme);
     let color = if state.pressed {
-        palette.background.stronger.color
+        colors.selection
     } else if state.selected || state.expanded || state.focus_within {
-        palette.background.neutral.color
+        colors.border
     } else if state.hovered {
-        palette.background.strong.color
+        colors.hover
     } else {
-        palette.background.weak.color
+        colors.surface
     };
 
     Style {
         background: Some(Background::Color(color)),
-        text_color: theme.palette().text,
+        text_color: colors.text,
         border: Border::default().rounded(6),
         foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
         ..Style::default()

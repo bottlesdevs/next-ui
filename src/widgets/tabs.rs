@@ -15,6 +15,7 @@ use super::{
     spacing,
     text::TextExt as _,
 };
+use crate::theme::{self, Motion};
 
 pub struct Tab<'a, T> {
     value: T,
@@ -41,6 +42,7 @@ pub struct Tabs<'a, T, Message> {
     tabs: Vec<Tab<'a, T>>,
     selected: Option<T>,
     on_select: Box<dyn Fn(T) -> Message + 'a>,
+    motion: Motion,
 }
 
 impl<'a, T, Message> Tabs<'a, T, Message> {
@@ -53,7 +55,13 @@ impl<'a, T, Message> Tabs<'a, T, Message> {
             tabs: tabs.into_iter().collect(),
             selected,
             on_select: Box::new(on_select),
+            motion: Motion::default(),
         }
+    }
+
+    pub fn motion(mut self, motion: Motion) -> Self {
+        self.motion = motion;
+        self
     }
 }
 
@@ -67,6 +75,7 @@ where
             tabs,
             selected,
             on_select,
+            motion,
         } = tabs;
         let labels = tabs.iter().map(|tab| tab.label).collect();
         let selected_index = selected
@@ -93,6 +102,7 @@ where
             canvas::Canvas::new(TabIndicator {
                 selected_index,
                 labels,
+                motion,
             })
             .width(Fill)
             .height(Fill),
@@ -107,6 +117,7 @@ const INDICATOR_HEIGHT: f32 = 3.0;
 struct TabIndicator<'a> {
     selected_index: Option<usize>,
     labels: Vec<&'a str>,
+    motion: Motion,
 }
 
 #[derive(Debug, Default)]
@@ -116,7 +127,19 @@ struct IndicatorState {
 }
 
 impl IndicatorState {
-    fn sync(&mut self, selected_index: Option<usize>, labels: &[&str], now: Instant) -> bool {
+    fn sync(
+        &mut self,
+        selected_index: Option<usize>,
+        labels: &[&str],
+        now: Instant,
+        motion: Motion,
+    ) -> bool {
+        if motion.is_reduced() {
+            self.labels = labels.iter().map(|label| (*label).to_owned()).collect();
+            self.animation = None;
+            return false;
+        }
+
         if !self
             .labels
             .iter()
@@ -165,7 +188,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
             _ => Instant::now(),
         };
 
-        if state.sync(self.selected_index, &self.labels, now) {
+        if state.sync(self.selected_index, &self.labels, now, self.motion) {
             Some(Action::request_redraw())
         } else {
             None
@@ -188,7 +211,12 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
         }
 
         let now = Instant::now();
-        let center = state.animation.as_ref().map_or_else(
+        let animation = if self.motion.is_reduced() {
+            None
+        } else {
+            state.animation.as_ref()
+        };
+        let center = animation.map_or_else(
             || tab_center(renderer, &self.labels, selected_index),
             |animation| {
                 animation.interpolate_with(
@@ -197,7 +225,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
                 )
             },
         );
-        let width = state.animation.as_ref().map_or_else(
+        let width = animation.map_or_else(
             || tab_width(renderer, self.labels[selected_index]),
             |animation| {
                 animation.interpolate_with(
@@ -211,7 +239,7 @@ impl<Message> canvas::Program<Message> for TabIndicator<'_> {
         frame.fill_rectangle(
             Point::new(center - width / 2.0, bounds.height - INDICATOR_HEIGHT),
             Size::new(width, INDICATOR_HEIGHT),
-            theme.palette().primary,
+            theme::colors(theme).accent,
         );
 
         vec![frame.into_geometry()]
@@ -255,16 +283,31 @@ fn label_width(renderer: &Renderer, label: &str) -> f32 {
 }
 
 fn tab_style(theme: &Theme, state: State) -> button::Style {
+    let colors = theme::colors(theme);
+
     button::Style {
-        background: (state.focused && !state.hovered && !state.pressed).then_some(
-            Background::Color(theme.extended_palette().background.strong.color),
-        ),
+        background: (state.focused && !state.hovered && !state.pressed)
+            .then_some(Background::Color(colors.hover)),
         text_color: if state.selected || state.hovered || state.pressed || state.focused {
-            theme.palette().text
+            colors.text
         } else {
-            theme.extended_palette().secondary.weak.text
+            colors.muted
         },
         border: Border::default().rounded(6),
         ..button::Style::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduced_motion_snaps_the_indicator() {
+        let mut state = IndicatorState::default();
+        let now = Instant::now();
+
+        assert!(!state.sync(Some(1), &["One", "Two"], now, Motion::Reduced));
+        assert!(state.animation.is_none());
     }
 }

@@ -110,9 +110,9 @@ impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
                     .size(TEXT_SIZE)
                     .style(move |theme: &Theme| text::Style {
                         color: Some(if status.state == BottleStatus::Failed {
-                            theme.palette().danger
+                            theme::colors(theme).danger
                         } else {
-                            theme.extended_palette().secondary.weak.text
+                            theme::colors(theme).muted
                         }),
                     }),
             ]
@@ -150,7 +150,7 @@ impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
         .width(Fill)
         .clip(true)
         .style(|theme: &Theme| {
-            container::background(theme.extended_palette().background.weaker.color)
+            container::background(theme::colors(theme).background)
                 .border(iced::Border::default().rounded(iced::border::bottom(6)))
         })
         .into()
@@ -162,7 +162,7 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
 
     if danger {
         icon.style(|theme: &Theme, _| svg::Style {
-            color: Some(theme.palette().danger),
+            color: Some(theme::colors(theme).danger),
         })
     } else {
         icon
@@ -614,7 +614,7 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
                 snap: true,
                 ..renderer::Quad::default()
             },
-            Background::Color(theme.extended_palette().background.neutral.color),
+            Background::Color(theme::colors(theme).border),
         );
     }
 

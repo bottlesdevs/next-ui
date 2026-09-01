@@ -228,9 +228,9 @@ fn icon_element<'a, Message: 'a>(
         .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if disabled {
-                theme.extended_palette().secondary.weak.text
+                crate::theme::colors(theme).muted
             } else if kind == ButtonKind::Primary {
-                theme.extended_palette().primary.base.color
+                crate::theme::colors(theme).muted
             } else {
                 colors(theme, false, false, false, kind).text
             }),
@@ -244,6 +244,7 @@ fn appearance(
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
+    let semantic = crate::theme::colors(theme);
     let colors = colors(
         theme,
         !state.sensitive,
@@ -255,13 +256,9 @@ fn appearance(
     iced::widget::button::Style {
         background: if kind == ButtonKind::Transparent {
             if state.pressed {
-                Some(Background::Color(
-                    theme.extended_palette().background.stronger.color,
-                ))
+                Some(Background::Color(semantic.selection))
             } else if state.focused && !state.hovered {
-                Some(Background::Color(
-                    theme.extended_palette().background.strong.color,
-                ))
+                Some(Background::Color(semantic.hover))
             } else {
                 None
             }
@@ -278,19 +275,22 @@ fn appearance(
 }
 
 fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
-    let palette = theme.extended_palette();
+    let colors = crate::theme::colors(theme);
 
     if disabled {
         return Pair {
-            color: palette.background.weaker.color,
-            text: palette.secondary.weak.text,
+            color: colors.background,
+            text: colors.muted,
         };
     }
 
     match kind {
         ButtonKind::Primary => {
             if pressed {
-                palette.background.weakest
+                Pair {
+                    color: colors.deep_background,
+                    text: colors.text,
+                }
             } else if active {
                 crate::theme::deep_surface(theme)
             } else {
@@ -299,30 +299,39 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
         }
         ButtonKind::Secondary => {
             if pressed {
-                palette.secondary.weak
+                Pair {
+                    color: colors.background,
+                    text: colors.muted,
+                }
             } else if active {
-                palette.secondary.strong
+                Pair {
+                    color: colors.surface_deep,
+                    text: colors.muted,
+                }
             } else {
-                palette.secondary.base
+                Pair {
+                    color: colors.deep_background,
+                    text: colors.muted,
+                }
             }
         }
         ButtonKind::Surface => {
             let background = if pressed {
-                palette.background.stronger
+                colors.selection
             } else if active {
-                palette.background.strong
+                colors.hover
             } else {
-                palette.background.weak
+                colors.surface
             };
 
             Pair {
-                color: background.color,
-                text: palette.secondary.base.text,
+                color: background,
+                text: colors.muted,
             }
         }
         ButtonKind::Transparent => Pair {
-            color: palette.background.base.color,
-            text: palette.secondary.weak.text,
+            color: colors.background,
+            text: colors.muted,
         },
     }
 }

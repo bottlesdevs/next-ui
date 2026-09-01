@@ -93,3 +93,68 @@ impl Icon {
 #[folder = "assets"]
 #[include = "icons/*.svg"]
 struct Assets;
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    const ALL: [Icon; 29] = [
+        Icon::Arrow,
+        Icon::Bottles,
+        Icon::Checkmark,
+        Icon::Chip,
+        Icon::Computer,
+        Icon::Controller,
+        Icon::Cross,
+        Icon::Custom,
+        Icon::Disk,
+        Icon::DoubleCheckmark,
+        Icon::DownCaret,
+        Icon::EllipsisVertical,
+        Icon::Error,
+        Icon::Folder,
+        Icon::Gear,
+        Icon::HollowGear,
+        Icon::Info,
+        Icon::Lightning,
+        Icon::Pencil,
+        Icon::Person,
+        Icon::Play,
+        Icon::Plus,
+        Icon::Power,
+        Icon::Run,
+        Icon::Search,
+        Icon::Stop,
+        Icon::Timer,
+        Icon::Wand,
+        Icon::Warning,
+    ];
+
+    #[test]
+    fn every_typed_icon_resolves_and_every_embedded_icon_is_typed() {
+        let declared: BTreeSet<_> = ALL
+            .into_iter()
+            .map(|icon| {
+                let path = format!("icons/{}.svg", icon.name());
+                assert!(
+                    Assets::get(&path).is_some(),
+                    "missing embedded icon: {path}"
+                );
+                path
+            })
+            .collect();
+        let embedded: BTreeSet<_> = Assets::iter()
+            .filter(|path| path.starts_with("icons/") && path.ends_with(".svg"))
+            .map(|path| path.into_owned())
+            .collect();
+
+        assert_eq!(
+            declared.len(),
+            ALL.len(),
+            "two Icon variants share an asset"
+        );
+        assert_eq!(declared, embedded);
+    }
+}

@@ -10,19 +10,22 @@ use iced::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Kind {
+pub(super) enum SurfaceRole {
     Panel,
     Card,
     Overlay,
 }
 
-impl Kind {
+impl SurfaceRole {
     fn colors(self, theme: &Theme) -> Pair {
-        let background = theme.extended_palette().background;
+        let colors = theme::colors(theme);
 
-        match self {
-            Self::Panel | Self::Overlay => background.neutral,
-            Self::Card => background.weak,
+        Pair {
+            color: match self {
+                Self::Panel | Self::Overlay => colors.border,
+                Self::Card => colors.surface,
+            },
+            text: colors.text,
         }
     }
 
@@ -42,16 +45,20 @@ impl Kind {
 
     pub(super) fn scoped_theme(self, theme: &Theme) -> Theme {
         let colors = self.colors(theme);
+        let semantic = theme::colors(theme);
         let mut palette = theme.palette();
         let mut extended = *theme.extended_palette();
 
         palette.background = colors.color;
         palette.text = colors.text;
         extended.background.base = colors;
-        extended.background.strong = match self {
-            Self::Panel => extended.background.strong,
-            Self::Card => extended.background.neutral,
-            Self::Overlay => extended.background.stronger,
+        extended.background.strong = Pair {
+            color: match self {
+                Self::Panel => semantic.hover,
+                Self::Card => semantic.border,
+                Self::Overlay => semantic.selection,
+            },
+            text: semantic.text,
         };
 
         Theme::custom_with_fn(self.name(), palette, |_| extended)
@@ -67,14 +74,14 @@ impl Kind {
 }
 
 pub(super) struct Surface<'a, Message> {
-    kind: Kind,
+    role: SurfaceRole,
     content: Element<'a, Message>,
 }
 
 impl<'a, Message> Surface<'a, Message> {
-    pub(super) fn new(kind: Kind, content: impl Into<Element<'a, Message>>) -> Self {
+    pub(super) fn new(role: SurfaceRole, content: impl Into<Element<'a, Message>>) -> Self {
         Self {
-            kind,
+            role,
             content: content.into(),
         }
     }
@@ -165,14 +172,14 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
             return;
         }
 
-        let scoped_theme = self.kind.draw_background(renderer, theme, layout.bounds());
+        let scoped_theme = self.role.draw_background(renderer, theme, layout.bounds());
 
         self.content.as_widget().draw(
             tree,
             renderer,
             &scoped_theme,
             &renderer::Style {
-                text_color: scoped_theme.palette().text,
+                text_color: theme::colors(&scoped_theme).text,
             },
             layout,
             cursor,
@@ -191,7 +198,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Surface<'_, Message> {
         self.content
             .as_widget_mut()
             .overlay(tree, layout, renderer, viewport, translation)
-            .map(|content| scoped_overlay(self.kind, content))
+            .map(|content| scoped_overlay(self.role, content))
     }
 }
 
@@ -202,15 +209,15 @@ impl<'a, Message: 'a> From<Surface<'a, Message>> for Element<'a, Message> {
 }
 
 struct ScopedOverlay<'a, Message> {
-    kind: Kind,
+    role: SurfaceRole,
     content: overlay::Element<'a, Message, Theme, iced::Renderer>,
 }
 
 pub(super) fn scoped_overlay<'a, Message: 'a>(
-    kind: Kind,
+    role: SurfaceRole,
     content: overlay::Element<'a, Message, Theme, iced::Renderer>,
 ) -> overlay::Element<'a, Message, Theme, iced::Renderer> {
-    overlay::Element::new(Box::new(ScopedOverlay { kind, content }))
+    overlay::Element::new(Box::new(ScopedOverlay { role, content }))
 }
 
 impl<Message> overlay::Overlay<Message, Theme, iced::Renderer> for ScopedOverlay<'_, Message> {
@@ -226,13 +233,13 @@ impl<Message> overlay::Overlay<Message, Theme, iced::Renderer> for ScopedOverlay
         layout: Layout<'_>,
         cursor: mouse::Cursor,
     ) {
-        let scoped_theme = self.kind.scoped_theme(theme);
+        let scoped_theme = self.role.scoped_theme(theme);
 
         self.content.as_overlay().draw(
             renderer,
             &scoped_theme,
             &renderer::Style {
-                text_color: scoped_theme.palette().text,
+                text_color: theme::colors(&scoped_theme).text,
             },
             layout,
             cursor,
@@ -283,6 +290,6 @@ impl<Message> overlay::Overlay<Message, Theme, iced::Renderer> for ScopedOverlay
         self.content
             .as_overlay_mut()
             .overlay(layout, renderer)
-            .map(|content| scoped_overlay(self.kind, content))
+            .map(|content| scoped_overlay(self.role, content))
     }
 }
