@@ -5,10 +5,11 @@ use iced::{
         widget::{Operation, Tree, operation, tree},
     },
     alignment::Vertical,
+    keyboard::{self, key},
     touch,
     widget::{
         Space, container, row, scrollable,
-        scrollable::{RelativeOffset, Viewport},
+        scrollable::{AbsoluteOffset, RelativeOffset, Viewport},
         svg, text,
         text::{Fragment, IntoFragment},
     },
@@ -19,7 +20,7 @@ use crate::{icons::Icon, theme};
 
 use super::{
     button::{Button, ButtonKind},
-    control::focus_first_descendant,
+    control::{Interaction, focus_first_descendant},
     spacing,
     text::TextExt as _,
 };
@@ -193,6 +194,14 @@ struct Drag {
     restore_ratio: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum LogScroll {
+    By(f32),
+    Page(f32),
+    Start,
+    End,
+}
+
 #[derive(Debug)]
 struct State {
     expanded: bool,
@@ -201,6 +210,8 @@ struct State {
     header_height: f32,
     drag: Option<Drag>,
     follow_tail: bool,
+    resize_focus: Interaction,
+    log_focus: Interaction,
 }
 
 impl Default for State {
@@ -212,22 +223,30 @@ impl Default for State {
             header_height: 0.0,
             drag: None,
             follow_tail: true,
+            resize_focus: Interaction::default(),
+            log_focus: Interaction::default(),
         }
     }
 }
 
 impl State {
-    fn toggle(&mut self) {
+    fn toggle(&mut self) -> bool {
         if self.expanded {
-            self.collapse();
+            self.collapse()
         } else {
             self.expanded = true;
+            false
         }
     }
 
-    fn collapse(&mut self) {
+    fn collapse(&mut self) -> bool {
+        let restore_header = operation::Focusable::is_focused(&self.resize_focus)
+            || operation::Focusable::is_focused(&self.log_focus);
         self.expanded = false;
         self.drag = None;
+        operation::Focusable::unfocus(&mut self.resize_focus);
+        operation::Focusable::unfocus(&mut self.log_focus);
+        restore_header
     }
 
     fn expanded_height(&self) -> f32 {
@@ -239,6 +258,72 @@ impl State {
             self.ratio = (height / self.available_height)
                 .clamp(self.header_height / self.available_height, 1.0);
         }
+    }
+
+    fn resize_with_keyboard(&mut self, key: &keyboard::Key) -> Option<bool> {
+        if !self.expanded
+            || !self.has_visible_log()
+            || !operation::Focusable::is_focused(&self.resize_focus)
+        {
+            return None;
+        }
+
+        let restore_header = match key.as_ref() {
+            keyboard::Key::Named(key::Named::ArrowUp) => {
+                self.set_height(self.expanded_height() + spacing::LG);
+                false
+            }
+            keyboard::Key::Named(key::Named::ArrowDown) => {
+                let height = self.expanded_height() - spacing::LG;
+
+                if height <= self.header_height + f32::EPSILON {
+                    self.collapse()
+                } else {
+                    self.set_height(height);
+                    false
+                }
+            }
+            keyboard::Key::Named(key::Named::Home) => self.collapse(),
+            keyboard::Key::Named(key::Named::End) => {
+                self.set_height(self.available_height);
+                false
+            }
+            _ => return None,
+        };
+
+        Some(restore_header)
+    }
+
+    fn log_scroll(&self, key: &keyboard::Key) -> Option<LogScroll> {
+        if !self.expanded
+            || !self.has_visible_log()
+            || !operation::Focusable::is_focused(&self.log_focus)
+        {
+            return None;
+        }
+
+        match key.as_ref() {
+            keyboard::Key::Named(key::Named::ArrowUp) => Some(LogScroll::By(-spacing::XG)),
+            keyboard::Key::Named(key::Named::ArrowDown) => Some(LogScroll::By(spacing::XG)),
+            keyboard::Key::Named(key::Named::PageUp) => Some(LogScroll::Page(-1.0)),
+            keyboard::Key::Named(key::Named::PageDown) => Some(LogScroll::Page(1.0)),
+            keyboard::Key::Named(key::Named::Home) => Some(LogScroll::Start),
+            keyboard::Key::Named(key::Named::End) => Some(LogScroll::End),
+            _ => None,
+        }
+    }
+
+    fn unfocus_targets(&mut self) {
+        operation::Focusable::unfocus(&mut self.resize_focus);
+        operation::Focusable::unfocus(&mut self.log_focus);
+    }
+
+    fn has_log_capacity(&self) -> bool {
+        self.available_height > self.header_height + f32::EPSILON
+    }
+
+    fn has_visible_log(&self) -> bool {
+        self.has_log_capacity() && self.expanded_height() > self.header_height + f32::EPSILON
     }
 
     fn continue_resize(&mut self, event: &Event) -> Option<bool> {
@@ -377,12 +462,21 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         state.available_height = available_height;
         state.header_height = header_height;
 
+        if !state.has_log_capacity() {
+            state.unfocus_targets();
+        }
+
         if !state.expanded {
             return layout::Node::with_children(header.size(), vec![header]);
         }
 
         let height = state.expanded_height();
         let log_height = height - header_height;
+
+        if log_height <= f32::EPSILON {
+            state.unfocus_targets();
+        }
+
         let log_size = Size::new(header.size().width, log_height);
         let log = self.children[1].as_widget_mut().layout(
             &mut tree.children[1],
@@ -403,23 +497,36 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        let expanded = tree.state.downcast_ref::<State>().expanded;
+        let (state, children) = (&mut tree.state, &mut tree.children);
+        let state = state.downcast_mut::<State>();
+        let expanded = state.expanded;
         let mut layouts = layout.children();
         let header_layout = layouts.next().expect("status header layout");
+        let log_layout = expanded.then(|| layouts.next().expect("status log layout"));
 
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
             self.children[0].as_widget_mut().operate(
-                &mut tree.children[0],
+                &mut children[0],
                 header_layout,
                 renderer,
                 operation,
             );
 
-            if expanded {
+            if let Some(log_layout) = log_layout {
+                let log_visible = log_layout.bounds().height > 0.0;
+
+                if log_visible {
+                    operation.focusable(
+                        None,
+                        resize_bounds(layout.bounds()),
+                        &mut state.resize_focus,
+                    );
+                    operation.focusable(None, log_layout.bounds(), &mut state.log_focus);
+                }
                 self.children[1].as_widget_mut().operate(
-                    &mut tree.children[1],
-                    layouts.next().expect("status log layout"),
+                    &mut children[1],
+                    log_layout,
                     renderer,
                     operation,
                 );
@@ -438,6 +545,10 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
+        if matches!(event, Event::Window(window::Event::Unfocused)) {
+            tree.state.downcast_mut::<State>().unfocus_targets();
+        }
+
         let expanded = tree.state.downcast_ref::<State>().expanded;
         let mut layouts = layout.children();
         let header_layout = layouts.next().expect("status header layout");
@@ -459,6 +570,40 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
             }
 
             return;
+        }
+
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event {
+            if let Some(restore_header) =
+                tree.state.downcast_mut::<State>().resize_with_keyboard(key)
+            {
+                if restore_header {
+                    focus_first_descendant(
+                        self.children[0].as_widget_mut(),
+                        &mut tree.children[0],
+                        header_layout,
+                        renderer,
+                    );
+                }
+
+                shell.capture_event();
+                shell.invalidate_layout();
+                shell.request_redraw();
+                return;
+            }
+
+            if let Some(command) = tree.state.downcast_ref::<State>().log_scroll(key) {
+                let mut scroll = ScrollLog::new(command);
+                self.children[1].as_widget_mut().operate(
+                    &mut tree.children[1],
+                    log_layout.expect("keyboard scrolling requires expanded log layout"),
+                    renderer,
+                    &mut scroll,
+                );
+                tree.state.downcast_mut::<State>().follow_tail = scroll.at_end;
+                shell.capture_event();
+                shell.request_redraw();
+                return;
+            }
         }
 
         let mut messages = Vec::new();
@@ -503,7 +648,17 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         for message in messages {
             match message {
                 Local::Toggle => {
-                    tree.state.downcast_mut::<State>().toggle();
+                    let restore_header = tree.state.downcast_mut::<State>().toggle();
+
+                    if restore_header {
+                        focus_first_descendant(
+                            self.children[0].as_widget_mut(),
+                            &mut tree.children[0],
+                            header_layout,
+                            renderer,
+                        );
+                    }
+
                     shell.invalidate_layout();
                     shell.request_redraw();
                 }
@@ -525,7 +680,7 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
                 &mut tree.children[1],
                 log_layout,
                 renderer,
-                &mut SnapToEnd,
+                &mut ScrollLog::new(LogScroll::End),
             );
             shell.request_redraw();
         }
@@ -616,6 +771,35 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
             },
             Background::Color(theme::colors(theme).border),
         );
+
+        if let Some(log) = state.expanded.then(|| layout.children().nth(1)).flatten()
+            && log.bounds().height > 0.0
+        {
+            let mark = if operation::Focusable::is_focused(&state.resize_focus) {
+                Some(Rectangle {
+                    height: 2.0,
+                    ..layout.bounds()
+                })
+            } else if operation::Focusable::is_focused(&state.log_focus) {
+                Some(Rectangle {
+                    width: 2.0,
+                    ..log.bounds()
+                })
+            } else {
+                None
+            };
+
+            if let Some(bounds) = mark {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds,
+                        snap: true,
+                        ..renderer::Quad::default()
+                    },
+                    Background::Color(theme::colors(theme).accent_muted),
+                );
+            }
+        }
     }
 
     fn overlay<'a>(
@@ -634,9 +818,21 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
     }
 }
 
-struct SnapToEnd;
+struct ScrollLog {
+    command: LogScroll,
+    at_end: bool,
+}
 
-impl Operation for SnapToEnd {
+impl ScrollLog {
+    const fn new(command: LogScroll) -> Self {
+        Self {
+            command,
+            at_end: false,
+        }
+    }
+}
+
+impl Operation for ScrollLog {
     fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
         operate(self);
     }
@@ -644,12 +840,34 @@ impl Operation for SnapToEnd {
     fn scrollable(
         &mut self,
         _id: Option<&iced::widget::Id>,
-        _bounds: Rectangle,
-        _content_bounds: Rectangle,
-        _translation: Vector,
+        bounds: Rectangle,
+        content_bounds: Rectangle,
+        translation: Vector,
         state: &mut dyn operation::Scrollable,
     ) {
-        state.snap_to(RelativeOffset::END.into());
+        let maximum = (content_bounds.height - bounds.height).max(0.0);
+        let target = match self.command {
+            LogScroll::By(y) => {
+                state.scroll_by(AbsoluteOffset { x: 0.0, y }, bounds, content_bounds);
+                translation.y + y
+            }
+            LogScroll::Page(pages) => {
+                let y = pages * bounds.height;
+                state.scroll_by(AbsoluteOffset { x: 0.0, y }, bounds, content_bounds);
+                translation.y + y
+            }
+            LogScroll::Start => {
+                state.snap_to(RelativeOffset::START.into());
+                0.0
+            }
+            LogScroll::End => {
+                state.snap_to(RelativeOffset::END.into());
+                maximum
+            }
+        }
+        .clamp(0.0, maximum);
+
+        self.at_end = maximum - target <= BOTTOM_TOLERANCE;
     }
 }
 
@@ -677,9 +895,11 @@ mod tests {
 
     #[test]
     fn disclosure_and_size_are_local() {
-        let mut state = State::default();
-        state.available_height = 600.0;
-        state.header_height = 44.0;
+        let mut state = State {
+            available_height: 600.0,
+            header_height: 44.0,
+            ..State::default()
+        };
 
         assert!(!state.expanded);
         state.toggle();

@@ -9,10 +9,7 @@ use iced::{
     window,
 };
 
-use crate::{
-    icons::SIZE,
-    theme::{self, Motion},
-};
+use crate::{icons::SIZE, theme};
 
 const STROKE_WIDTH: f32 = 2.5;
 const START_ANGLE: f32 = -PI / 2.0;
@@ -20,7 +17,6 @@ const START_ANGLE: f32 = -PI / 2.0;
 /// Circular percentage indicator, e.g. for an in-flight download or account link.
 pub struct ProgressRing {
     progress: f32,
-    motion: Motion,
 }
 
 impl ProgressRing {
@@ -28,13 +24,7 @@ impl ProgressRing {
     pub fn new(progress: f32) -> Self {
         Self {
             progress: progress.clamp(0.0, 1.0),
-            motion: Motion::default(),
         }
-    }
-
-    pub fn motion(mut self, motion: Motion) -> Self {
-        self.motion = motion;
-        self
     }
 }
 
@@ -42,7 +32,6 @@ impl<'a, Message: 'a> From<ProgressRing> for Element<'a, Message> {
     fn from(ring: ProgressRing) -> Self {
         canvas::Canvas::new(AnimatedRing {
             progress: ring.progress,
-            motion: ring.motion,
         })
         .width(SIZE)
         .height(SIZE)
@@ -52,7 +41,6 @@ impl<'a, Message: 'a> From<ProgressRing> for Element<'a, Message> {
 
 struct AnimatedRing {
     progress: f32,
-    motion: Motion,
 }
 
 #[derive(Debug, Default)]
@@ -61,12 +49,7 @@ struct RingState {
 }
 
 impl RingState {
-    fn sync(&mut self, progress: f32, now: Instant, motion: Motion) -> bool {
-        if motion.is_reduced() {
-            self.animation = None;
-            return false;
-        }
-
+    fn sync(&mut self, progress: f32, now: Instant) -> bool {
         let animation = self
             .animation
             .get_or_insert_with(|| Animation::new(progress).quick().easing(Easing::EaseOut));
@@ -90,7 +73,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         _cursor: mouse::Cursor,
     ) -> Option<Action<Message>> {
         if let Event::Window(window::Event::RedrawRequested(now)) = event
-            && state.sync(self.progress, *now, self.motion)
+            && state.sync(self.progress, *now)
         {
             Some(Action::request_redraw())
         } else {
@@ -106,13 +89,9 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let progress = if self.motion.is_reduced() {
-            self.progress
-        } else {
-            state.animation.as_ref().map_or(self.progress, |animation| {
-                animation.interpolate_with(|value| value, Instant::now())
-            })
-        };
+        let progress = state.animation.as_ref().map_or(self.progress, |animation| {
+            animation.interpolate_with(|value| value, Instant::now())
+        });
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = bounds.width.min(bounds.height) / 2.0 - STROKE_WIDTH / 2.0;
@@ -162,20 +141,5 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         }
 
         vec![frame.into_geometry()]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reduced_motion_does_not_retain_a_ring_animation() {
-        let mut state = RingState {
-            animation: Some(Animation::new(0.0)),
-        };
-
-        assert!(!state.sync(0.5, Instant::now(), Motion::Reduced));
-        assert!(state.animation.is_none());
     }
 }
