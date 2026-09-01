@@ -3,6 +3,7 @@ use rust_embed::RustEmbed;
 
 pub(crate) const SIZE: f32 = 24.0;
 
+/// A typed reference to an icon embedded in the toolkit with `rust-embed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Icon {
     Arrow,
@@ -45,6 +46,7 @@ impl Icon {
         svg::Handle::from_memory(icon.data)
     }
 
+    /// Builds an SVG widget using the current semantic muted color.
     pub fn view<'a>(self) -> svg::Svg<'a> {
         svg(self.handle())
             .width(SIZE)

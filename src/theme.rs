@@ -1,4 +1,5 @@
 //! Semantic colors for the toolkit.
+
 use iced::{
     Background, Border, Color, Theme as IcedTheme,
     theme::{
@@ -52,7 +53,6 @@ pub struct Colors {
     pub background: Color,
     pub deep_background: Color,
     pub surface: Color,
-    pub panel: Color,
     pub border: Color,
     pub hover: Color,
     pub selection: Color,
@@ -68,25 +68,6 @@ pub struct Colors {
     pub danger_surface: Color,
     pub warning_surface: Color,
     pub success_surface: Color,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Motion {
-    #[default]
-    Full,
-    Reduced,
-}
-
-impl Motion {
-    pub const fn is_reduced(self) -> bool {
-        matches!(self, Self::Reduced)
-    }
-}
-
-impl From<bool> for Motion {
-    fn from(reduced: bool) -> Self {
-        if reduced { Self::Reduced } else { Self::Full }
-    }
 }
 
 /// Builds the dark Iced appearance used by the toolkit.
@@ -195,6 +176,7 @@ pub fn light() -> IcedTheme {
     )
 }
 
+/// Resolves semantic toolkit colors from an Iced appearance.
 pub fn colors(theme: &IcedTheme) -> Colors {
     let extended = theme.extended_palette();
     let text = theme.palette().text;
@@ -209,7 +191,6 @@ pub fn colors(theme: &IcedTheme) -> Colors {
         background: extended.background.base.color,
         deep_background: extended.background.weakest.color,
         surface: extended.background.weak.color,
-        panel: extended.background.weaker.color,
         border: extended.background.neutral.color,
         hover: extended.background.strong.color,
         selection: extended.background.stronger.color,
@@ -270,6 +251,7 @@ pub(crate) fn scrim(theme: &IcedTheme) -> Color {
     colors(theme).scrim
 }
 
+/// Styles the transparent Iced application root.
 pub fn application(theme: &IcedTheme) -> ApplicationStyle {
     ApplicationStyle {
         background_color: Color::TRANSPARENT,
@@ -277,6 +259,7 @@ pub fn application(theme: &IcedTheme) -> ApplicationStyle {
     }
 }
 
+/// Styles a standard application panel.
 pub fn panel(theme: &IcedTheme) -> container::Style {
     let colors = colors(theme);
     surface(pair(colors.background, colors.text))
@@ -289,6 +272,7 @@ pub(crate) fn surface(colors: Pair) -> container::Style {
         .border(Border::default().rounded(6))
 }
 
+/// Styles a scrollbar using semantic muted colors.
 pub fn scrollbar(theme: &IcedTheme, status: scrollable::Status) -> scrollable::Style {
     let mut style = scrollable::default(theme, status);
     let rail = scrollable::Rail {

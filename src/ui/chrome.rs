@@ -1,3 +1,5 @@
+//! Toolkit-owned chrome for an undecorated application window.
+
 use iced::{Element, Fill, Subscription, Task, event, keyboard, widget::container, window};
 
 use iced::{
@@ -22,11 +24,16 @@ pub(crate) const WINDOW_CONTROL_SIZE: f32 = 32.0;
 #[doc(hidden)]
 pub const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
 
+/// A semantic window-frame interaction for the application to handle.
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
+    /// Begin dragging the current window.
     Drag,
+    /// Begin resizing the current window from an edge or corner.
     Resize(window::Direction),
+    /// Ask the application to run its shutdown lifecycle.
     RequestClose,
+    /// Move to the previous (`true`) or next (`false`) global focus target.
     MoveFocus(bool),
 }
 
@@ -66,12 +73,14 @@ fn subscription_action(event: iced::Event, status: event::Status) -> Option<Acti
     }
 }
 
+/// An undecorated application frame with resize edges and a close control.
 pub struct WindowFrame<'a, Message> {
     content: Element<'a, Message>,
     on_action: Box<dyn Fn(Action) -> Message + 'a>,
 }
 
 impl<'a, Message> WindowFrame<'a, Message> {
+    /// Wraps application content and maps frame interactions to app messages.
     pub fn new(
         content: impl Into<Element<'a, Message>>,
         on_action: impl Fn(Action) -> Message + 'a,

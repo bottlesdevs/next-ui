@@ -1,6 +1,6 @@
 [package]
 name = "next-ui"
-description = "The desktop GUI for Bottles Next, built with iced on top of next-core."
+description = "The Bottles Next UI toolkit and Iced desktop application."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

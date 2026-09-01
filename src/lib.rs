@@ -1,3 +1,12 @@
+//! The reusable Bottles Next UI toolkit.
+//!
+//! The `next-ui` package also contains the desktop application, but this library
+//! has no application or core dependencies. Callers provide controlled data and
+//! semantic messages; widgets retain interaction mechanics such as focus,
+//! capture, disclosure, popup placement, resizing, and animation.
+//!
+//! The supported facade is [`theme`], [`widget`], [`window`], and [`Icon`].
+
 mod icons;
 pub mod theme;
 mod ui;
@@ -6,7 +15,11 @@ mod widgets;
 pub use icons::Icon;
 pub use ui::chrome as window;
 
-/// Reusable application widgets.
+/// The complete public widget catalog.
+///
+/// The caller owns values and semantic messages. Widgets own their interaction
+/// state; keyed collections use caller-provided identities for their documented
+/// behavior.
 pub mod widget {
     pub use crate::widgets::{
         action_row::{ActionRow, State as ActionRowState},

@@ -16,6 +16,9 @@ use super::control::{ActionSurface, cycle_descendant_focus, event_cursor, focus_
 const DIALOG_MAX_WIDTH: f32 = 360.0;
 
 /// Arbitrary content presented by a [`WindowModal`].
+///
+/// Uncaptured Escape keys and presses outside the content publish the dismiss
+/// message.
 pub struct Dialog<'a, Message> {
     content: Element<'a, Message>,
     on_dismiss: Message,
