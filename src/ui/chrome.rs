@@ -1,4 +1,4 @@
-use iced::{Element, Fill, Task, widget::container, window};
+use iced::{Element, Fill, Subscription, Task, event, keyboard, widget::container, window};
 
 use iced::{
     alignment::{Horizontal, Vertical},
@@ -27,6 +27,7 @@ pub enum Action {
     Drag,
     Resize(window::Direction),
     RequestClose,
+    MoveFocus(bool),
 }
 
 impl Action {
@@ -35,13 +36,33 @@ impl Action {
     /// A close request returns `None` so the application can shut down its
     /// services before exiting.
     pub fn task<Message: Send + 'static>(self) -> Option<Task<Message>> {
-        Some(match self {
-            Self::Drag => window::latest().and_then(window::drag),
+        match self {
+            Self::Drag => Some(window::latest().and_then(window::drag)),
             Self::Resize(direction) => {
-                window::latest().and_then(move |id| window::drag_resize(id, direction))
+                Some(window::latest().and_then(move |id| window::drag_resize(id, direction)))
             }
-            Self::RequestClose => return None,
-        })
+            Self::RequestClose => None,
+            Self::MoveFocus(true) => Some(iced::widget::operation::focus_previous()),
+            Self::MoveFocus(false) => Some(iced::widget::operation::focus_next()),
+        }
+    }
+}
+
+/// Listens for application-window requests and unhandled keyboard traversal.
+pub fn subscription() -> Subscription<Action> {
+    iced::event::listen_with(|event, status, _| subscription_action(event, status))
+}
+
+fn subscription_action(event: iced::Event, status: event::Status) -> Option<Action> {
+    match event {
+        iced::Event::Window(window::Event::CloseRequested) => Some(Action::RequestClose),
+        iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(keyboard::key::Named::Tab),
+            modifiers,
+            repeat: false,
+            ..
+        }) if status == event::Status::Ignored => Some(Action::MoveFocus(modifiers.shift())),
+        _ => None,
     }
 }
 
@@ -183,4 +204,63 @@ fn resize_edge<'a, Message: Clone + 'a>(
     .align_x(horizontal)
     .align_y(vertical)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tab(modifiers: keyboard::Modifiers, repeat: bool) -> iced::Event {
+        let key = keyboard::Key::Named(keyboard::key::Named::Tab);
+
+        iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            modified_key: key.clone(),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Tab),
+            location: keyboard::Location::Standard,
+            modifiers,
+            text: None,
+            key,
+            repeat,
+        })
+    }
+
+    #[test]
+    fn only_ignored_non_repeated_tabs_request_global_focus_traversal() {
+        assert!(matches!(
+            subscription_action(
+                tab(keyboard::Modifiers::NONE, false),
+                event::Status::Ignored
+            ),
+            Some(Action::MoveFocus(false))
+        ));
+        assert!(matches!(
+            subscription_action(
+                tab(keyboard::Modifiers::SHIFT, false),
+                event::Status::Ignored
+            ),
+            Some(Action::MoveFocus(true))
+        ));
+        assert!(
+            subscription_action(
+                tab(keyboard::Modifiers::NONE, false),
+                event::Status::Captured
+            )
+            .is_none()
+        );
+        assert!(
+            subscription_action(tab(keyboard::Modifiers::NONE, true), event::Status::Ignored)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn close_requests_are_reported_even_when_a_modal_captures_them() {
+        assert!(matches!(
+            subscription_action(
+                iced::Event::Window(window::Event::CloseRequested),
+                event::Status::Captured,
+            ),
+            Some(Action::RequestClose)
+        ));
+    }
 }

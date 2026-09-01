@@ -4,7 +4,7 @@ mod onboarding;
 mod operation;
 
 pub(crate) use app::Experience;
-pub(crate) use next_ui::{icons, theme, ui, widgets};
+pub(crate) use next_ui::{Icon, theme, widget, window};
 
 fn main() -> iced::Result {
     iced::application(app::App::new, app::App::update, app::App::view)

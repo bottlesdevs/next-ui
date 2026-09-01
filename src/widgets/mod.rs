@@ -7,8 +7,6 @@ mod surface;
 
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 
-pub(crate) use control::{ActionSurface, event_cursor};
-
 /// Shared spacing scale used by toolkit widgets and application layouts.
 pub mod spacing {
     pub const XS: f32 = 6.0;

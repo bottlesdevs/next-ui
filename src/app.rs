@@ -12,12 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     classic, onboarding,
     theme::{self, Motion},
-    ui::chrome,
-    widgets::{
-        button::{Button, ButtonKind},
-        dialog::{Dialog, WindowModal},
-        header_bar::HeaderBar,
-    },
+    widget::{Button, ButtonKind, Dialog, HeaderBar, WindowModal},
+    window,
 };
 
 const APP_CONFIG_FILE: &str = "config.toml";
@@ -141,7 +137,7 @@ pub(crate) enum AppMessage {
     DismissNotice,
     CloseRequested,
     ShutdownFinished(AppResult<()>),
-    Window(chrome::Action),
+    Window(window::Action),
     SystemThemeChanged(ThemeMode),
 }
 
@@ -253,11 +249,8 @@ impl App {
                 return state.update(message).map(AppMessage::Onboarding);
             }
             AppMessage::Workspace(WorkspaceMessage::Classic(message)) => {
-                match message.as_ref() {
-                    classic::Message::RequestExperience(experience) => {
-                        return self.request_experience(*experience);
-                    }
-                    _ => {}
+                if let classic::Message::RequestExperience(experience) = message.as_ref() {
+                    return self.request_experience(*experience);
                 }
 
                 let task = {
@@ -359,7 +352,7 @@ impl App {
             }
         };
         let page: Element<'_, AppMessage> =
-            chrome::WindowFrame::new(body, AppMessage::Window).into();
+            window::WindowFrame::new(body, AppMessage::Window).into();
         let dialog = match &self.phase {
             Phase::Workspace {
                 transition: WorkspaceTransition::Confirming(target),
@@ -693,7 +686,7 @@ fn onboarding_status_view<'a>(
 
     onboarding::shell(
         column![text(title).size(32), text(description)].spacing(12),
-        AppMessage::Window(chrome::Action::Drag),
+        AppMessage::Window(window::Action::Drag),
     )
 }
 
@@ -712,7 +705,7 @@ fn onboarding_notice_view<'a>(
                 .on_press(AppMessage::DismissNotice),
         ]
         .spacing(12),
-        AppMessage::Window(chrome::Action::Drag),
+        AppMessage::Window(window::Action::Drag),
     )
 }
 
@@ -788,7 +781,7 @@ fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
     use iced::widget::{center, column};
 
     let content = column![
-        HeaderBar::new(AppMessage::Window(chrome::Action::Drag)),
+        HeaderBar::new(AppMessage::Window(window::Action::Drag)),
         center(content).width(Fill).height(Fill),
     ]
     .width(Fill)

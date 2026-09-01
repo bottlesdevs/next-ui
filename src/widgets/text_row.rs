@@ -161,3 +161,20 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
         })
         .into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_borders_match_the_original_visual_contract() {
+        let theme = crate::theme::dark();
+        let colors = crate::theme::colors(&theme);
+        let error = input_style(&theme, true);
+        let idle = input_style(&theme, false);
+
+        assert_eq!(error.border.color, colors.danger);
+        assert_eq!(error.border.width, 0.0);
+        assert_eq!(idle.border.width, 0.0);
+    }
+}

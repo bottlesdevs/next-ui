@@ -11,17 +11,10 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
-    icons::Icon,
-    widgets::{
-        button::{Button, ButtonKind},
-        dialog::Dialog,
-        info_row::InfoRow,
-        list_row::ListRow,
-        picker_row::PickerRow,
-        popover::{Popover, PopoverItem},
-        row_group::RowGroup,
-        text_row::TextRow,
-        title::Title,
+    Icon,
+    widget::{
+        Button, ButtonKind, Dialog, InfoCard, InfoCardKind, InfoRow, ListRow, PickerRow, Popover,
+        PopoverItem, RowGroup, TextRow, Title,
     },
 };
 
@@ -158,8 +151,8 @@ impl LoginDialog {
         .spacing(18);
         if let Some(error) = &self.error {
             content = content.push(
-                crate::widgets::info_card::InfoCard::new(
-                    crate::widgets::info_card::Kind::Error,
+                InfoCard::new(
+                    InfoCardKind::Error,
                     "Could not answer the sign-in prompt",
                     error,
                 )
@@ -377,12 +370,8 @@ impl State {
         let mut content = column![accounts, container(link_menu).width(iced::Fill)].spacing(18);
         if let Some(error) = &self.last_error {
             content = content.push(
-                crate::widgets::info_card::InfoCard::new(
-                    crate::widgets::info_card::Kind::Error,
-                    "Account update failed",
-                    error,
-                )
-                .width(iced::Fill),
+                InfoCard::new(InfoCardKind::Error, "Account update failed", error)
+                    .width(iced::Fill),
             );
         }
         content.into()
@@ -483,12 +472,14 @@ mod tests {
 
     #[test]
     fn cancellation_stays_active_until_the_terminal_event() {
-        let mut state = State::default();
         let cancellation = CancellationToken::new();
-        state.link_generation = 1;
-        state.link_cancellation = Some(cancellation.clone());
         let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
-        state.login_dialog = Some(LoginDialog::new(prompt));
+        let mut state = State {
+            link_generation: 1,
+            link_cancellation: Some(cancellation.clone()),
+            login_dialog: Some(LoginDialog::new(prompt)),
+            ..State::default()
+        };
 
         state.cancel_active_operation();
 
@@ -506,9 +497,11 @@ mod tests {
     #[test]
     fn stale_prompts_do_not_attach_to_a_later_link() {
         futures_lite::future::block_on(async {
-            let mut state = State::default();
-            state.link_generation = 2;
-            state.link_cancellation = Some(CancellationToken::new());
+            let mut state = State {
+                link_generation: 2,
+                link_cancellation: Some(CancellationToken::new()),
+                ..State::default()
+            };
             let (prompt, answer) = LoginPrompt::new("https://example.com".into(), "Sign in".into());
 
             state.receive_prompt(1, prompt);

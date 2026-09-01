@@ -11,13 +11,8 @@ use iced::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    icons::Icon,
-    widgets::{
-        artwork_card::{ArtworkCard, CardAction},
-        info_card::{InfoCard, Kind},
-        search::Search as SearchWidget,
-        spacing,
-    },
+    Icon,
+    widget::{ArtworkCard, CardAction, InfoCard, InfoCardKind, Search as SearchWidget, spacing},
 };
 
 const NARROW_CONTENT_MAX_WIDTH: f32 = 500.0;
@@ -192,7 +187,7 @@ impl State {
         if let Some((title, body)) = notice {
             return column![
                 search,
-                centered_narrow(InfoCard::new(Kind::Hint, title, body).width(Fill))
+                centered_narrow(InfoCard::new(InfoCardKind::Hint, title, body).width(Fill))
             ]
             .spacing(12)
             .into();
@@ -201,14 +196,14 @@ impl State {
         let mut content = column![search].spacing(12);
         if let Some(error) = &self.last_error {
             content = content.push(centered_narrow(
-                InfoCard::new(Kind::Error, "Program launch failed", error).width(Fill),
+                InfoCard::new(InfoCardKind::Error, "Program launch failed", error).width(Fill),
             ));
         }
         if self.search.entries.is_empty() {
             return content
                 .push(centered_narrow(
                     InfoCard::new(
-                        Kind::Hint,
+                        InfoCardKind::Hint,
                         "Nothing here yet",
                         "Registered programs and linked storefront games will show up here.",
                     )

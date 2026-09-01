@@ -3,26 +3,36 @@ use iced::{
     widget::{canvas, container, stack},
 };
 
-use super::{ActionSurface, style};
+use super::{control::ActionSurface, style};
 
 const BORDER_RADIUS: f32 = 6.0;
 const BORDER_WIDTH: f32 = 2.0;
 const DASH_PATTERN: &[f32] = &[6.0, 6.0];
 
-/// An interactive surface with a dashed outline.
+/// A dashed activation surface.
 pub struct DropTarget<'a, Message> {
     content: Element<'a, Message>,
-    on_activate: Message,
+    on_activate: Option<Message>,
     width: Length,
     height: Length,
     padding: Padding,
 }
 
 impl<'a, Message> DropTarget<'a, Message> {
-    pub fn new(content: impl Into<Element<'a, Message>>, on_activate: Message) -> Self {
+    pub fn new(content: impl Into<Element<'a, Message>>, message: Message) -> Self {
         Self {
             content: content.into(),
-            on_activate,
+            on_activate: Some(message),
+            width: Length::Shrink,
+            height: Length::Shrink,
+            padding: Padding::ZERO,
+        }
+    }
+
+    pub fn disabled(content: impl Into<Element<'a, Message>>) -> Self {
+        Self {
+            content: content.into(),
+            on_activate: None,
             width: Length::Shrink,
             height: Length::Shrink,
             padding: Padding::ZERO,
@@ -66,8 +76,11 @@ impl<'a, Message: Clone + 'a> From<DropTarget<'a, Message>> for Element<'a, Mess
         .width(width)
         .height(height);
 
+        let active = on_activate.is_some();
+
         ActionSurface::new(content)
-            .on_press(on_activate)
+            .sensitive(active)
+            .on_press_maybe(on_activate)
             .width(width)
             .height(height)
             .style(style::action)
@@ -113,5 +126,21 @@ impl<Message> canvas::Program<Message> for Outline {
         );
 
         vec![frame.into_geometry()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use iced::widget::Space;
+
+    use super::*;
+
+    #[test]
+    fn constructors_make_activation_explicit() {
+        let disabled: DropTarget<'_, ()> = DropTarget::disabled(Space::new());
+        assert!(disabled.on_activate.is_none());
+
+        let active = DropTarget::new(Space::new(), ());
+        assert_eq!(active.on_activate, Some(()));
     }
 }

@@ -12,21 +12,11 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
-    icons::Icon,
-    operation,
+    Icon, operation,
     theme::Motion,
-    widgets::{
-        action_row::{ActionRow, State as ActionRowState},
-        artwork_card::{ArtworkCard, CardAction},
-        drop_target::DropTarget,
-        info_card::{InfoCard, Kind as InfoCardKind},
-        list_row::ListRow,
-        picker_row::PickerRow,
-        selector_row::SelectorRow,
-        spacing,
-        status_bar::{BottleStatus, StatusBar},
-        text::TextExt as _,
-        text_row::TextRow,
+    widget::{
+        ActionRow, ActionRowState, ArtworkCard, BottleStatus, CardAction, DropTarget, InfoCard,
+        InfoCardKind, ListRow, PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
     },
 };
 
@@ -324,7 +314,7 @@ fn new_program_target<'a>() -> DropTarget<'a, Message> {
 
     let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Length::Fill);
 
-    DropTarget::new(content, Message::Noop)
+    DropTarget::disabled(content)
         .width(Length::Fill)
         .padding([72.0, spacing::LG])
 }

@@ -10,14 +10,9 @@ use iced::{
 use uuid::Uuid;
 
 use crate::{
-    icons::Icon,
-    widgets::{
-        button::{Button, ButtonKind},
-        dialog::Dialog,
-        info_card::{InfoCard, Kind as InfoCardKind},
-        popover::{Popover, PopoverItem},
-        text_row::TextRow,
-        title::Title,
+    Icon,
+    widget::{
+        Button, ButtonKind, Dialog, InfoCard, InfoCardKind, Popover, PopoverItem, TextRow, Title,
     },
 };
 

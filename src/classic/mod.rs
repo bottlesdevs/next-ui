@@ -15,19 +15,13 @@ mod settings;
 mod snapshots;
 
 use crate::{
-    Experience,
-    icons::Icon,
+    Experience, Icon,
     theme::{self, Motion},
-    ui::chrome,
-    widgets::{
-        action_row::{ActionRow, State as ActionRowState},
-        button::{Button, ButtonKind},
-        dialog::Dialog,
-        row_group::RowGroup,
-        tabs::{Tab, TabId, Tabs},
-        text_row::TextRow,
-        title::Title,
+    widget::{
+        ActionRow, ActionRowState, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup,
+        Tab, TabId, Tabs, TextRow, Title,
     },
+    window,
 };
 use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
 use iced::{
@@ -162,7 +156,7 @@ pub enum Message {
     TogglePower,
     #[allow(dead_code)] // Constructed when the disabled Next settings row is enabled.
     RequestExperience(Experience),
-    Window(chrome::Action),
+    Window(window::Action),
     MoveFocus(bool),
     Bottles(bottles::Message),
     Settings(settings::Message),
@@ -562,7 +556,7 @@ impl State {
         )
         .motion(self.motion);
         let header = context
-            .header(Message::Window(chrome::Action::Drag))
+            .header(Message::Window(window::Action::Drag))
             .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
             .middle(tabs)
             .end(
@@ -590,7 +584,7 @@ impl State {
 
     fn profile_settings_page(&self, context: PaneContext) -> Element<'_, Message> {
         let header = context
-            .header(Message::Window(chrome::Action::Drag))
+            .header(Message::Window(window::Action::Drag))
             .start(header_button("Cancel", Icon::Arrow, Message::Back))
             .middle(
                 container(
@@ -653,12 +647,7 @@ impl State {
         };
         let content: Element<'_, Message> = if let Some(error) = self.profiles.last_error() {
             column![
-                crate::widgets::info_card::InfoCard::new(
-                    crate::widgets::info_card::Kind::Error,
-                    "Could not update profile",
-                    error,
-                )
-                .width(Fill),
+                InfoCard::new(InfoCardKind::Error, "Could not update profile", error,).width(Fill),
                 content,
             ]
             .spacing(18)
@@ -677,7 +666,7 @@ impl State {
 
     fn new_bottle_page(&self, context: PaneContext) -> Element<'_, Message> {
         let header = context
-            .header(Message::Window(chrome::Action::Drag))
+            .header(Message::Window(window::Action::Drag))
             .start(header_button(
                 "Cancel bottle creation",
                 Icon::Arrow,
@@ -750,7 +739,7 @@ impl State {
             Message::DetailTabSelected,
         )
         .motion(self.motion);
-        let mut header = context.header(Message::Window(chrome::Action::Drag));
+        let mut header = context.header(Message::Window(window::Action::Drag));
 
         if context.is_standalone() {
             header = header.start(

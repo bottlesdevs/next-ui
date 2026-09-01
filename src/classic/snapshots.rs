@@ -11,12 +11,8 @@ use iced::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    icons::Icon,
-    widgets::{
-        action_row::{ActionRow, State as ActionRowState},
-        info_card::{InfoCard, Kind},
-        row_group::RowGroup,
-    },
+    Icon,
+    widget::{ActionRow, ActionRowState, InfoCard, InfoCardKind, RowGroup},
 };
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
@@ -139,8 +135,12 @@ impl State {
         let mut content = column![rows].spacing(12);
         if let Some(error) = &self.last_error {
             content = content.push(
-                InfoCard::new(Kind::Error, "Could not load snapshots", error.to_string())
-                    .width(Fill),
+                InfoCard::new(
+                    InfoCardKind::Error,
+                    "Could not load snapshots",
+                    error.to_string(),
+                )
+                .width(Fill),
             );
         }
 

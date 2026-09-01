@@ -15,22 +15,10 @@ use super::control::{ActionSurface, cycle_descendant_focus, event_cursor, focus_
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum DismissPolicy {
-    /// Dismiss on an outside press or Escape.
-    #[default]
-    OutsideAndEscape,
-    /// Dismiss on Escape, but ignore outside presses.
-    EscapeOnly,
-    /// Dismiss only through messages emitted by dialog content.
-    Explicit,
-}
-
 /// Arbitrary content presented by a [`WindowModal`].
 pub struct Dialog<'a, Message> {
     content: Element<'a, Message>,
     on_dismiss: Message,
-    dismiss_policy: DismissPolicy,
 }
 
 impl<'a, Message: 'a> Dialog<'a, Message> {
@@ -42,13 +30,7 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
                 .style(theme::panel)
                 .into(),
             on_dismiss,
-            dismiss_policy: DismissPolicy::default(),
         }
-    }
-
-    pub fn dismiss_policy(mut self, policy: DismissPolicy) -> Self {
-        self.dismiss_policy = policy;
-        self
     }
 
     pub fn map<Other>(self, mapper: impl Fn(Message) -> Other + 'a) -> Dialog<'a, Other>
@@ -61,7 +43,6 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
         Dialog {
             content: self.content.map(mapper),
             on_dismiss,
-            dismiss_policy: self.dismiss_policy,
         }
     }
 }
@@ -103,7 +84,6 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
             layers = layers.push(Element::new(ModalScope {
                 content: content.into(),
                 on_dismiss: dialog.on_dismiss,
-                dismiss_policy: dialog.dismiss_policy,
             }));
         }
 
@@ -114,7 +94,6 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
 struct ModalScope<'a, Message> {
     content: Element<'a, Message>,
     on_dismiss: Message,
-    dismiss_policy: DismissPolicy,
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalScope<'_, Message> {
@@ -213,13 +192,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalScope<'_, M
             viewport,
         );
 
-        if requests_dismissal(
-            self.dismiss_policy,
-            event,
-            shell.event_status(),
-            dialog_layout.bounds(),
-            cursor,
-        ) {
+        if requests_dismissal(event, shell.event_status(), dialog_layout.bounds(), cursor) {
             shell.publish(self.on_dismiss.clone());
             shell.capture_event();
             return;
@@ -322,13 +295,12 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalScope<'_, M
 }
 
 fn requests_dismissal(
-    policy: DismissPolicy,
     event: &Event,
     child_status: event::Status,
     content: Rectangle,
     cursor: mouse::Cursor,
 ) -> bool {
-    if policy == DismissPolicy::Explicit || child_status == event::Status::Captured {
+    if child_status == event::Status::Captured {
         return false;
     }
 
@@ -338,18 +310,8 @@ fn requests_dismissal(
             repeat: false,
             ..
         }) => true,
-        Event::Mouse(iced::mouse::Event::ButtonPressed(_))
-            if policy == DismissPolicy::OutsideAndEscape
-                && child_status == event::Status::Ignored =>
-        {
-            !cursor.is_over(content)
-        }
-        Event::Touch(touch::Event::FingerPressed { position, .. })
-            if policy == DismissPolicy::OutsideAndEscape
-                && child_status == event::Status::Ignored =>
-        {
-            !content.contains(*position)
-        }
+        Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => !cursor.is_over(content),
+        Event::Touch(touch::Event::FingerPressed { position, .. }) => !content.contains(*position),
         _ => false,
     }
 }
@@ -359,7 +321,7 @@ mod tests {
     use iced::{Point, advanced::widget::Tree, widget::Space};
 
     use super::*;
-    use crate::widgets::Interaction;
+    use crate::widgets::control::Interaction;
 
     #[derive(Clone)]
     enum Message {
@@ -386,25 +348,20 @@ mod tests {
         let mut tree = Tree::new(&closed);
         base_interaction(&mut tree).focus();
 
-        tree.diff(&host(true));
+        tree.diff(host(true));
         assert_eq!(tree.children.len(), 2);
         assert!(base_interaction(&mut tree).is_focused());
 
-        tree.diff(&host(false));
+        tree.diff(host(false));
         assert_eq!(tree.children.len(), 1);
         assert!(base_interaction(&mut tree).is_focused());
     }
 
     #[test]
-    fn default_and_mapped_dialogs_preserve_dismiss_policy() {
-        assert_eq!(DismissPolicy::default(), DismissPolicy::OutsideAndEscape);
-
-        let mapped = Dialog::new(Space::new(), 7)
-            .dismiss_policy(DismissPolicy::EscapeOnly)
-            .map(|message| message.to_string());
+    fn mapped_dialogs_preserve_the_dismiss_message() {
+        let mapped = Dialog::new(Space::new(), 7).map(|message| message.to_string());
 
         assert_eq!(mapped.on_dismiss, "7");
-        assert_eq!(mapped.dismiss_policy, DismissPolicy::EscapeOnly);
     }
 
     #[test]
@@ -414,14 +371,12 @@ mod tests {
         let outside = mouse::Cursor::Available(Point::new(10.0, 10.0));
 
         assert!(!requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left,)),
             event::Status::Ignored,
             content,
             inside,
         ));
         assert!(requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left,)),
             event::Status::Ignored,
             content,
@@ -433,75 +388,32 @@ mod tests {
             position: Point::new(10.0, 10.0),
         });
         assert!(requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &touch,
             event::Status::Ignored,
             content,
             inside,
         ));
         assert!(!requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &key_pressed(keyboard::key::Named::Escape, false),
             event::Status::Captured,
             content,
             inside,
         ));
         assert!(requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &key_pressed(keyboard::key::Named::Escape, false),
             event::Status::Ignored,
             content,
             inside,
         ));
         assert!(!requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &key_pressed(keyboard::key::Named::Escape, true),
             event::Status::Ignored,
             content,
             inside,
         ));
         assert!(!requests_dismissal(
-            DismissPolicy::OutsideAndEscape,
             &Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left,)),
             event::Status::Captured,
-            content,
-            outside,
-        ));
-    }
-
-    #[test]
-    fn escape_only_and_explicit_disable_the_expected_implicit_dismissals() {
-        let content = Rectangle::new(Point::new(20.0, 20.0), Size::new(100.0, 100.0));
-        let outside = mouse::Cursor::Available(Point::new(10.0, 10.0));
-        let outside_press =
-            Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left));
-        let escape = key_pressed(keyboard::key::Named::Escape, false);
-
-        assert!(!requests_dismissal(
-            DismissPolicy::EscapeOnly,
-            &outside_press,
-            event::Status::Ignored,
-            content,
-            outside,
-        ));
-        assert!(requests_dismissal(
-            DismissPolicy::EscapeOnly,
-            &escape,
-            event::Status::Ignored,
-            content,
-            outside,
-        ));
-        assert!(!requests_dismissal(
-            DismissPolicy::Explicit,
-            &outside_press,
-            event::Status::Ignored,
-            content,
-            outside,
-        ));
-        assert!(!requests_dismissal(
-            DismissPolicy::Explicit,
-            &escape,
-            event::Status::Ignored,
             content,
             outside,
         ));

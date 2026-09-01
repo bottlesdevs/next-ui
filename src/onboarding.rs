@@ -4,21 +4,14 @@
 use std::sync::Arc;
 
 use crate::{
-    Experience,
-    icons::Icon,
+    Experience, Icon,
     operation::{self, Event as OperationEvent, Outcome},
     theme::{self, Motion},
-    ui::chrome,
-    widgets::{
-        action_row::{ActionRow, State as RowState},
-        button::{Button, ButtonKind},
-        header_bar::HeaderBar,
-        info_card::{InfoCard, Kind as InfoCardKind},
-        info_row::InfoRow,
-        list_row::ListRow,
-        row_group::RowGroup,
-        text::TextExt as _,
+    widget::{
+        ActionRow, ActionRowState as RowState, Button, ButtonKind, HeaderBar, InfoCard,
+        InfoCardKind, InfoRow, ListRow, RowGroup, TextExt as _,
     },
+    window,
 };
 use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Error as CoreError};
 use iced::{
@@ -133,7 +126,7 @@ pub enum Message {
     CancelDownloads,
     Retry,
     Finished(Experience),
-    Window(chrome::Action),
+    Window(window::Action),
 }
 
 impl State {
@@ -324,7 +317,7 @@ impl State {
             Step::Downloads => self.downloads_view(),
         };
 
-        shell(content, Message::Window(chrome::Action::Drag))
+        shell(content, Message::Window(window::Action::Drag))
     }
 
     fn welcome_view(&self) -> Element<'_, Message> {
