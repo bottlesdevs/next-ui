@@ -4,18 +4,21 @@ mod menu;
 mod style;
 mod surface;
 
+pub(crate) use control::Control;
 #[cfg(test)]
 pub(crate) use control::Interaction;
-pub(crate) use control::{Control, event_cursor};
+#[doc(hidden)]
+pub use control::event_cursor;
 
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 
-pub(crate) mod spacing {
-    pub(crate) const XS: f32 = 6.0;
-    pub(crate) const SM: f32 = 12.0;
-    pub(crate) const MD: f32 = 18.0;
-    pub(crate) const LG: f32 = 24.0;
-    pub(crate) const XG: f32 = 32.0;
+#[doc(hidden)]
+pub mod spacing {
+    pub const XS: f32 = 6.0;
+    pub const SM: f32 = 12.0;
+    pub const MD: f32 = 18.0;
+    pub const LG: f32 = 24.0;
+    pub const XG: f32 = 32.0;
 }
 
 fn reconcile_index<T: PartialEq>(

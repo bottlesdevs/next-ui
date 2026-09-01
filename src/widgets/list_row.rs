@@ -9,7 +9,8 @@ use super::{
     text::TextExt as _,
 };
 
-pub(crate) const BODY_SIZE: f32 = 16.0;
+#[doc(hidden)]
+pub const BODY_SIZE: f32 = 16.0;
 pub(crate) const STANDARD_PADDING: Padding = Padding {
     top: spacing::MD,
     right: spacing::MD,
@@ -40,7 +41,8 @@ pub(crate) struct Content<'a, Message> {
     pub(crate) disclosure_index: Option<usize>,
 }
 
-pub(crate) fn labels<'a, Message: 'a>(
+#[doc(hidden)]
+pub fn labels<'a, Message: 'a>(
     title: impl IntoFragment<'a>,
     description: impl IntoFragment<'a>,
 ) -> Element<'a, Message> {

@@ -12,22 +12,39 @@ keywords = [""]
 exclude = [""]
 
 [dependencies]
-async-trait.workspace = true
-bottles-core.workspace = true
-iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "tokio", "linux-theme-detection"] }
-next-config.workspace = true
+async-trait = { workspace = true, optional = true }
+bottles-core = { workspace = true, optional = true }
+iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs"] }
+next-config = { workspace = true, optional = true }
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
-uuid.workspace = true
-directories.workspace = true
-serde.workspace = true
-tokio-util = { workspace = true, features = ["rt"] }
-url.workspace = true
+uuid = { workspace = true, optional = true }
+directories = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+tokio-util = { workspace = true, features = ["rt"], optional = true }
+url = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures-lite.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["fvs"]
+default = ["application", "fvs"]
+application = [
+    "dep:async-trait",
+    "dep:bottles-core",
+    "dep:directories",
+    "dep:next-config",
+    "dep:serde",
+    "dep:tokio-util",
+    "dep:url",
+    "dep:uuid",
+    "iced/linux-theme-detection",
+    "iced/tokio",
+]
 debug = ["iced/hot"]
-fvs = ["bottles-core/fvs"]
+fvs = ["application", "bottles-core/fvs"]
+
+[[bin]]
+name = "next-ui"
+path = "src/main.rs"
+required-features = ["application"]

@@ -149,7 +149,8 @@ pub fn light() -> Theme {
     )
 }
 
-pub(crate) fn for_mode(mode: Mode) -> Theme {
+#[doc(hidden)]
+pub fn for_mode(mode: Mode) -> Theme {
     match mode {
         Mode::Light => light(),
         Mode::Dark | Mode::None => dark(),
@@ -171,7 +172,8 @@ pub(crate) fn muted(theme: &Theme) -> Color {
     theme.extended_palette().primary.base.color
 }
 
-pub(crate) fn window_color(theme: &Theme) -> Color {
+#[doc(hidden)]
+pub fn window_color(theme: &Theme) -> Color {
     theme.extended_palette().primary.weak.color
 }
 

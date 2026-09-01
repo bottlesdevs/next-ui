@@ -33,7 +33,8 @@ impl<'a, Message> HeaderBar<'a, Message> {
         }
     }
 
-    pub(crate) fn without_window_control(on_drag: Message) -> Self {
+    #[doc(hidden)]
+    pub fn without_window_control(on_drag: Message) -> Self {
         Self {
             reserve_window_control: false,
             ..Self::new(on_drag)

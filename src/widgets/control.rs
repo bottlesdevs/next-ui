@@ -658,7 +658,7 @@ impl Operation for FocusFirst {
     }
 }
 
-pub(crate) fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
+pub fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
     match event {
         Event::Touch(
             touch::Event::FingerPressed { position, .. }
