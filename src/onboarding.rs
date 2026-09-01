@@ -1,33 +1,27 @@
 //! First-run onboarding: mode picker, a short tutorial carousel, and a
 //! runtime-download checklist driven directly by the in-process addon manager.
 
-use std::sync::Arc;
+mod setup;
 
 use crate::{
-    Experience, Icon,
-    operation::{self, Event as OperationEvent, Outcome},
-    theme::{self, Motion},
+    Experience, Icon, theme,
     widget::{
         ActionRow, ActionRowState as RowState, Button, ButtonKind, HeaderBar, InfoCard,
         InfoCardKind, InfoRow, ListRow, RowGroup, TextExt as _,
     },
     window,
 };
-use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Error as CoreError};
+use bottles_core::Addons;
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
     widget::{column, container, row, scrollable, svg, text},
 };
-use tokio_util::sync::CancellationToken;
 
 const EXPERIENCE_SELECTOR_MAX_WIDTH: f32 = 900.0;
 const RESOURCE_LIST_MAX_WIDTH: f32 = 500.0;
 const EXPERIENCE_ROW_GAP: f32 = 8.0;
 const TUTORIAL_TEXT_MAX_WIDTH: f32 = 700.0;
-
-const ONBOARDING_SLOTS: &[(Slot, &str)] =
-    &[(Slot::WineBridge, "WineBridge"), (Slot::Runner, "Runner")];
 
 struct TutorialStep {
     title: &'static str,
@@ -64,55 +58,10 @@ enum Step {
     Downloads,
 }
 
-struct DownloadItem {
-    slot: Slot,
-    id: Option<uuid::Uuid>,
-    label: String,
-    size_label: String,
-    progress: f32,
-    state: DownloadState,
-}
-
-enum DownloadState {
-    Pending,
-    Running(CancellationToken),
-    Succeeded,
-    Cancelled,
-    Unavailable,
-    Failed(Arc<CoreError>),
-}
-
-enum SetupPhase {
-    Idle,
-    Preparing(CancellationToken),
-    Ready,
-    Downloading,
-    Cancelling,
-    Failed,
-    Complete,
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    let bytes = bytes as f64;
-
-    if bytes >= MB {
-        format!("{:.1} MB", bytes / MB)
-    } else {
-        format!("{:.0} KB", bytes / KB)
-    }
-}
-
 pub struct State {
     step: Step,
     experience: Experience,
-    addons: Addons,
-    downloads: Vec<DownloadItem>,
-    download_generation: u64,
-    setup_phase: SetupPhase,
-    catalog_error: Option<Arc<CoreError>>,
-    motion: Motion,
+    setup: setup::Coordinator,
 }
 
 #[derive(Clone)]
@@ -120,46 +69,31 @@ pub enum Action {
     SelectExperience(Experience),
     ApplyExperience,
     NextTutorialStep,
-    StartDownloads,
-    CancelDownloads,
-    Retry,
+    Setup(setup::Action),
     Finished(Experience),
     Window(window::Action),
 }
 
 #[derive(Clone)]
 pub enum Event {
-    CatalogRefresh(OperationEvent<u64, ()>),
-    Download(OperationEvent<(u64, Slot), Arc<IndexEntry<Component>>>),
+    Setup(setup::Event),
 }
 
 impl State {
-    pub fn new(addons: Addons, motion: Motion) -> Self {
+    pub fn new(addons: Addons) -> Self {
         Self {
             step: Step::Welcome,
             experience: Experience::Classic,
-            addons,
-            downloads: Vec::new(),
-            download_generation: 0,
-            setup_phase: SetupPhase::Idle,
-            catalog_error: None,
-            motion,
+            setup: setup::Coordinator::new(addons),
         }
     }
 
     pub fn cancel_active_operations(&self) {
-        if let SetupPhase::Preparing(cancellation) = &self.setup_phase {
-            cancellation.cancel();
-        }
-        request_download_cancellation(&self.downloads);
+        self.setup.cancel_active_operations();
     }
 
     pub fn has_active_operations(&self) -> bool {
-        matches!(self.setup_phase, SetupPhase::Preparing(_))
-            || self
-                .downloads
-                .iter()
-                .any(|item| matches!(item.state, DownloadState::Running(_)))
+        self.setup.has_active_operations()
     }
 
     pub fn update_action(&mut self, action: Action) -> Task<Event> {
@@ -171,7 +105,7 @@ impl State {
             }
             Action::ApplyExperience => {
                 self.step = Step::Tutorial(0);
-                return self.start_preparation();
+                return self.setup.prepare().map(Event::Setup);
             }
             Action::NextTutorialStep => {
                 if let Step::Tutorial(index) = self.step {
@@ -182,23 +116,7 @@ impl State {
                     }
                 }
             }
-            Action::StartDownloads => return self.start_downloads(),
-            Action::CancelDownloads => {
-                if matches!(self.setup_phase, SetupPhase::Downloading) {
-                    request_download_cancellation(&self.downloads);
-                    self.setup_phase = SetupPhase::Cancelling;
-                }
-            }
-            Action::Retry => {
-                if self
-                    .downloads
-                    .iter()
-                    .any(|item| matches!(item.state, DownloadState::Unavailable))
-                {
-                    return self.start_preparation();
-                }
-                return self.start_downloads();
-            }
+            Action::Setup(action) => return self.setup.update_action(action).map(Event::Setup),
             Action::Window(action) => return action.task().unwrap_or_else(Task::none),
             Action::Finished(_) => {}
         }
@@ -208,125 +126,8 @@ impl State {
 
     pub fn update_event(&mut self, event: Event) -> Task<Event> {
         match event {
-            Event::CatalogRefresh(OperationEvent::Progress { .. }) => {}
-            Event::CatalogRefresh(OperationEvent::Finished { key, outcome }) => {
-                if key != self.download_generation {
-                    return Task::none();
-                }
-
-                self.catalog_error = match outcome {
-                    Outcome::Succeeded(()) => None,
-                    Outcome::Cancelled => None,
-                    Outcome::Failed(error) => Some(error),
-                };
-                self.prepare_downloads();
-            }
-            Event::Download(OperationEvent::Progress { key, progress }) => {
-                if let Some(item) =
-                    current_download_mut(&mut self.downloads, self.download_generation, key)
-                    && matches!(&item.state, DownloadState::Running(_))
-                {
-                    update_download_progress(item, &progress);
-                }
-            }
-            Event::Download(OperationEvent::Finished { key, outcome }) => {
-                if let Some(item) =
-                    current_download_mut(&mut self.downloads, self.download_generation, key)
-                {
-                    item.state = match outcome {
-                        Outcome::Succeeded(_) => {
-                            item.progress = 1.0;
-                            DownloadState::Succeeded
-                        }
-                        Outcome::Cancelled => DownloadState::Cancelled,
-                        Outcome::Failed(error) => DownloadState::Failed(error),
-                    };
-
-                    self.finish_download_batch();
-                }
-            }
+            Event::Setup(event) => self.setup.update_event(event).map(Event::Setup),
         }
-
-        Task::none()
-    }
-
-    fn start_preparation(&mut self) -> Task<Event> {
-        self.cancel_active_operations();
-        self.download_generation = self.download_generation.wrapping_add(1);
-        let generation = self.download_generation;
-        self.downloads.clear();
-        self.catalog_error = None;
-
-        let (cancellation, task) = operation::run(self.addons.refresh(), generation);
-        self.setup_phase = SetupPhase::Preparing(cancellation);
-
-        task.map(Event::CatalogRefresh)
-    }
-
-    fn prepare_downloads(&mut self) {
-        let installed = self.addons.components();
-        let catalog = self.addons.component_entries();
-
-        self.downloads = build_download_items(&installed, &catalog);
-
-        if downloads_complete(&self.downloads) {
-            self.setup_phase = SetupPhase::Complete;
-            self.catalog_error = None;
-        } else if self
-            .downloads
-            .iter()
-            .all(|item| !matches!(item.state, DownloadState::Unavailable))
-        {
-            self.setup_phase = SetupPhase::Ready;
-            self.catalog_error = None;
-        } else {
-            self.setup_phase = SetupPhase::Failed;
-        }
-    }
-
-    fn start_downloads(&mut self) -> Task<Event> {
-        if !matches!(self.setup_phase, SetupPhase::Ready | SetupPhase::Failed) {
-            return Task::none();
-        }
-
-        self.download_generation = self.download_generation.wrapping_add(1);
-        let generation = self.download_generation;
-        let addons = self.addons.clone();
-        let mut tasks = Vec::new();
-
-        for item in &mut self.downloads {
-            if matches!(item.state, DownloadState::Succeeded) {
-                continue;
-            }
-
-            let Some(id) = item.id else {
-                continue;
-            };
-
-            item.progress = 0.0;
-            item.size_label = "Ready to download".into();
-            let (cancellation, task) =
-                operation::run(addons.fetch_component(id), (generation, item.slot));
-            tasks.push(task.map(Event::Download));
-            item.state = DownloadState::Running(cancellation);
-        }
-
-        if tasks.is_empty() {
-            self.setup_phase = if downloads_complete(&self.downloads) {
-                SetupPhase::Complete
-            } else {
-                SetupPhase::Failed
-            };
-            Task::none()
-        } else {
-            self.catalog_error = None;
-            self.setup_phase = SetupPhase::Downloading;
-            Task::batch(tasks)
-        }
-    }
-
-    fn finish_download_batch(&mut self) {
-        settle_download_batch(&mut self.setup_phase, &mut self.downloads);
     }
 
     pub fn view(&self) -> Element<'_, Action> {
@@ -380,43 +181,41 @@ impl State {
         let mut failures = column![].spacing(8);
         let mut has_failures = false;
 
-        if matches!(self.setup_phase, SetupPhase::Preparing(_)) {
+        if matches!(self.setup.phase(), setup::Phase::Preparing(_)) {
             group = group.row(
                 ActionRow::new("Resource catalog", RowState::Progress(0.0))
-                    .description("Preparing")
-                    .motion(self.motion),
+                    .description("Preparing"),
             );
         }
 
-        for item in &self.downloads {
+        for item in self.setup.downloads() {
             let description = match &item.state {
-                DownloadState::Pending => &item.size_label,
-                DownloadState::Cancelled => "Cancelled",
-                DownloadState::Unavailable => "Unavailable",
-                DownloadState::Failed(_) => "Failed",
-                DownloadState::Running(_) | DownloadState::Succeeded => &item.size_label,
+                setup::DownloadState::Pending => &item.size_label,
+                setup::DownloadState::Cancelled => "Cancelled",
+                setup::DownloadState::Unavailable => "Unavailable",
+                setup::DownloadState::Failed(_) => "Failed",
+                setup::DownloadState::Running(_) | setup::DownloadState::Succeeded => {
+                    &item.size_label
+                }
             };
 
             group = match &item.state {
-                DownloadState::Running(_) => group.row(
+                setup::DownloadState::Running(_) => group.row(
                     ActionRow::new(&item.label, RowState::Progress(item.progress))
-                        .description(description)
-                        .motion(self.motion),
+                        .description(description),
                 ),
-                DownloadState::Succeeded => group.row(
-                    ActionRow::new(&item.label, RowState::Progress(1.0))
-                        .description(description)
-                        .motion(self.motion),
+                setup::DownloadState::Succeeded => group.row(
+                    ActionRow::new(&item.label, RowState::Progress(1.0)).description(description),
                 ),
-                DownloadState::Pending
-                | DownloadState::Cancelled
-                | DownloadState::Unavailable
-                | DownloadState::Failed(_) => {
+                setup::DownloadState::Pending
+                | setup::DownloadState::Cancelled
+                | setup::DownloadState::Unavailable
+                | setup::DownloadState::Failed(_) => {
                     group.row(InfoRow::new(&item.label).description(description))
                 }
             };
 
-            if let DownloadState::Failed(error) = &item.state {
+            if let setup::DownloadState::Failed(error) = &item.state {
                 has_failures = true;
                 failures = failures.push(
                     row![
@@ -426,7 +225,7 @@ impl State {
                     .spacing(8)
                     .align_y(Vertical::Center),
                 );
-            } else if matches!(&item.state, DownloadState::Unavailable) {
+            } else if matches!(&item.state, setup::DownloadState::Unavailable) {
                 has_failures = true;
                 failures = failures.push(
                     row![
@@ -439,7 +238,7 @@ impl State {
             }
         }
 
-        if let Some(error) = &self.catalog_error {
+        if let Some(error) = self.setup.catalog_error() {
             has_failures = true;
             failures = failures.push(
                 row![
@@ -451,19 +250,21 @@ impl State {
             );
         }
 
-        let action: Element<'_, Action> = match &self.setup_phase {
-            SetupPhase::Idle | SetupPhase::Preparing(_) => onboarding_button("Preparing…").into(),
-            SetupPhase::Ready => onboarding_button_with_icon("Download")
-                .on_press(Action::StartDownloads)
+        let action: Element<'_, Action> = match self.setup.phase() {
+            setup::Phase::Idle | setup::Phase::Preparing(_) => {
+                onboarding_button("Preparing…").into()
+            }
+            setup::Phase::Ready => onboarding_button_with_icon("Download")
+                .on_press(Action::Setup(setup::Action::StartDownloads))
                 .into(),
-            SetupPhase::Downloading => onboarding_button("Cancel")
-                .on_press(Action::CancelDownloads)
+            setup::Phase::Downloading => onboarding_button("Cancel")
+                .on_press(Action::Setup(setup::Action::CancelDownloads))
                 .into(),
-            SetupPhase::Cancelling => onboarding_button("Cancelling…").into(),
-            SetupPhase::Failed => onboarding_button_with_icon("Retry")
-                .on_press(Action::Retry)
+            setup::Phase::Cancelling => onboarding_button("Cancelling…").into(),
+            setup::Phase::Failed => onboarding_button_with_icon("Retry")
+                .on_press(Action::Setup(setup::Action::Retry))
                 .into(),
-            SetupPhase::Complete => onboarding_button_with_icon("Get Started")
+            setup::Phase::Complete => onboarding_button_with_icon("Get Started")
                 .on_press(Action::Finished(self.experience))
                 .into(),
         };
@@ -548,120 +349,6 @@ pub(crate) fn shell<'a, Message: Clone + 'a>(
 
 fn experience_available(experience: Experience) -> bool {
     experience == Experience::Classic
-}
-
-fn downloads_complete(downloads: &[DownloadItem]) -> bool {
-    downloads.len() == ONBOARDING_SLOTS.len()
-        && downloads
-            .iter()
-            .all(|item| matches!(&item.state, DownloadState::Succeeded))
-}
-
-fn build_download_items(
-    installed: &[Arc<IndexEntry<Component>>],
-    catalog: &[CatalogEntry<Component>],
-) -> Vec<DownloadItem> {
-    ONBOARDING_SLOTS
-        .iter()
-        .map(|(slot, slot_label)| {
-            if let Some(entry) = installed.iter().find(|entry| entry.slot() == *slot) {
-                return DownloadItem {
-                    slot: *slot,
-                    id: Some(entry.id()),
-                    label: format!("{} {}", entry.name(), entry.version()),
-                    size_label: "Installed".into(),
-                    progress: 1.0,
-                    state: DownloadState::Succeeded,
-                };
-            }
-
-            let Some(entry) = supported_component(catalog, *slot) else {
-                return DownloadItem {
-                    slot: *slot,
-                    id: None,
-                    label: (*slot_label).to_string(),
-                    size_label: "Unavailable".into(),
-                    progress: 0.0,
-                    state: DownloadState::Unavailable,
-                };
-            };
-
-            DownloadItem {
-                slot: *slot,
-                id: Some(entry.id()),
-                label: format!("{} {}", entry.name(), entry.version()),
-                size_label: "Ready to download".into(),
-                progress: 0.0,
-                state: DownloadState::Pending,
-            }
-        })
-        .collect()
-}
-
-fn current_download_mut(
-    downloads: &mut [DownloadItem],
-    current_generation: u64,
-    (generation, slot): (u64, Slot),
-) -> Option<&mut DownloadItem> {
-    if generation != current_generation {
-        return None;
-    }
-    downloads.iter_mut().find(|item| item.slot == slot)
-}
-
-fn update_download_progress(item: &mut DownloadItem, progress: &bottles_core::Progress) {
-    if let Some(fraction) = progress.fraction() {
-        item.progress = fraction;
-    }
-    if let Some(total) = progress.transfer.and_then(|transfer| transfer.total) {
-        item.size_label = format_bytes(total);
-    }
-}
-
-fn settle_download_batch(phase: &mut SetupPhase, downloads: &mut [DownloadItem]) {
-    if downloads
-        .iter()
-        .any(|item| matches!(item.state, DownloadState::Running(_)))
-    {
-        return;
-    }
-
-    if matches!(phase, SetupPhase::Cancelling) {
-        for item in &mut *downloads {
-            if matches!(item.state, DownloadState::Cancelled) {
-                item.state = DownloadState::Pending;
-                item.size_label = "Ready to download".into();
-            }
-        }
-    }
-
-    *phase = if downloads_complete(downloads) {
-        SetupPhase::Complete
-    } else if downloads
-        .iter()
-        .any(|item| matches!(item.state, DownloadState::Failed(_)))
-    {
-        SetupPhase::Failed
-    } else {
-        SetupPhase::Ready
-    };
-}
-
-fn request_download_cancellation(downloads: &[DownloadItem]) {
-    for item in downloads {
-        if let DownloadState::Running(cancellation) = &item.state {
-            cancellation.cancel();
-        }
-    }
-}
-
-fn supported_component(
-    entries: &[CatalogEntry<Component>],
-    slot: Slot,
-) -> Option<&CatalogEntry<Component>> {
-    entries
-        .iter()
-        .find(|entry| entry.slot() == slot && entry.is_supported())
 }
 
 fn experience_label(experience: Experience) -> &'static str {
@@ -771,225 +458,10 @@ fn onboarding_button_with_icon<'a>(label: &'a str) -> Button<'a, Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
-
-    fn download(slot: Slot, state: DownloadState) -> DownloadItem {
-        DownloadItem {
-            slot,
-            id: Some(Uuid::nil()),
-            label: String::new(),
-            size_label: String::new(),
-            progress: 0.0,
-            state,
-        }
-    }
-
-    fn entry(
-        id: &str,
-        name: &str,
-        slot: Slot,
-        platform: Option<(&str, &str)>,
-    ) -> CatalogEntry<Component> {
-        let mut artifact = serde_json::json!({
-            "url": "https://example.com/addon.tar.xz",
-            "file_name": "addon.tar.xz",
-            "checksum": { "algorithm": "sha256", "value": "00" },
-        });
-        if let Some((os, arch)) = platform {
-            artifact["platform"] = serde_json::json!({ "os": os, "arch": arch });
-        }
-
-        serde_json::from_value(serde_json::json!({
-            "id": id,
-            "name": name,
-            "version": "1.0.0",
-            "artifacts": [artifact],
-            "slot": slot.as_str(),
-        }))
-        .unwrap()
-    }
 
     #[test]
     fn only_classic_is_available() {
         assert!(experience_available(Experience::Classic));
         assert!(!experience_available(Experience::Next));
-    }
-
-    #[test]
-    fn component_selection_skips_unsupported_entries() {
-        let other_os = if cfg!(target_os = "linux") {
-            "mac-os"
-        } else {
-            "linux"
-        };
-        let unsupported = entry(
-            "77e90211-9091-47a9-bb00-0da6c2360981",
-            "WineBridge",
-            Slot::WineBridge,
-            Some((other_os, "x86_64")),
-        );
-        let universal = entry(
-            "d87fd8b8-8230-4e64-a66f-8b0e1c70c694",
-            "WineBridge",
-            Slot::WineBridge,
-            None,
-        );
-        let entries = [unsupported.clone(), universal.clone()];
-
-        assert_eq!(
-            supported_component(&entries, Slot::WineBridge).map(CatalogEntry::id),
-            Some(universal.id())
-        );
-        assert!(supported_component(&[unsupported], Slot::WineBridge).is_none());
-    }
-
-    #[test]
-    fn prepared_catalog_entries_are_pending_not_running() {
-        let catalog = [
-            entry(
-                "d87fd8b8-8230-4e64-a66f-8b0e1c70c694",
-                "WineBridge",
-                Slot::WineBridge,
-                None,
-            ),
-            entry(
-                "77e90211-9091-47a9-bb00-0da6c2360981",
-                "Runner",
-                Slot::Runner,
-                None,
-            ),
-        ];
-
-        let downloads = build_download_items(&[], &catalog);
-
-        assert_eq!(downloads.len(), ONBOARDING_SLOTS.len());
-        for (item, (slot, _)) in downloads.iter().zip(ONBOARDING_SLOTS) {
-            assert_eq!(item.slot, *slot);
-            assert!(item.id.is_some());
-            assert_eq!(item.progress, 0.0);
-            assert_eq!(item.size_label, "Ready to download");
-            assert!(matches!(item.state, DownloadState::Pending));
-        }
-        assert!(
-            downloads
-                .iter()
-                .all(|item| !matches!(item.state, DownloadState::Running(_)))
-        );
-    }
-
-    #[test]
-    fn setup_completes_only_when_every_required_download_succeeds() {
-        assert!(!downloads_complete(&[download(
-            Slot::WineBridge,
-            DownloadState::Running(CancellationToken::new()),
-        )]));
-        assert!(!downloads_complete(&[download(
-            Slot::WineBridge,
-            DownloadState::Cancelled,
-        )]));
-        assert!(!downloads_complete(&[download(
-            Slot::WineBridge,
-            DownloadState::Unavailable,
-        )]));
-        let succeeded = ONBOARDING_SLOTS
-            .iter()
-            .map(|(slot, _)| download(*slot, DownloadState::Succeeded))
-            .collect::<Vec<_>>();
-
-        assert!(downloads_complete(&succeeded));
-    }
-
-    #[test]
-    fn download_keys_match_generation_and_slot() {
-        let mut downloads = vec![
-            download(
-                Slot::WineBridge,
-                DownloadState::Running(CancellationToken::new()),
-            ),
-            download(
-                Slot::Runner,
-                DownloadState::Running(CancellationToken::new()),
-            ),
-        ];
-
-        assert!(
-            current_download_mut(&mut downloads, 2, (1, Slot::Runner)).is_none(),
-            "a stale generation must not update any slot"
-        );
-        assert_eq!(
-            current_download_mut(&mut downloads, 2, (2, Slot::Runner)).map(|item| item.slot),
-            Some(Slot::Runner)
-        );
-        assert!(current_download_mut(&mut downloads, 2, (2, Slot::Dxvk)).is_none());
-    }
-
-    #[test]
-    fn cancellation_is_requested_without_discarding_the_running_token() {
-        let cancellation = CancellationToken::new();
-        let downloads = [download(
-            Slot::WineBridge,
-            DownloadState::Running(cancellation.clone()),
-        )];
-
-        request_download_cancellation(&downloads);
-
-        assert!(cancellation.is_cancelled());
-        let DownloadState::Running(retained) = &downloads[0].state else {
-            panic!("cancellation must retain the running state until its terminal event");
-        };
-        assert!(retained.is_cancelled());
-    }
-
-    #[test]
-    fn cancelling_waits_for_every_terminal_event_then_restores_pending_rows() {
-        let mut phase = SetupPhase::Cancelling;
-        let mut downloads = vec![
-            download(
-                Slot::WineBridge,
-                DownloadState::Running(CancellationToken::new()),
-            ),
-            download(Slot::Runner, DownloadState::Cancelled),
-        ];
-
-        settle_download_batch(&mut phase, &mut downloads);
-        assert!(matches!(phase, SetupPhase::Cancelling));
-        assert!(matches!(downloads[1].state, DownloadState::Cancelled));
-
-        downloads[0].state = DownloadState::Succeeded;
-        settle_download_batch(&mut phase, &mut downloads);
-
-        assert!(matches!(phase, SetupPhase::Ready));
-        assert!(matches!(downloads[0].state, DownloadState::Succeeded));
-        assert!(matches!(downloads[1].state, DownloadState::Pending));
-        assert_eq!(downloads[1].size_label, "Ready to download");
-    }
-
-    #[test]
-    fn byte_sizes_use_binary_units() {
-        assert_eq!(format_bytes(0), "0 KB");
-        assert_eq!(format_bytes(1024), "1 KB");
-        assert_eq!(format_bytes(10 * 1024), "10 KB");
-        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
-        assert_eq!(format_bytes(3 * 1024 * 1024 / 2), "1.5 MB");
-    }
-
-    #[test]
-    fn download_progress_uses_the_reported_http_total() {
-        let mut item = download(Slot::WineBridge, DownloadState::Pending);
-        item.size_label = "Ready to download".into();
-        let progress = bottles_core::Progress {
-            stage: bottles_core::Stage::Downloading {
-                file: "winebridge.tar.xz".into(),
-            },
-            transfer: Some(bottles_core::Transfer {
-                current: 2 * 1024 * 1024,
-                total: Some(4 * 1024 * 1024),
-            }),
-        };
-
-        update_download_progress(&mut item, &progress);
-
-        assert_eq!(item.progress, 0.5);
-        assert_eq!(item.size_label, "4.0 MB");
     }
 }
