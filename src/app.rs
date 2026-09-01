@@ -5,13 +5,12 @@ use std::{
 };
 
 use bottles_core::{Bottles, Config as CoreConfig, error::Error as CoreError};
-use iced::{Element, Fill, Subscription, Task, Theme, theme::Mode as ThemeMode};
+use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode};
 use next_config::Config;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    classic, onboarding,
-    theme::{self, Motion},
+    classic, next, onboarding, theme,
     widget::{Button, ButtonKind, Dialog, HeaderBar, WindowModal},
     window,
 };
@@ -50,13 +49,11 @@ impl fmt::Display for AppError {
 
 type AppResult<T> = Result<T, AppError>;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, Config)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Config)]
 #[config(version = 1)]
 pub struct AppConfig {
     #[serde(default)]
     pub experience: Option<Experience>,
-    #[serde(default)]
-    pub reduce_motion: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,102 +64,127 @@ pub enum Experience {
 
 pub(crate) struct App {
     phase: Phase,
-    theme: Theme,
-    motion: Motion,
+    theme: iced::Theme,
+    next_workspace_generation: u64,
 }
 
 enum Phase {
-    Booting,
-    Onboarding {
-        core: Arc<Bottles>,
-        state: Box<onboarding::State>,
-        saving: Option<Experience>,
-        notice: Option<AppError>,
-    },
-    Workspace {
-        core: Arc<Bottles>,
-        workspace: Workspace,
-        transition: WorkspaceTransition,
-    },
-    ShuttingDown,
+    Booting { close_requested: bool },
+    ClosingBoot(Boot),
+    Session(Session),
     Failed(AppError),
 }
 
-enum Workspace {
-    Classic(Box<classic::State>),
-    NextUnavailable,
+struct Session {
+    config: AppConfig,
+    core: Arc<Bottles>,
+    screen: SessionScreen,
+    lifecycle: SessionLifecycle,
+    notice: Option<AppError>,
 }
 
-impl Workspace {
-    fn experience(&self) -> Experience {
-        match self {
-            Self::Classic(state) => state.experience(),
-            Self::NextUnavailable => Experience::Next,
-        }
-    }
+enum SessionScreen {
+    Onboarding(Box<onboarding::State>),
+    Running {
+        generation: u64,
+        workspace: Workspace,
+        confirmation: Option<Experience>,
+    },
+}
 
+enum SessionLifecycle {
+    Active,
+    Draining(DrainIntent),
+    Saving {
+        candidate: AppConfig,
+        close_requested: bool,
+    },
+    ShuttingDown(ShutdownResume),
+}
+
+impl Session {
     fn has_active_operations(&self) -> bool {
-        match self {
-            Self::Classic(state) => state.has_active_operations(),
-            Self::NextUnavailable => false,
+        match &self.screen {
+            SessionScreen::Onboarding(state) => state.has_active_operations(),
+            SessionScreen::Running {
+                workspace: Workspace::Classic(state),
+                ..
+            } => state.has_active_operations(),
+            SessionScreen::Running {
+                workspace: Workspace::Next(_),
+                ..
+            } => false,
         }
     }
 
     fn cancel_active_operations(&mut self) {
-        if let Self::Classic(state) = self {
-            state.cancel_active_operations();
+        match &mut self.screen {
+            SessionScreen::Onboarding(state) => state.cancel_active_operations(),
+            SessionScreen::Running {
+                workspace: Workspace::Classic(state),
+                ..
+            } => state.cancel_active_operations(),
+            SessionScreen::Running {
+                workspace: Workspace::Next(_),
+                ..
+            } => {}
         }
     }
 }
 
-enum WorkspaceTransition {
-    Ready { notice: Option<AppError> },
-    Confirming(Experience),
-    Draining(Experience),
-    Saving(Experience),
+enum Workspace {
+    Classic(Box<classic::State>),
+    Next(next::State),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DrainIntent {
+    Switch(Experience),
+    Close,
+}
+
+enum ShutdownResume {
+    Existing,
+    Reopen(AppConfig),
 }
 
 #[derive(Clone)]
 pub(crate) enum AppMessage {
-    Booted(AppResult<Boot>),
-    Onboarding(onboarding::Message),
-    Workspace(WorkspaceMessage),
-    RequestExperience(Experience),
-    ExperienceSaved {
-        experience: Experience,
-        result: AppResult<()>,
-    },
-    ConfirmExperienceSwitch,
-    CancelExperienceSwitch,
-    DismissNotice,
-    CloseRequested,
-    ShutdownFinished(AppResult<()>),
-    Window(window::Action),
-    SystemThemeChanged(ThemeMode),
-}
-
-impl std::fmt::Debug for AppMessage {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::Booted(_) => "Booted",
-            Self::Onboarding(_) => "Onboarding",
-            Self::Workspace(_) => "Workspace",
-            Self::RequestExperience(_) => "RequestExperience",
-            Self::ExperienceSaved { .. } => "ExperienceSaved",
-            Self::ConfirmExperienceSwitch => "ConfirmExperienceSwitch",
-            Self::CancelExperienceSwitch => "CancelExperienceSwitch",
-            Self::DismissNotice => "DismissNotice",
-            Self::CloseRequested => "CloseRequested",
-            Self::ShutdownFinished(_) => "ShutdownFinished",
-            Self::Window(_) => "Window",
-            Self::SystemThemeChanged(_) => "SystemThemeChanged",
-        })
-    }
+    Action(AppAction),
+    Event(AppEvent),
 }
 
 #[derive(Clone)]
-pub(crate) enum WorkspaceMessage {
-    Classic(Box<classic::Message>),
+pub(crate) enum AppAction {
+    Onboarding(onboarding::Action),
+    Classic(Box<classic::Action>),
+    Next(next::Action),
+    ConfirmExperienceSwitch,
+    CancelExperienceSwitch,
+    DismissNotice,
+    Window(window::Action),
+}
+
+#[derive(Clone)]
+pub(crate) enum AppEvent {
+    Booted(AppResult<Boot>),
+    Onboarding(onboarding::Event),
+    Classic {
+        generation: u64,
+        event: Box<classic::Event>,
+    },
+    ConfigSaved(AppResult<()>),
+    ShutdownFinished(AppResult<()>),
+    SystemThemeChanged(ThemeMode),
+}
+
+impl fmt::Debug for AppMessage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Action(_) => "Action",
+            Self::Event(_) => "Event",
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -175,414 +197,599 @@ impl App {
     pub(crate) fn new() -> (Self, Task<AppMessage>) {
         (
             Self {
-                phase: Phase::Booting,
+                phase: Phase::Booting {
+                    close_requested: false,
+                },
                 theme: theme::for_mode(ThemeMode::default()),
-                motion: Motion::Full,
+                next_workspace_generation: 0,
             },
             Task::batch([
-                Task::perform(boot(), AppMessage::Booted),
-                iced::system::theme().map(AppMessage::SystemThemeChanged),
+                Task::perform(boot(), |result| AppMessage::Event(AppEvent::Booted(result))),
+                iced::system::theme()
+                    .map(|mode| AppMessage::Event(AppEvent::SystemThemeChanged(mode))),
             ]),
         )
     }
 
-    pub(crate) fn theme(&self) -> Theme {
+    pub(crate) fn theme(&self) -> iced::Theme {
         self.theme.clone()
     }
 
     pub(crate) fn subscription(&self) -> Subscription<AppMessage> {
-        let phase = match &self.phase {
-            Phase::Workspace {
-                workspace: Workspace::Classic(state),
-                ..
-            } => state
-                .subscription()
-                .map(|message| AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))),
-            Phase::Booting
-            | Phase::Onboarding { .. }
-            | Phase::Workspace {
-                workspace: Workspace::NextUnavailable,
-                ..
-            }
-            | Phase::ShuttingDown
-            | Phase::Failed(_) => Subscription::none(),
-        };
+        let mut subscriptions = vec![
+            iced::system::theme_changes()
+                .map(|mode| AppMessage::Event(AppEvent::SystemThemeChanged(mode))),
+            window::subscription().map(|action| AppMessage::Action(AppAction::Window(action))),
+        ];
 
-        Subscription::batch([
-            phase,
-            iced::system::theme_changes().map(AppMessage::SystemThemeChanged),
-            iced::event::listen().filter_map(|event| {
-                matches!(
-                    event,
-                    iced::Event::Window(iced::window::Event::CloseRequested)
-                )
-                .then_some(AppMessage::CloseRequested)
-            }),
-        ])
+        if let Phase::Session(session) = &self.phase
+            && matches!(
+                session.lifecycle,
+                SessionLifecycle::Active | SessionLifecycle::Draining(_)
+            )
+        {
+            subscriptions.extend(workspace_subscriptions(session));
+        }
+
+        Subscription::batch(subscriptions)
     }
 
     pub(crate) fn update(&mut self, message: AppMessage) -> Task<AppMessage> {
         match message {
-            AppMessage::Booted(result) if matches!(self.phase, Phase::ShuttingDown) => {
-                return match result {
-                    Ok(boot) => self.shutdown(boot.core),
-                    Err(_) => iced::exit(),
-                };
-            }
-            AppMessage::Booted(Ok(boot)) if matches!(self.phase, Phase::Booting) => {
-                return self.finish_boot(boot);
-            }
-            AppMessage::Booted(Err(error)) if matches!(self.phase, Phase::Booting) => {
-                self.phase = Phase::Failed(error);
-            }
-            AppMessage::Booted(_) => {}
-            AppMessage::Onboarding(onboarding::Message::Finished(experience)) => {
-                if !matches!(self.phase, Phase::Onboarding { .. }) {
-                    return Task::none();
-                }
-                return self.request_experience(experience);
-            }
-            AppMessage::Onboarding(message) => {
-                let Phase::Onboarding { state, .. } = &mut self.phase else {
-                    return Task::none();
-                };
-                return state.update(message).map(AppMessage::Onboarding);
-            }
-            AppMessage::Workspace(WorkspaceMessage::Classic(message)) => {
-                if let classic::Message::RequestExperience(experience) = message.as_ref() {
-                    return self.request_experience(*experience);
-                }
+            AppMessage::Action(action) => self.update_action(action),
+            AppMessage::Event(event) => self.update_event(event),
+        }
+    }
 
-                let task = {
-                    let Phase::Workspace {
-                        workspace: Workspace::Classic(state),
-                        ..
-                    } = &mut self.phase
-                    else {
-                        return Task::none();
-                    };
-
-                    state.update(*message).map(|message| {
-                        AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))
-                    })
-                };
-
-                return Task::batch([task, self.advance_experience_switch()]);
-            }
-            AppMessage::RequestExperience(experience) => {
-                return self.request_experience(experience);
-            }
-            AppMessage::ExperienceSaved { experience, result } => {
-                return self.finish_experience_save(experience, result);
-            }
-            AppMessage::ConfirmExperienceSwitch => return self.confirm_experience_switch(),
-            AppMessage::CancelExperienceSwitch => {
-                let Phase::Workspace { transition, .. } = &mut self.phase else {
-                    return Task::none();
-                };
-                if matches!(transition, WorkspaceTransition::Confirming(_)) {
-                    *transition = WorkspaceTransition::Ready { notice: None };
-                }
-            }
-            AppMessage::DismissNotice => match &mut self.phase {
-                Phase::Onboarding { notice, .. }
-                | Phase::Workspace {
-                    transition: WorkspaceTransition::Ready { notice },
-                    ..
-                } => *notice = None,
-                Phase::Workspace { .. } => {}
-                Phase::Booting | Phase::ShuttingDown | Phase::Failed(_) => {}
-            },
-            AppMessage::CloseRequested => return self.request_close(),
-            AppMessage::ShutdownFinished(result) => {
-                if !matches!(self.phase, Phase::ShuttingDown) {
-                    return Task::none();
-                }
-                let _ = result;
-                return iced::exit();
-            }
-            AppMessage::Window(action) => {
-                return action.task().unwrap_or_else(|| self.request_close());
-            }
-            AppMessage::SystemThemeChanged(mode) => self.theme = theme::for_mode(mode),
+    fn update_action(&mut self, action: AppAction) -> Task<AppMessage> {
+        if matches!(action, AppAction::Window(window::Action::RequestClose)) {
+            return self.request_close();
         }
 
-        Task::none()
+        let Phase::Session(session) = &self.phase else {
+            return Task::none();
+        };
+        if !matches!(session.lifecycle, SessionLifecycle::Active) {
+            return Task::none();
+        }
+
+        if let AppAction::Window(action) = action {
+            return action
+                .task()
+                .expect("a window close request was handled before the action gate");
+        }
+
+        match action {
+            AppAction::Onboarding(onboarding::Action::Finished(experience)) => {
+                self.begin_onboarding_switch(experience)
+            }
+            AppAction::Onboarding(action) => {
+                let Phase::Session(session) = &mut self.phase else {
+                    return Task::none();
+                };
+                let SessionScreen::Onboarding(state) = &mut session.screen else {
+                    return Task::none();
+                };
+                state.update_action(action).map(onboarding_event_message)
+            }
+            AppAction::Classic(action) => {
+                let Phase::Session(session) = &mut self.phase else {
+                    return Task::none();
+                };
+                let SessionScreen::Running {
+                    generation,
+                    workspace: Workspace::Classic(state),
+                    ..
+                } = &mut session.screen
+                else {
+                    return Task::none();
+                };
+                let generation = *generation;
+
+                state
+                    .update_action(*action)
+                    .map(move |event| classic_event_message(generation, event))
+            }
+            AppAction::Next(action) => {
+                let Phase::Session(session) = &self.phase else {
+                    return Task::none();
+                };
+                if !matches!(
+                    session.screen,
+                    SessionScreen::Running {
+                        workspace: Workspace::Next(_),
+                        ..
+                    }
+                ) {
+                    return Task::none();
+                }
+
+                match action {
+                    next::Action::UseClassic => self.request_experience(Experience::Classic),
+                }
+            }
+            AppAction::ConfirmExperienceSwitch => self.confirm_experience_switch(),
+            AppAction::CancelExperienceSwitch => {
+                if let Phase::Session(Session {
+                    screen: SessionScreen::Running { confirmation, .. },
+                    ..
+                }) = &mut self.phase
+                {
+                    *confirmation = None;
+                }
+                Task::none()
+            }
+            AppAction::DismissNotice => {
+                if let Phase::Session(session) = &mut self.phase {
+                    session.notice = None;
+                }
+                Task::none()
+            }
+            AppAction::Window(_) => unreachable!(),
+        }
+    }
+
+    fn update_event(&mut self, event: AppEvent) -> Task<AppMessage> {
+        match event {
+            AppEvent::Booted(result) => self.finish_boot(result),
+            AppEvent::Onboarding(event) => {
+                let Phase::Session(session) = &mut self.phase else {
+                    return Task::none();
+                };
+                if !matches!(
+                    session.lifecycle,
+                    SessionLifecycle::Active | SessionLifecycle::Draining(_)
+                ) {
+                    return Task::none();
+                }
+                let SessionScreen::Onboarding(state) = &mut session.screen else {
+                    return Task::none();
+                };
+                let task = state.update_event(event).map(onboarding_event_message);
+                Task::batch([task, self.advance_draining()])
+            }
+            AppEvent::Classic { generation, event } => {
+                let Phase::Session(session) = &mut self.phase else {
+                    return Task::none();
+                };
+                if !matches!(
+                    session.lifecycle,
+                    SessionLifecycle::Active | SessionLifecycle::Draining(_)
+                ) {
+                    return Task::none();
+                }
+                let SessionScreen::Running {
+                    generation: current_generation,
+                    workspace: Workspace::Classic(state),
+                    ..
+                } = &mut session.screen
+                else {
+                    return Task::none();
+                };
+                if *current_generation != generation {
+                    return Task::none();
+                }
+                let task = state
+                    .update_event(*event)
+                    .map(move |event| classic_event_message(generation, event));
+                Task::batch([task, self.advance_draining()])
+            }
+            AppEvent::ConfigSaved(result) => self.finish_config_save(result),
+            AppEvent::ShutdownFinished(result) => self.finish_shutdown(result),
+            AppEvent::SystemThemeChanged(mode) => {
+                self.theme = theme::for_mode(mode);
+                Task::none()
+            }
+        }
     }
 
     pub(crate) fn view(&self) -> Element<'_, AppMessage> {
         let body = match &self.phase {
-            Phase::Booting => status_view("Starting Bottles", "Loading your workspace.", false),
-            Phase::Workspace {
-                workspace,
-                transition,
+            Phase::Booting {
+                close_requested: false,
                 ..
-            } => match transition {
-                WorkspaceTransition::Ready { .. } | WorkspaceTransition::Confirming(_) => {
-                    workspace_view(workspace)
+            } => status_view("Starting Bottles", "Loading your workspace."),
+            Phase::Booting {
+                close_requested: true,
+                ..
+            }
+            | Phase::ClosingBoot(_) => status_view("Closing Bottles", "Finishing background work."),
+            Phase::Session(session) => match &session.lifecycle {
+                SessionLifecycle::Active => match &session.screen {
+                    SessionScreen::Onboarding(state) => {
+                        if let Some(error) = &session.notice {
+                            onboarding_notice_view("Setup could not be saved", error.to_string())
+                        } else {
+                            state
+                                .view()
+                                .map(|action| AppMessage::Action(AppAction::Onboarding(action)))
+                        }
+                    }
+                    SessionScreen::Running { .. } => workspace_view(session),
+                },
+                SessionLifecycle::Draining(intent) => match intent {
+                    DrainIntent::Switch(_) => status_view(
+                        "Preparing to switch experiences",
+                        "Finishing current operations safely.",
+                    ),
+                    DrainIntent::Close => {
+                        status_view("Closing Bottles", "Finishing background work.")
+                    }
+                },
+                SessionLifecycle::Saving {
+                    close_requested: true,
+                    ..
                 }
-                WorkspaceTransition::Draining(_) => status_view(
-                    "Preparing to switch experiences",
-                    "Finishing current operations safely.",
-                    false,
-                ),
-                WorkspaceTransition::Saving(_) => {
-                    status_view("Switching experiences", "Saving your choice.", false)
+                | SessionLifecycle::ShuttingDown(_) => {
+                    status_view("Closing Bottles", "Finishing background work.")
                 }
+                SessionLifecycle::Saving {
+                    close_requested: false,
+                    ..
+                } => match session.screen {
+                    SessionScreen::Onboarding(_) => {
+                        onboarding_status_view("Finishing setup", "Saving your choice.")
+                    }
+                    SessionScreen::Running { .. } => {
+                        status_view("Switching experiences", "Saving your choice.")
+                    }
+                },
             },
-            Phase::Onboarding {
-                state,
-                saving,
-                notice,
-                ..
-            } => {
-                if saving.is_some() {
-                    onboarding_status_view("Finishing setup", "Saving your choice.")
-                } else if let Some(error) = notice {
-                    onboarding_notice_view("Setup could not be saved", error.to_string())
-                } else {
-                    state.view().map(AppMessage::Onboarding)
-                }
-            }
-            Phase::ShuttingDown => {
-                status_view("Closing Bottles", "Finishing background work.", false)
-            }
-            Phase::Failed(error) => {
-                status_view("Bottles could not start", error.to_string(), false)
-            }
+            Phase::Failed(error) => status_view("Bottles could not start", error.to_string()),
         };
         let page: Element<'_, AppMessage> =
-            window::WindowFrame::new(body, AppMessage::Window).into();
+            window::WindowFrame::new(body, |action| AppMessage::Action(AppAction::Window(action)))
+                .into();
         let dialog = match &self.phase {
-            Phase::Workspace {
-                transition: WorkspaceTransition::Confirming(target),
-                ..
-            } => Some(confirmation_dialog(*target)),
-            Phase::Workspace {
-                transition:
-                    WorkspaceTransition::Ready {
-                        notice: Some(error),
+            Phase::Session(Session {
+                screen:
+                    SessionScreen::Running {
+                        workspace,
+                        confirmation,
+                        ..
                     },
+                lifecycle: SessionLifecycle::Active,
+                notice,
                 ..
-            } => Some(notice_dialog(
-                "The experience was not changed",
-                error.to_string(),
-            )),
-            Phase::Workspace {
-                workspace: Workspace::Classic(state),
-                transition: WorkspaceTransition::Ready { notice: None },
-                ..
-            } => state.dialog().map(|dialog| dialog.map(classic_message)),
+            }) => {
+                if let Some(target) = confirmation {
+                    Some(confirmation_dialog(*target))
+                } else if let Some(error) = notice {
+                    Some(notice_dialog(
+                        "The experience was not changed",
+                        error.to_string(),
+                    ))
+                } else if let Workspace::Classic(state) = workspace {
+                    state.dialog().map(|dialog| {
+                        dialog
+                            .map(|action| AppMessage::Action(AppAction::Classic(Box::new(action))))
+                    })
+                } else {
+                    None
+                }
+            }
             _ => None,
         };
 
         WindowModal::new(page).dialog(dialog).into()
     }
 
-    fn finish_boot(&mut self, boot: Boot) -> Task<AppMessage> {
-        let Boot { config, core } = boot;
-        self.motion = Motion::from(config.reduce_motion);
+    fn finish_boot(&mut self, result: AppResult<Boot>) -> Task<AppMessage> {
+        let Phase::Booting { close_requested } = &self.phase else {
+            return Task::none();
+        };
+        let close_requested = *close_requested;
 
-        match config.experience {
-            None => {
-                let state = onboarding::State::new(core.addons().clone(), self.motion);
-                self.phase = Phase::Onboarding {
-                    core,
-                    state: Box::new(state),
-                    saving: None,
-                    notice: None,
-                };
+        match result {
+            Ok(boot) if close_requested => {
+                let core = boot.core.clone();
+                self.phase = Phase::ClosingBoot(boot);
+                shutdown_task(core)
+            }
+            Ok(boot) => self.open_boot(boot, None),
+            Err(_) if close_requested => iced::exit(),
+            Err(error) => {
+                self.phase = Phase::Failed(error);
                 Task::none()
             }
-            Some(experience) => self.open_workspace(core, experience),
         }
+    }
+
+    fn begin_onboarding_switch(&mut self, experience: Experience) -> Task<AppMessage> {
+        let Phase::Session(session) = &self.phase else {
+            return Task::none();
+        };
+        if !matches!(session.screen, SessionScreen::Onboarding(_)) {
+            return Task::none();
+        }
+        self.begin_draining(DrainIntent::Switch(experience))
     }
 
     fn request_experience(&mut self, experience: Experience) -> Task<AppMessage> {
-        match &mut self.phase {
-            Phase::Onboarding { saving, notice, .. } => {
-                if saving.is_some() {
-                    return Task::none();
-                }
-                *saving = Some(experience);
-                *notice = None;
-                save_experience(experience, self.motion)
-            }
-            Phase::Workspace {
-                workspace,
-                transition,
-                ..
-            } => {
-                if !matches!(transition, WorkspaceTransition::Ready { notice: None })
-                    || workspace.experience() == experience
-                {
-                    return Task::none();
-                }
-
-                *transition = WorkspaceTransition::Confirming(experience);
-                Task::none()
-            }
-            Phase::Booting | Phase::ShuttingDown | Phase::Failed(_) => Task::none(),
+        let Phase::Session(session) = &mut self.phase else {
+            return Task::none();
+        };
+        let SessionScreen::Running { confirmation, .. } = &mut session.screen else {
+            return Task::none();
+        };
+        if session.config.experience == Some(experience)
+            || confirmation.is_some()
+            || session.notice.is_some()
+        {
+            return Task::none();
         }
+
+        *confirmation = Some(experience);
+        Task::none()
     }
 
     fn confirm_experience_switch(&mut self) -> Task<AppMessage> {
-        let Phase::Workspace {
-            workspace,
-            transition,
-            ..
-        } = &mut self.phase
-        else {
+        let Phase::Session(session) = &mut self.phase else {
             return Task::none();
         };
-        let WorkspaceTransition::Confirming(target) = transition else {
+        let SessionScreen::Running { confirmation, .. } = &mut session.screen else {
             return Task::none();
         };
-        let target = *target;
+        let Some(target) = confirmation.take() else {
+            return Task::none();
+        };
 
-        workspace.cancel_active_operations();
-        *transition = WorkspaceTransition::Draining(target);
-        self.advance_experience_switch()
+        self.begin_draining(DrainIntent::Switch(target))
     }
 
-    fn advance_experience_switch(&mut self) -> Task<AppMessage> {
-        let target = match &self.phase {
-            Phase::Workspace {
-                workspace,
-                transition: WorkspaceTransition::Draining(target),
-                ..
-            } if !workspace.has_active_operations() => *target,
-            _ => return Task::none(),
+    fn begin_draining(&mut self, intent: DrainIntent) -> Task<AppMessage> {
+        let Phase::Session(session) = &mut self.phase else {
+            return Task::none();
         };
-
-        let Phase::Workspace { transition, .. } = &mut self.phase else {
-            unreachable!("the switch target came from a workspace")
-        };
-        *transition = WorkspaceTransition::Saving(target);
-        save_experience(target, self.motion)
-    }
-
-    fn finish_experience_save(
-        &mut self,
-        experience: Experience,
-        result: AppResult<()>,
-    ) -> Task<AppMessage> {
-        let expected = match &self.phase {
-            Phase::Onboarding { saving, .. } => *saving == Some(experience),
-            Phase::Workspace {
-                transition: WorkspaceTransition::Saving(target),
-                ..
-            } => *target == experience,
-            _ => false,
-        };
-        if !expected {
+        if !matches!(session.lifecycle, SessionLifecycle::Active) {
             return Task::none();
         }
+        session.cancel_active_operations();
+        session.lifecycle = SessionLifecycle::Draining(intent);
+        self.advance_draining()
+    }
+
+    fn advance_draining(&mut self) -> Task<AppMessage> {
+        let Phase::Session(session) = &mut self.phase else {
+            return Task::none();
+        };
+        let SessionLifecycle::Draining(intent) = session.lifecycle else {
+            return Task::none();
+        };
+        if session.has_active_operations() {
+            return Task::none();
+        }
+
+        match intent {
+            DrainIntent::Switch(experience) => {
+                let mut candidate = session.config.clone();
+                candidate.experience = Some(experience);
+                session.lifecycle = SessionLifecycle::Saving {
+                    candidate: candidate.clone(),
+                    close_requested: false,
+                };
+                save_config_task(candidate)
+            }
+            DrainIntent::Close => {
+                let core = session.core.clone();
+                session.lifecycle = SessionLifecycle::ShuttingDown(ShutdownResume::Existing);
+                shutdown_task(core)
+            }
+        }
+    }
+
+    fn finish_config_save(&mut self, result: AppResult<()>) -> Task<AppMessage> {
+        let Phase::Session(session) = &mut self.phase else {
+            return Task::none();
+        };
+        if !matches!(session.lifecycle, SessionLifecycle::Saving { .. }) {
+            return Task::none();
+        }
+        let SessionLifecycle::Saving {
+            candidate,
+            close_requested,
+        } = std::mem::replace(&mut session.lifecycle, SessionLifecycle::Active)
+        else {
+            unreachable!()
+        };
 
         match result {
+            Ok(()) if close_requested => {
+                let core = session.core.clone();
+                session.lifecycle =
+                    SessionLifecycle::ShuttingDown(ShutdownResume::Reopen(candidate));
+                shutdown_task(core)
+            }
             Ok(()) => {
-                let core = match &self.phase {
-                    Phase::Onboarding { core, .. } | Phase::Workspace { core, .. } => core.clone(),
-                    _ => unreachable!("the saved experience belonged to a retained workspace"),
-                };
-                self.open_workspace(core, experience)
+                let core = session.core.clone();
+                self.open_workspace(core, candidate, None)
+            }
+            Err(_) if close_requested => {
+                let core = session.core.clone();
+                session.lifecycle = SessionLifecycle::ShuttingDown(ShutdownResume::Existing);
+                shutdown_task(core)
             }
             Err(error) => {
-                match &mut self.phase {
-                    Phase::Onboarding { saving, notice, .. } => {
-                        *saving = None;
-                        *notice = Some(error);
-                    }
-                    Phase::Workspace {
-                        workspace,
-                        transition,
-                        ..
-                    } => {
-                        *transition = WorkspaceTransition::Ready {
-                            notice: Some(error),
-                        };
-                        return match workspace {
-                            Workspace::Classic(state) => {
-                                state.resume_after_failed_switch().map(|message| {
-                                    AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(
-                                        message,
-                                    )))
-                                })
-                            }
-                            Workspace::NextUnavailable => Task::none(),
-                        };
-                    }
-                    _ => unreachable!("the failed save belonged to a retained workspace"),
-                }
-                Task::none()
+                session.notice = Some(error);
+                resume_session(session)
             }
         }
-    }
-
-    fn open_workspace(&mut self, core: Arc<Bottles>, experience: Experience) -> Task<AppMessage> {
-        let (workspace, task) = match experience {
-            Experience::Classic => {
-                let (state, task) = classic::State::new(core.as_ref(), self.motion);
-                (
-                    Workspace::Classic(Box::new(state)),
-                    task.map(|message| {
-                        AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))
-                    }),
-                )
-            }
-            Experience::Next => (Workspace::NextUnavailable, Task::none()),
-        };
-
-        self.phase = Phase::Workspace {
-            core,
-            workspace,
-            transition: WorkspaceTransition::Ready { notice: None },
-        };
-        task
     }
 
     fn request_close(&mut self) -> Task<AppMessage> {
-        let core = match &mut self.phase {
-            Phase::Onboarding { core, state, .. } => {
-                state.cancel_active_operations();
-                core.clone()
-            }
-            Phase::Workspace {
-                core, workspace, ..
-            } => {
-                workspace.cancel_active_operations();
-                core.clone()
-            }
-            Phase::Booting => {
-                self.phase = Phase::ShuttingDown;
+        match &mut self.phase {
+            Phase::Booting { close_requested } => {
+                *close_requested = true;
                 return Task::none();
             }
-            Phase::Failed(_) => {
-                self.phase = Phase::ShuttingDown;
-                return iced::exit();
-            }
-            Phase::ShuttingDown => return Task::none(),
-        };
+            Phase::ClosingBoot(_) => return Task::none(),
+            Phase::Failed(_) => return iced::exit(),
+            Phase::Session(session) => match &mut session.lifecycle {
+                SessionLifecycle::Active => {}
+                SessionLifecycle::Draining(intent) => {
+                    *intent = DrainIntent::Close;
+                    return self.advance_draining();
+                }
+                SessionLifecycle::Saving {
+                    close_requested, ..
+                } => {
+                    *close_requested = true;
+                    return Task::none();
+                }
+                SessionLifecycle::ShuttingDown(_) => return Task::none(),
+            },
+        }
 
-        self.phase = Phase::ShuttingDown;
-        self.shutdown(core)
+        self.begin_draining(DrainIntent::Close)
     }
 
-    fn shutdown(&self, core: Arc<Bottles>) -> Task<AppMessage> {
-        Task::perform(
-            async move {
-                core.shutdown()
-                    .await
-                    .map_err(|error| AppError::Core(Arc::new(error)))
+    fn finish_shutdown(&mut self, result: AppResult<()>) -> Task<AppMessage> {
+        if let Phase::ClosingBoot(boot) = &self.phase {
+            let boot = boot.clone();
+            return match result {
+                Ok(()) => iced::exit(),
+                Err(error) => self.open_boot(boot, Some(error)),
+            };
+        }
+
+        let Phase::Session(session) = &mut self.phase else {
+            return Task::none();
+        };
+        if !matches!(session.lifecycle, SessionLifecycle::ShuttingDown(_)) {
+            return Task::none();
+        }
+        let SessionLifecycle::ShuttingDown(resume) =
+            std::mem::replace(&mut session.lifecycle, SessionLifecycle::Active)
+        else {
+            unreachable!()
+        };
+
+        match (result, resume) {
+            (Ok(()), _) => iced::exit(),
+            (Err(error), ShutdownResume::Existing) => {
+                session.notice = Some(error);
+                resume_session(session)
+            }
+            (Err(error), ShutdownResume::Reopen(config)) => {
+                let core = session.core.clone();
+                self.open_workspace(core, config, Some(error))
+            }
+        }
+    }
+
+    fn open_boot(&mut self, boot: Boot, notice: Option<AppError>) -> Task<AppMessage> {
+        let Boot { config, core } = boot;
+        match config.experience {
+            None => {
+                self.phase = Phase::Session(Session {
+                    config,
+                    screen: SessionScreen::Onboarding(Box::new(onboarding::State::new(
+                        core.addons().clone(),
+                    ))),
+                    core,
+                    lifecycle: SessionLifecycle::Active,
+                    notice,
+                });
+                Task::none()
+            }
+            Some(_) => self.open_workspace(core, config, notice),
+        }
+    }
+
+    fn open_workspace(
+        &mut self,
+        core: Arc<Bottles>,
+        config: AppConfig,
+        notice: Option<AppError>,
+    ) -> Task<AppMessage> {
+        let Some(experience) = config.experience else {
+            unreachable!("a workspace requires a selected experience")
+        };
+        let generation = self.next_workspace_generation;
+        self.next_workspace_generation = self.next_workspace_generation.wrapping_add(1);
+        let (workspace, task) = match experience {
+            Experience::Classic => {
+                let (state, task) = classic::State::new(core.as_ref());
+                (
+                    Workspace::Classic(Box::new(state)),
+                    task.map(move |event| classic_event_message(generation, event)),
+                )
+            }
+            Experience::Next => (Workspace::Next(next::State::new()), Task::none()),
+        };
+
+        self.phase = Phase::Session(Session {
+            config,
+            core,
+            screen: SessionScreen::Running {
+                generation,
+                workspace,
+                confirmation: None,
             },
-            AppMessage::ShutdownFinished,
-        )
+            lifecycle: SessionLifecycle::Active,
+            notice,
+        });
+        task
     }
 }
 
-fn save_experience(experience: Experience, motion: Motion) -> Task<AppMessage> {
-    Task::perform(save_config(experience, motion), move |result| {
-        AppMessage::ExperienceSaved { experience, result }
+fn resume_session(session: &mut Session) -> Task<AppMessage> {
+    let SessionScreen::Running {
+        generation,
+        workspace: Workspace::Classic(state),
+        ..
+    } = &mut session.screen
+    else {
+        return Task::none();
+    };
+    let generation = *generation;
+    state
+        .resume_after_failed_switch()
+        .map(move |event| classic_event_message(generation, event))
+}
+
+fn shutdown_task(core: Arc<Bottles>) -> Task<AppMessage> {
+    Task::perform(
+        async move {
+            core.shutdown()
+                .await
+                .map_err(|error| AppError::Core(Arc::new(error)))
+        },
+        |result| AppMessage::Event(AppEvent::ShutdownFinished(result)),
+    )
+}
+
+fn workspace_subscriptions(session: &Session) -> Vec<Subscription<AppMessage>> {
+    let SessionScreen::Running {
+        generation,
+        workspace: Workspace::Classic(state),
+        ..
+    } = &session.screen
+    else {
+        return Vec::new();
+    };
+    vec![
+        state
+            .event_subscription()
+            .with(*generation)
+            .map(|(generation, event)| classic_event_message(generation, event)),
+    ]
+}
+
+fn onboarding_event_message(event: onboarding::Event) -> AppMessage {
+    AppMessage::Event(AppEvent::Onboarding(event))
+}
+
+fn classic_event_message(generation: u64, event: classic::Event) -> AppMessage {
+    AppMessage::Event(AppEvent::Classic {
+        generation,
+        event: Box::new(event),
+    })
+}
+
+fn save_config_task(config: AppConfig) -> Task<AppMessage> {
+    Task::perform(save_config(config), |result| {
+        AppMessage::Event(AppEvent::ConfigSaved(result))
     })
 }
 
@@ -594,12 +801,11 @@ fn config_path() -> AppResult<PathBuf> {
 
 async fn load_config() -> AppResult<AppConfig> {
     let path = config_path()?;
-
     load_config_from(&path).await
 }
 
 async fn load_config_from(path: &Path) -> AppResult<AppConfig> {
-    match next_config::load(&path).await {
+    match next_config::load(path).await {
         Ok(config) => Ok(config),
         Err(next_config::error::Error::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
             Ok(AppConfig::default())
@@ -612,25 +818,19 @@ async fn load_config_from(path: &Path) -> AppResult<AppConfig> {
     }
 }
 
-async fn save_config(experience: Experience, motion: Motion) -> AppResult<()> {
+async fn save_config(config: AppConfig) -> AppResult<()> {
     let path = config_path()?;
-    save_config_to(&path, experience, motion).await
+    save_config_to(&path, &config).await
 }
 
-async fn save_config_to(path: &Path, experience: Experience, motion: Motion) -> AppResult<()> {
-    next_config::save(
-        path,
-        &AppConfig {
-            experience: Some(experience),
-            reduce_motion: motion.is_reduced(),
-        },
-    )
-    .await
-    .map_err(|source| AppError::Config {
-        action: "save",
-        path: path.to_owned(),
-        source: Arc::new(source),
-    })
+async fn save_config_to(path: &Path, config: &AppConfig) -> AppResult<()> {
+    next_config::save(path, config)
+        .await
+        .map_err(|source| AppError::Config {
+            action: "save",
+            path: path.to_owned(),
+            source: Arc::new(source),
+        })
 }
 
 async fn boot() -> AppResult<Boot> {
@@ -662,20 +862,10 @@ fn core_config() -> CoreConfig {
 fn status_view<'a>(
     title: impl iced::widget::text::IntoFragment<'a>,
     description: impl iced::widget::text::IntoFragment<'a>,
-    offer_classic: bool,
 ) -> Element<'a, AppMessage> {
     use iced::widget::{column, text};
 
-    let mut status = column![text(title).size(32), text(description)].spacing(12);
-    if offer_classic {
-        status = status.push(
-            Button::new("Use Classic")
-                .kind(ButtonKind::Primary)
-                .on_press(AppMessage::RequestExperience(Experience::Classic)),
-        );
-    }
-
-    root_body(status)
+    root_body(column![text(title).size(32), text(description)].spacing(12))
 }
 
 fn onboarding_status_view<'a>(
@@ -686,7 +876,7 @@ fn onboarding_status_view<'a>(
 
     onboarding::shell(
         column![text(title).size(32), text(description)].spacing(12),
-        AppMessage::Window(window::Action::Drag),
+        AppMessage::Action(AppAction::Window(window::Action::Drag)),
     )
 }
 
@@ -702,24 +892,25 @@ fn onboarding_notice_view<'a>(
             text(description),
             Button::new("Continue")
                 .kind(ButtonKind::Primary)
-                .on_press(AppMessage::DismissNotice),
+                .on_press(AppMessage::Action(AppAction::DismissNotice)),
         ]
         .spacing(12),
-        AppMessage::Window(window::Action::Drag),
+        AppMessage::Action(AppAction::Window(window::Action::Drag)),
     )
 }
 
-fn classic_message(message: classic::Message) -> AppMessage {
-    AppMessage::Workspace(WorkspaceMessage::Classic(Box::new(message)))
-}
-
-fn workspace_view(workspace: &Workspace) -> Element<'_, AppMessage> {
+fn workspace_view(session: &Session) -> Element<'_, AppMessage> {
+    let SessionScreen::Running { workspace, .. } = &session.screen else {
+        unreachable!("only running sessions render a workspace")
+    };
     match workspace {
-        Workspace::Classic(state) => state.view().map(classic_message),
-        Workspace::NextUnavailable => status_view(
-            "Next experience is not available yet",
-            "Choose Classic to use Bottles today.",
-            true,
+        Workspace::Classic(state) => state
+            .view()
+            .map(|action| AppMessage::Action(AppAction::Classic(Box::new(action)))),
+        Workspace::Next(state) => root_body(
+            state
+                .view()
+                .map(|action| AppMessage::Action(AppAction::Next(action))),
         ),
     }
 }
@@ -740,10 +931,10 @@ fn confirmation_dialog(target: Experience) -> Dialog<'static, AppMessage> {
     let actions = row![
         Button::new("Cancel")
             .kind(ButtonKind::Transparent)
-            .on_press(AppMessage::CancelExperienceSwitch),
+            .on_press(AppMessage::Action(AppAction::CancelExperienceSwitch)),
         Button::new(confirm_label)
             .kind(ButtonKind::Primary)
-            .on_press(AppMessage::ConfirmExperienceSwitch),
+            .on_press(AppMessage::Action(AppAction::ConfirmExperienceSwitch)),
     ]
     .spacing(8);
 
@@ -754,7 +945,7 @@ fn confirmation_dialog(target: Experience) -> Dialog<'static, AppMessage> {
             actions
         ]
         .spacing(12),
-        AppMessage::CancelExperienceSwitch,
+        AppMessage::Action(AppAction::CancelExperienceSwitch),
     )
 }
 
@@ -770,24 +961,23 @@ fn notice_dialog<'a>(
             text(description),
             Button::new("Continue")
                 .kind(ButtonKind::Primary)
-                .on_press(AppMessage::DismissNotice),
+                .on_press(AppMessage::Action(AppAction::DismissNotice)),
         ]
         .spacing(12),
-        AppMessage::DismissNotice,
+        AppMessage::Action(AppAction::DismissNotice),
     )
 }
 
 fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, AppMessage> {
     use iced::widget::{center, column};
 
-    let content = column![
-        HeaderBar::new(AppMessage::Window(window::Action::Drag)),
+    column![
+        HeaderBar::new(AppMessage::Action(AppAction::Window(window::Action::Drag))),
         center(content).width(Fill).height(Fill),
     ]
     .width(Fill)
-    .height(Fill);
-
-    content.into()
+    .height(Fill)
+    .into()
 }
 
 #[cfg(test)]
@@ -813,21 +1003,19 @@ mod tests {
         let path = std::env::temp_dir().join(format!("next-ui-{}.toml", uuid::Uuid::new_v4()));
         let config = futures_lite::future::block_on(load_config_from(&path)).unwrap();
 
-        assert_eq!(config.experience, None);
-        assert!(!config.reduce_motion);
+        assert_eq!(config, AppConfig::default());
     }
 
     #[test]
     fn a_saved_experience_round_trips() {
         let path = std::env::temp_dir().join(format!("next-ui-{}.toml", uuid::Uuid::new_v4()));
+        let expected = AppConfig {
+            experience: Some(Experience::Classic),
+        };
 
         futures_lite::future::block_on(async {
-            save_config_to(&path, Experience::Classic, Motion::Reduced)
-                .await
-                .unwrap();
-            let config = load_config_from(&path).await.unwrap();
-            assert_eq!(config.experience, Some(Experience::Classic));
-            assert!(config.reduce_motion);
+            save_config_to(&path, &expected).await.unwrap();
+            assert_eq!(load_config_from(&path).await.unwrap(), expected);
         });
 
         std::fs::remove_file(path).unwrap();

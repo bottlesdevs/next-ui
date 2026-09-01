@@ -13,7 +13,6 @@ use uuid::Uuid;
 
 use crate::{
     Icon, operation,
-    theme::Motion,
     widget::{
         ActionRow, ActionRowState, ArtworkCard, BottleStatus, CardAction, DropTarget, InfoCard,
         InfoCardKind, ListRow, PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
@@ -58,7 +57,6 @@ pub enum Message {
     RunnerSelected(RunnerOption),
     LaunchProgram { bottle: Bottle, program_id: Uuid },
     ProgramLaunched(Result<u32, Arc<bottles_core::error::Error>>),
-    Noop,
 }
 
 pub enum Output {
@@ -179,7 +177,7 @@ impl State {
                 self.program_launches = self.program_launches.saturating_sub(1);
                 self.last_error = None;
             }
-            Message::BottleCreation(_) | Message::Noop => {}
+            Message::BottleCreation(_) => {}
         }
 
         (Task::none(), output)
@@ -219,7 +217,7 @@ impl State {
         .into()
     }
 
-    pub fn creation_view(&self, motion: Motion) -> Element<'_, Message> {
+    pub fn creation_view(&self) -> Element<'_, Message> {
         let creating = self.is_creating();
         let name = TextRow::new("Bottle Name", &self.bottle_name).icon(Icon::Person);
         let name = if creating {
@@ -233,8 +231,7 @@ impl State {
             self.selected_runner.as_ref(),
             |runner| runner.id.to_string(),
         )
-        .icon(Icon::Run)
-        .motion(motion);
+        .icon(Icon::Run);
         let runner = if creating {
             runner
         } else {
@@ -245,16 +242,14 @@ impl State {
             runner,
             SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0]), |purpose| {
                 (*purpose).to_owned()
-            })
-            .motion(motion),
+            }),
             SelectorRow::new(
                 "Architecture",
                 &ARCHITECTURES,
                 Some(&ARCHITECTURES[0]),
                 |architecture| (*architecture).to_owned(),
             )
-            .icon(Icon::Chip)
-            .motion(motion),
+            .icon(Icon::Chip),
             PickerRow::new("Use Recipe").description("Choose the location"),
         ]
         .spacing(12);

@@ -1,5 +1,6 @@
 mod app;
 mod classic;
+mod next;
 mod onboarding;
 mod operation;
 

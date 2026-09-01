@@ -17,13 +17,17 @@ use crate::{
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
 
+#[derive(Clone, Copy)]
+pub enum Action {
+    Selected,
+}
+
 #[derive(Clone)]
 pub enum Message {
     Loaded {
         generation: u64,
         result: Option<Result<Vec<SnapshotSummary>, Arc<CoreError>>>,
     },
-    Noop,
 }
 
 #[derive(Default)]
@@ -67,9 +71,7 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
-        let Message::Loaded { generation, result } = message else {
-            return Task::none();
-        };
+        let Message::Loaded { generation, result } = message;
         self.loads.remove(&generation);
         if generation == self.generation {
             match result {
@@ -112,7 +114,7 @@ impl State {
         }
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> Element<'_, Action> {
         let rows = responsive(move |size| {
             let columns = usize::from(size.width >= CONTENT_GRID_BREAKPOINT) + 1;
 
@@ -122,7 +124,7 @@ impl State {
                     RowGroup::new().columns(columns),
                     |rows, (title, description)| {
                         rows.row(
-                            ActionRow::new(title, ActionRowState::Ready(Message::Noop))
+                            ActionRow::new(title, ActionRowState::Ready(Action::Selected))
                                 .description(description)
                                 .icon(Icon::Timer),
                         )

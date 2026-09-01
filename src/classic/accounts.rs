@@ -194,9 +194,10 @@ pub enum Message {
     CopyLoginUrl,
     SubmitLogin,
     DismissLogin,
+    InstallProviderPlugin,
+    UrlOpened(Result<(), Arc<std::io::Error>>),
     LinkFinished(Result<Profile, Arc<CoreError>>),
     ProfileUpdated(Result<Profile, Arc<CoreError>>),
-    Noop,
 }
 
 #[derive(Default)]
@@ -265,9 +266,17 @@ impl State {
                 dialog.set_code(code);
             }
             Message::OpenLoginUrl => {
-                if let Some(dialog) = &self.login_dialog {
-                    open_url(dialog.url());
-                }
+                let Some(dialog) = &mut self.login_dialog else {
+                    return iced::Task::none();
+                };
+                let url = dialog.url().to_owned();
+                dialog.error = None;
+                self.last_error = None;
+
+                return iced::Task::perform(
+                    async move { open_url(&url).map_err(Arc::new) },
+                    Message::UrlOpened,
+                );
             }
             Message::CopyLoginUrl => {
                 return self
@@ -282,9 +291,10 @@ impl State {
                     dialog.submit();
                 }
             }
+            Message::InstallProviderPlugin => {}
+            Message::UrlOpened(result) => self.finish_url_open(result),
             Message::LinkFinished(result) => self.finish_link(result),
             Message::ProfileUpdated(result) => self.finish_mutation(result),
-            Message::Noop => {}
         }
 
         iced::Task::none()
@@ -312,6 +322,17 @@ impl State {
     fn finish_mutation(&mut self, result: Result<Profile, Arc<CoreError>>) {
         self.mutation_pending = false;
         self.last_error = presentation_error(result);
+    }
+
+    fn finish_url_open(&mut self, result: Result<(), Arc<std::io::Error>>) {
+        if let Err(error) = result {
+            let error = format!("Could not open the sign-in link: {error}");
+            if let Some(dialog) = &mut self.login_dialog {
+                dialog.error = Some(error);
+            } else {
+                self.last_error = Some(error);
+            }
+        }
     }
 
     pub(super) fn dialog(&self) -> Option<Dialog<'_, Message>> {
@@ -353,18 +374,15 @@ impl State {
             }
 
             link_menu = link_menu.item(
-                PopoverItem::new(&provider.id, provider.name.clone())
+                PopoverItem::new(provider.name.clone())
                     .icon(provider_icon(&provider))
                     .action("Link", Message::BeginLogin(provider)),
             );
         }
 
         link_menu = link_menu.item(
-            PopoverItem::new(
-                "install-provider-plugin",
-                "Not listed, install a provider plugin",
-            )
-            .on_select(Message::Noop),
+            PopoverItem::new("Not listed, install a provider plugin")
+                .on_select(Message::InstallProviderPlugin),
         );
 
         let mut content = column![accounts, container(link_menu).width(iced::Fill)].spacing(18);
@@ -429,15 +447,22 @@ fn presentation_error(result: Result<Profile, Arc<CoreError>>) -> Option<String>
     })
 }
 
-fn open_url(url: &str) {
+fn open_url(url: &str) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(url).spawn();
+    let result = std::process::Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd")
+    let result = std::process::Command::new("cmd")
         .args(["/C", "start", "", url])
         .spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
-    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    let result = std::process::Command::new("xdg-open").arg(url).spawn();
+    #[cfg(not(any(unix, target_os = "windows")))]
+    let result = Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "opening URLs is not supported on this platform",
+    ));
+
+    result.map(drop)
 }
 
 fn provider_icon(provider: &StorefrontProvider) -> Icon {

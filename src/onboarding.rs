@@ -116,17 +116,21 @@ pub struct State {
 }
 
 #[derive(Clone)]
-pub enum Message {
+pub enum Action {
     SelectExperience(Experience),
     ApplyExperience,
     NextTutorialStep,
-    CatalogRefresh(OperationEvent<u64, ()>),
     StartDownloads,
-    Download(OperationEvent<(u64, Slot), Arc<IndexEntry<Component>>>),
     CancelDownloads,
     Retry,
     Finished(Experience),
     Window(window::Action),
+}
+
+#[derive(Clone)]
+pub enum Event {
+    CatalogRefresh(OperationEvent<u64, ()>),
+    Download(OperationEvent<(u64, Slot), Arc<IndexEntry<Component>>>),
 }
 
 impl State {
@@ -150,18 +154,26 @@ impl State {
         request_download_cancellation(&self.downloads);
     }
 
-    pub fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::SelectExperience(experience) => {
+    pub fn has_active_operations(&self) -> bool {
+        matches!(self.setup_phase, SetupPhase::Preparing(_))
+            || self
+                .downloads
+                .iter()
+                .any(|item| matches!(item.state, DownloadState::Running(_)))
+    }
+
+    pub fn update_action(&mut self, action: Action) -> Task<Event> {
+        match action {
+            Action::SelectExperience(experience) => {
                 if experience_available(experience) {
                     self.experience = experience;
                 }
             }
-            Message::ApplyExperience => {
+            Action::ApplyExperience => {
                 self.step = Step::Tutorial(0);
                 return self.start_preparation();
             }
-            Message::NextTutorialStep => {
+            Action::NextTutorialStep => {
                 if let Step::Tutorial(index) = self.step {
                     if index + 1 < TUTORIAL_STEPS.len() {
                         self.step = Step::Tutorial(index + 1);
@@ -170,8 +182,34 @@ impl State {
                     }
                 }
             }
-            Message::CatalogRefresh(OperationEvent::Progress { .. }) => {}
-            Message::CatalogRefresh(OperationEvent::Finished { key, outcome }) => {
+            Action::StartDownloads => return self.start_downloads(),
+            Action::CancelDownloads => {
+                if matches!(self.setup_phase, SetupPhase::Downloading) {
+                    request_download_cancellation(&self.downloads);
+                    self.setup_phase = SetupPhase::Cancelling;
+                }
+            }
+            Action::Retry => {
+                if self
+                    .downloads
+                    .iter()
+                    .any(|item| matches!(item.state, DownloadState::Unavailable))
+                {
+                    return self.start_preparation();
+                }
+                return self.start_downloads();
+            }
+            Action::Window(action) => return action.task().unwrap_or_else(Task::none),
+            Action::Finished(_) => {}
+        }
+
+        Task::none()
+    }
+
+    pub fn update_event(&mut self, event: Event) -> Task<Event> {
+        match event {
+            Event::CatalogRefresh(OperationEvent::Progress { .. }) => {}
+            Event::CatalogRefresh(OperationEvent::Finished { key, outcome }) => {
                 if key != self.download_generation {
                     return Task::none();
                 }
@@ -183,8 +221,7 @@ impl State {
                 };
                 self.prepare_downloads();
             }
-            Message::StartDownloads => return self.start_downloads(),
-            Message::Download(OperationEvent::Progress { key, progress }) => {
+            Event::Download(OperationEvent::Progress { key, progress }) => {
                 if let Some(item) =
                     current_download_mut(&mut self.downloads, self.download_generation, key)
                     && matches!(&item.state, DownloadState::Running(_))
@@ -192,7 +229,7 @@ impl State {
                     update_download_progress(item, &progress);
                 }
             }
-            Message::Download(OperationEvent::Finished { key, outcome }) => {
+            Event::Download(OperationEvent::Finished { key, outcome }) => {
                 if let Some(item) =
                     current_download_mut(&mut self.downloads, self.download_generation, key)
                 {
@@ -208,30 +245,12 @@ impl State {
                     self.finish_download_batch();
                 }
             }
-            Message::CancelDownloads => {
-                if matches!(self.setup_phase, SetupPhase::Downloading) {
-                    request_download_cancellation(&self.downloads);
-                    self.setup_phase = SetupPhase::Cancelling;
-                }
-            }
-            Message::Retry => {
-                if self
-                    .downloads
-                    .iter()
-                    .any(|item| matches!(item.state, DownloadState::Unavailable))
-                {
-                    return self.start_preparation();
-                }
-                return self.start_downloads();
-            }
-            Message::Window(action) => return action.task().unwrap_or_else(Task::none),
-            Message::Finished(_) => {}
         }
 
         Task::none()
     }
 
-    fn start_preparation(&mut self) -> Task<Message> {
+    fn start_preparation(&mut self) -> Task<Event> {
         self.cancel_active_operations();
         self.download_generation = self.download_generation.wrapping_add(1);
         let generation = self.download_generation;
@@ -241,7 +260,7 @@ impl State {
         let (cancellation, task) = operation::run(self.addons.refresh(), generation);
         self.setup_phase = SetupPhase::Preparing(cancellation);
 
-        task.map(Message::CatalogRefresh)
+        task.map(Event::CatalogRefresh)
     }
 
     fn prepare_downloads(&mut self) {
@@ -265,7 +284,7 @@ impl State {
         }
     }
 
-    fn start_downloads(&mut self) -> Task<Message> {
+    fn start_downloads(&mut self) -> Task<Event> {
         if !matches!(self.setup_phase, SetupPhase::Ready | SetupPhase::Failed) {
             return Task::none();
         }
@@ -288,7 +307,7 @@ impl State {
             item.size_label = "Ready to download".into();
             let (cancellation, task) =
                 operation::run(addons.fetch_component(id), (generation, item.slot));
-            tasks.push(task.map(Message::Download));
+            tasks.push(task.map(Event::Download));
             item.state = DownloadState::Running(cancellation);
         }
 
@@ -310,17 +329,17 @@ impl State {
         settle_download_batch(&mut self.setup_phase, &mut self.downloads);
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> Element<'_, Action> {
         let content = match &self.step {
             Step::Welcome => self.welcome_view(),
             Step::Tutorial(index) => tutorial_view(*index),
             Step::Downloads => self.downloads_view(),
         };
 
-        shell(content, Message::Window(window::Action::Drag))
+        shell(content, Action::Window(window::Action::Drag))
     }
 
-    fn welcome_view(&self) -> Element<'_, Message> {
+    fn welcome_view(&self) -> Element<'_, Action> {
         let header = onboarding_title(
             "Welcome",
             "Choose the experience, you can change this later.",
@@ -351,7 +370,7 @@ impl State {
         .into()
     }
 
-    fn downloads_view(&self) -> Element<'_, Message> {
+    fn downloads_view(&self) -> Element<'_, Action> {
         let header = onboarding_title(
             "Almost Done",
             "Bottles need to download the following small resources to be ready.",
@@ -432,20 +451,20 @@ impl State {
             );
         }
 
-        let action: Element<'_, Message> = match &self.setup_phase {
+        let action: Element<'_, Action> = match &self.setup_phase {
             SetupPhase::Idle | SetupPhase::Preparing(_) => onboarding_button("Preparing…").into(),
             SetupPhase::Ready => onboarding_button_with_icon("Download")
-                .on_press(Message::StartDownloads)
+                .on_press(Action::StartDownloads)
                 .into(),
             SetupPhase::Downloading => onboarding_button("Cancel")
-                .on_press(Message::CancelDownloads)
+                .on_press(Action::CancelDownloads)
                 .into(),
             SetupPhase::Cancelling => onboarding_button("Cancelling…").into(),
             SetupPhase::Failed => onboarding_button_with_icon("Retry")
-                .on_press(Message::Retry)
+                .on_press(Action::Retry)
                 .into(),
             SetupPhase::Complete => onboarding_button_with_icon("Get Started")
-                .on_press(Message::Finished(self.experience))
+                .on_press(Action::Finished(self.experience))
                 .into(),
         };
 
@@ -468,16 +487,16 @@ impl State {
         .into()
     }
 
-    fn apply_button(&self) -> Element<'_, Message> {
+    fn apply_button(&self) -> Element<'_, Action> {
         onboarding_button_with_icon("Apply Experience")
-            .on_press(Message::ApplyExperience)
+            .on_press(Action::ApplyExperience)
             .into()
     }
 
-    fn experience_button(&self, experience: Experience) -> Element<'_, Message> {
+    fn experience_button(&self, experience: Experience) -> Element<'_, Action> {
         let selected = experience == self.experience;
         let state = if experience_available(experience) {
-            RowState::Ready(Message::SelectExperience(experience))
+            RowState::Ready(Action::SelectExperience(experience))
         } else {
             RowState::Disabled
         };
@@ -490,7 +509,7 @@ impl State {
         .into()
     }
 
-    fn selected_experience_view(&self) -> Element<'_, Message> {
+    fn selected_experience_view(&self) -> Element<'_, Action> {
         let (first, second) = experience_detail(self.experience);
 
         InfoCard::new(
@@ -679,7 +698,7 @@ fn experience_detail(experience: Experience) -> (&'static str, &'static str) {
     }
 }
 
-fn onboarding_title<'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Message> {
+fn onboarding_title<'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Action> {
     column![
         text(title)
             .size(32)
@@ -703,7 +722,7 @@ fn error_icon<'a>() -> svg::Svg<'a> {
     })
 }
 
-fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
+fn tutorial_view<'a>(index: usize) -> Element<'a, Action> {
     let step = &TUTORIAL_STEPS[index];
     let body = step.body.replace("{OS}", os_label());
     let icon = Icon::Bottles
@@ -727,7 +746,7 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
     ]
     .spacing(20)
     .max_width(TUTORIAL_TEXT_MAX_WIDTH);
-    let next = onboarding_button_with_icon("Next").on_press(Message::NextTutorialStep);
+    let next = onboarding_button_with_icon("Next").on_press(Action::NextTutorialStep);
 
     column![
         row![icon, text_block].spacing(48).align_y(Vertical::Center),
@@ -738,11 +757,11 @@ fn tutorial_view<'a>(index: usize) -> Element<'a, Message> {
     .into()
 }
 
-fn onboarding_button<'a>(label: &'a str) -> Button<'a, Message> {
+fn onboarding_button<'a>(label: &'a str) -> Button<'a, Action> {
     Button::custom(text(label).label()).kind(ButtonKind::Primary)
 }
 
-fn onboarding_button_with_icon<'a>(label: &'a str) -> Button<'a, Message> {
+fn onboarding_button_with_icon<'a>(label: &'a str) -> Button<'a, Action> {
     onboarding_button(label)
         .trailing_icon(Icon::Arrow)
         .icon_rotation(std::f32::consts::PI)

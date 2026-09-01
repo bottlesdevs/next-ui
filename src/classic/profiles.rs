@@ -279,17 +279,15 @@ impl State {
 
         for profile in snapshot.profiles() {
             switcher = switcher.item(
-                PopoverItem::new(profile.id(), profile.name())
+                PopoverItem::new(profile.name())
                     .icon(Icon::Person)
                     .selected(selected.id() == profile.id())
                     .on_select(Message::ActivateProfile(profile.id())),
             );
         }
 
-        switcher = switcher.item(
-            PopoverItem::new("manage-profiles", "Profiles")
-                .on_select(Message::ToggleProfileSettings),
-        );
+        switcher =
+            switcher.item(PopoverItem::new("Profiles").on_select(Message::ToggleProfileSettings));
 
         switcher.into()
     }
