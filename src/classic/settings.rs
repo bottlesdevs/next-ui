@@ -121,8 +121,7 @@ impl State {
                     usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
                 let bottle_name: ListRow<'_, Message> =
                     ListRow::from(InfoRow::new("Bottle Name").description(state.name()))
-                        .trailing(Icon::Pencil.view().width(16).height(16))
-                        .enabled(false);
+                        .trailing(Icon::Pencil.view().width(16).height(16));
                 let unavailable = || {
                     InfoRow::new("Not available yet")
                         .description("This setting is not supported yet.")

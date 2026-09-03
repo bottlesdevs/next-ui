@@ -11,7 +11,7 @@ use super::{
     control::{ActionState, ActionStyle, ActionSurface, ActivationSignal, Interaction},
     draw_caret,
     expander_row::{ExpanderRow, header_row},
-    list_row::{Content as RowContent, ListRow},
+    list_row::Content as RowContent,
     spacing,
     surface::{Surface, SurfaceRole},
     text::TextExt as _,
@@ -23,12 +23,11 @@ pub struct RowGroup<'a, Message> {
     title: Option<&'a str>,
     description: Option<&'a str>,
     columns: usize,
-    enabled: bool,
     entries: Vec<Entry<'a, Message>>,
 }
 
 enum Entry<'a, Message> {
-    Row(ListRow<'a, Message>),
+    Row(Element<'a, Message>),
     Expander(ExpanderRow<'a, Message>),
 }
 
@@ -38,7 +37,6 @@ impl<'a, Message: 'a> RowGroup<'a, Message> {
             title: None,
             description: None,
             columns: 1,
-            enabled: true,
             entries: Vec::new(),
         }
     }
@@ -58,12 +56,7 @@ impl<'a, Message: 'a> RowGroup<'a, Message> {
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
-    pub fn row(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
+    pub fn row(mut self, row: impl Into<Element<'a, Message>>) -> Self {
         self.entries.push(Entry::Row(row.into()));
         self
     }
@@ -82,12 +75,7 @@ impl<'a, Message: 'a> Default for RowGroup<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Message> {
     fn from(group: RowGroup<'a, Message>) -> Self {
-        let rows = Element::new(RowGroupCore::new(
-            group.entries,
-            group.columns,
-            group.enabled,
-            false,
-        ));
+        let rows = Element::new(RowGroupCore::new(group.entries, group.columns, false));
 
         let mut content = column![].spacing(spacing::SM);
 
@@ -119,12 +107,7 @@ struct RowGroupCore<'a, Message> {
 }
 
 impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
-    fn new(
-        entries: Vec<Entry<'a, Message>>,
-        columns: usize,
-        enabled: bool,
-        standalone: bool,
-    ) -> Self {
+    fn new(entries: Vec<Entry<'a, Message>>, columns: usize, standalone: bool) -> Self {
         let columns = columns.max(1);
         let mut headers = Vec::with_capacity(entries.len());
         let mut bodies = Vec::new();
@@ -135,7 +118,7 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
             match entry {
                 Entry::Row(row) => {
                     structure.push(false);
-                    headers.push(row.into_control(enabled).into());
+                    headers.push(row);
                 }
                 Entry::Expander(expander) => {
                     let ExpanderRow {
@@ -148,31 +131,20 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
 
                     if content.is_empty() {
                         structure.push(false);
-                        headers.push(
-                            header_row(header, expander_enabled)
-                                .into_control(enabled)
-                                .into(),
-                        );
+                        headers.push(header_row(header).into());
                         continue;
                     }
                     structure.push(true);
 
                     let RowContent {
                         element: header,
-                        selected,
-                        focus_first,
                         disclosure_index,
-                        ..
-                    } = header_row(header, expander_enabled).into_disclosure_content();
+                    } = header_row(header).into_disclosure_content();
                     let activation = ActivationSignal::default();
-                    let mut header = ActionSurface::new(header)
+                    let header = ActionSurface::new(header)
                         .width(Length::Fill)
-                        .sensitive(enabled && expander_enabled)
+                        .sensitive(expander_enabled)
                         .activation_signal(activation.clone());
-
-                    if focus_first {
-                        header = header.focus_first_descendant();
-                    }
                     let content_columns = if standalone {
                         requested_columns
                     } else {
@@ -191,7 +163,7 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
                     .into();
                     let body = ActionSurface::new(body)
                         .width(Length::Fill)
-                        .sensitive(enabled && expander_enabled && content_enabled)
+                        .sensitive(expander_enabled && content_enabled)
                         .style(disabled_subtree_style)
                         .into();
 
@@ -204,8 +176,8 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
                             if standalone { 1 } else { requested_columns },
                             columns,
                         ),
-                        sensitive: enabled && expander_enabled,
-                        selected,
+                        sensitive: expander_enabled,
+                        selected: false,
                         disclosure_index: disclosure_index
                             .expect("expander header has a caret slot"),
                         activation,
@@ -237,12 +209,7 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
 pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
     expander: ExpanderRow<'a, Message>,
 ) -> Element<'a, Message> {
-    Element::new(RowGroupCore::new(
-        vec![Entry::Expander(expander)],
-        1,
-        true,
-        true,
-    ))
+    Element::new(RowGroupCore::new(vec![Entry::Expander(expander)], 1, true))
 }
 
 fn expander_header_style(

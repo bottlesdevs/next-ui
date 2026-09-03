@@ -122,9 +122,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         let mut row = ListRow::new(labels);
 
         if editable {
-            row = row
-                .trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false))
-                .focus_first();
+            row = row.trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false));
         }
 
         row

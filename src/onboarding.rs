@@ -7,7 +7,7 @@ use crate::{
     Experience, Icon, theme,
     widget::{
         ActionRow, ActionRowState as RowState, Button, ButtonKind, HeaderBar, InfoCard,
-        InfoCardKind, InfoRow, ListRow, RowGroup, TextExt as _,
+        InfoCardKind, InfoRow, RowGroup, TextExt as _,
     },
     window,
 };
@@ -302,12 +302,10 @@ impl State {
             RowState::Disabled
         };
 
-        ListRow::from(
-            ActionRow::new(experience_option_label(experience), state)
-                .description(experience_caption(experience)),
-        )
-        .selected(selected)
-        .into()
+        ActionRow::new(experience_option_label(experience), state)
+            .description(experience_caption(experience))
+            .selected(selected)
+            .into()
     }
 
     fn selected_experience_view(&self) -> Element<'_, Action> {

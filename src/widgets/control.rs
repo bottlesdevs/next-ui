@@ -278,7 +278,6 @@ pub(crate) struct ActionSurface<'a, Message> {
     activation: Option<ActivationSignal>,
     sensitive: bool,
     selected: bool,
-    focus_first_descendant: bool,
     width: Length,
     height: Length,
     padding: Padding,
@@ -294,7 +293,6 @@ impl<'a, Message> ActionSurface<'a, Message> {
             activation: None,
             sensitive: true,
             selected: false,
-            focus_first_descendant: false,
             width: Length::Shrink,
             height: Length::Shrink,
             padding: Padding::ZERO,
@@ -332,11 +330,6 @@ impl<'a, Message> ActionSurface<'a, Message> {
 
     pub(crate) fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
-        self
-    }
-
-    pub(crate) fn focus_first_descendant(mut self) -> Self {
-        self.focus_first_descendant = true;
         self
     }
 
@@ -418,7 +411,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ActionSurface<'_
 
         let interaction = tree.state.downcast_mut::<Interaction>();
 
-        if self.actionable() && !self.focus_first_descendant {
+        if self.actionable() {
             operation.focusable(self.id.as_ref(), layout.bounds(), interaction);
         }
 
@@ -463,24 +456,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ActionSurface<'_
                 shell,
                 viewport,
             );
-
-            if self.focus_first_descendant
-                && !shell.is_event_captured()
-                && event_cursor(event, cursor).is_over(visible_bounds)
-                && matches!(
-                    event,
-                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                        | Event::Touch(touch::Event::FingerPressed { .. })
-                )
-            {
-                focus_first_descendant(
-                    self.content.as_widget_mut(),
-                    &mut tree.children[0],
-                    content_layout,
-                    renderer,
-                );
-                shell.request_redraw();
-            }
         }
 
         let interaction = tree.state.downcast_mut::<Interaction>();

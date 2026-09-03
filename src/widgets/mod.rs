@@ -1,3 +1,4 @@
+pub mod action_tile;
 mod anchored_overlay;
 mod control;
 mod focusable_action;
@@ -47,7 +48,6 @@ pub mod button;
 pub mod card;
 pub mod cycle_row;
 pub mod dialog;
-pub mod drop_target;
 pub mod expander_row;
 pub mod header_bar;
 pub mod info_card;

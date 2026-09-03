@@ -1,10 +1,11 @@
 use iced::{
     Alignment, Background, Border, Element, Fill, Padding, Theme,
-    widget::{Row as IcedRow, Space, column, container, text, text::IntoFragment},
+    widget::{Row as IcedRow, Space, button, column, container, text, text::IntoFragment},
 };
 
 use super::{
-    control::{ActionState, ActionStyle, ActionSurface},
+    control::{ActionState as LegacyActionState, ActionStyle},
+    focusable_action::{ActionState, FocusableAction},
     spacing,
     text::TextExt as _,
 };
@@ -18,25 +19,16 @@ pub(crate) const STANDARD_PADDING: Padding = Padding {
     left: spacing::LG,
 };
 
-/// A semantic row recipe. Its visual control is built only when the row is
-/// placed standalone or lowered by a [`super::row_group::RowGroup`].
+/// A non-clickable row that may contain interactive controls.
 pub struct ListRow<'a, Message> {
     body: Element<'a, Message>,
     leading: Vec<Element<'a, Message>>,
     trailing: Vec<Element<'a, Message>>,
-    enabled: bool,
-    selected: bool,
-    on_press: Option<Message>,
-    focus_first: bool,
     padding: Padding,
 }
 
 pub(crate) struct Content<'a, Message> {
     pub(crate) element: Element<'a, Message>,
-    pub(crate) enabled: bool,
-    pub(crate) selected: bool,
-    pub(crate) on_press: Option<Message>,
-    pub(crate) focus_first: bool,
     /// Index of the disclosure slot in the inner iced row, when present.
     pub(crate) disclosure_index: Option<usize>,
 }
@@ -60,10 +52,6 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             body: body.into(),
             leading: Vec::new(),
             trailing: Vec::new(),
-            enabled: true,
-            selected: false,
-            on_press: None,
-            focus_first: false,
             padding: STANDARD_PADDING,
         }
     }
@@ -83,26 +71,6 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
-    pub fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
-        self
-    }
-
-    pub fn on_press(mut self, message: Message) -> Self {
-        self.on_press = Some(message);
-        self
-    }
-
-    pub(crate) fn focus_first(mut self) -> Self {
-        self.focus_first = true;
-        self
-    }
-
     pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
         self
@@ -114,29 +82,6 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
 
     pub(crate) fn into_disclosure_content(self) -> Content<'a, Message> {
         self.lower(true)
-    }
-
-    pub(crate) fn into_control(self, parent_enabled: bool) -> ActionSurface<'a, Message> {
-        let Content {
-            element,
-            enabled,
-            selected,
-            on_press,
-            focus_first,
-            ..
-        } = self.into_content();
-        let mut control = ActionSurface::new(element)
-            .width(Fill)
-            .sensitive(parent_enabled && enabled)
-            .selected(selected)
-            .on_press_maybe(on_press)
-            .style(style);
-
-        if focus_first {
-            control = control.focus_first_descendant();
-        }
-
-        control
     }
 
     fn lower(self, disclosure: bool) -> Content<'a, Message> {
@@ -161,28 +106,73 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
                 .align_y(Alignment::Center)
                 .clip(true)
                 .into(),
-            enabled: self.enabled,
-            selected: self.selected,
-            on_press: self.on_press,
-            focus_first: self.focus_first,
             disclosure_index,
         }
     }
 }
 
-impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
+impl<'a, Message: 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
     fn from(row: ListRow<'a, Message>) -> Self {
-        row.into_control(true).into()
+        container(row.into_content().element)
+            .width(Fill)
+            .style(control_style)
+            .into()
     }
 }
 
-pub(crate) fn style(theme: &Theme, state: ActionState) -> ActionStyle {
+pub(crate) fn action<'a, Message: Clone + 'a>(
+    row: ListRow<'a, Message>,
+    on_press: Option<Message>,
+    selected: bool,
+) -> Element<'a, Message> {
+    FocusableAction::new(row.into_content().element)
+        .width(Fill)
+        .selected(selected)
+        .on_press_maybe(on_press)
+        .style(action_style)
+        .into()
+}
+
+fn control_style(theme: &Theme) -> container::Style {
+    let colors = crate::theme::colors(theme);
+
+    container::Style::default()
+        .background(colors.surface)
+        .border(Border::default().rounded(6))
+        .color(colors.text)
+}
+
+pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
+    let colors = crate::theme::colors(theme);
+    let color = if state.pressed {
+        colors.selection
+    } else if state.selected || state.focused {
+        colors.border
+    } else if state.hovered {
+        colors.hover
+    } else {
+        colors.surface
+    };
+
+    button::Style {
+        background: Some(Background::Color(color)),
+        text_color: if state.enabled {
+            colors.text
+        } else {
+            colors.muted
+        },
+        border: Border::default().rounded(6),
+        ..button::Style::default()
+    }
+}
+
+pub(crate) fn style(theme: &Theme, state: LegacyActionState) -> ActionStyle {
     let colors = crate::theme::colors(theme);
     let color = if state.pressed {
         colors.selection
     } else if state.selected || state.expanded || state.focus_within {
         colors.border
-    } else if state.hovered {
+    } else if state.actionable && state.hovered {
         colors.hover
     } else {
         colors.surface

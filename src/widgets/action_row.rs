@@ -25,6 +25,7 @@ pub struct ActionRow<'a, Message> {
     description: &'a str,
     icon: Option<Icon>,
     state: State<Message>,
+    selected: bool,
 }
 
 impl<'a, Message> ActionRow<'a, Message> {
@@ -34,6 +35,7 @@ impl<'a, Message> ActionRow<'a, Message> {
             description: "",
             icon: None,
             state,
+            selected: false,
         }
     }
 
@@ -46,15 +48,14 @@ impl<'a, Message> ActionRow<'a, Message> {
         self.icon = Some(icon);
         self
     }
-}
 
-impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
-    fn from(action: ActionRow<'a, Message>) -> Self {
-        ListRow::from(action).into()
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
     }
 }
 
-impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Message> {
+impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
         let mut description = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
@@ -75,12 +76,15 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
                 Icon::Arrow.view().rotation(std::f32::consts::PI).into()
             }
         };
-        let row = ListRow::new(labels).trailing(trailing);
+        let on_press = match action.state {
+            State::Ready(message) => Some(message),
+            State::Disabled | State::Progress(_) => None,
+        };
 
-        match action.state {
-            State::Ready(message) => row.on_press(message),
-            State::Disabled => row.enabled(false),
-            State::Progress(_) => row,
-        }
+        list_row::action(
+            ListRow::new(labels).trailing(trailing),
+            on_press,
+            action.selected,
+        )
     }
 }

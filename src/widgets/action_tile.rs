@@ -1,16 +1,16 @@
 use iced::{
-    Element, Length, Padding, Point, Rectangle, Renderer, Theme, border,
-    widget::{canvas, container, stack},
+    Background, Border, Element, Length, Padding, Point, Rectangle, Renderer, Theme, border,
+    widget::{button, canvas, container, stack},
 };
 
-use super::{control::ActionSurface, style};
+use super::focusable_action::{ActionState, FocusableAction};
 
 const BORDER_RADIUS: f32 = 6.0;
 const BORDER_WIDTH: f32 = 2.0;
 const DASH_PATTERN: &[f32] = &[6.0, 6.0];
 
 /// A dashed activation surface.
-pub struct DropTarget<'a, Message> {
+pub struct ActionTile<'a, Message> {
     content: Element<'a, Message>,
     on_activate: Option<Message>,
     width: Length,
@@ -18,7 +18,7 @@ pub struct DropTarget<'a, Message> {
     padding: Padding,
 }
 
-impl<'a, Message> DropTarget<'a, Message> {
+impl<'a, Message> ActionTile<'a, Message> {
     pub fn new(content: impl Into<Element<'a, Message>>, message: Message) -> Self {
         Self {
             content: content.into(),
@@ -55,9 +55,9 @@ impl<'a, Message> DropTarget<'a, Message> {
     }
 }
 
-impl<'a, Message: Clone + 'a> From<DropTarget<'a, Message>> for Element<'a, Message> {
-    fn from(target: DropTarget<'a, Message>) -> Self {
-        let DropTarget {
+impl<'a, Message: Clone + 'a> From<ActionTile<'a, Message>> for Element<'a, Message> {
+    fn from(target: ActionTile<'a, Message>) -> Self {
+        let ActionTile {
             content,
             on_activate,
             width,
@@ -76,15 +76,33 @@ impl<'a, Message: Clone + 'a> From<DropTarget<'a, Message>> for Element<'a, Mess
         .width(width)
         .height(height);
 
-        let active = on_activate.is_some();
-
-        ActionSurface::new(content)
-            .sensitive(active)
+        FocusableAction::new(content)
             .on_press_maybe(on_activate)
             .width(width)
             .height(height)
-            .style(style::action)
+            .style(style)
             .into()
+    }
+}
+
+fn style(theme: &Theme, state: ActionState) -> button::Style {
+    let colors = crate::theme::colors(theme);
+
+    button::Style {
+        background: if state.pressed {
+            Some(Background::Color(colors.selection))
+        } else if state.hovered || state.focused {
+            Some(Background::Color(colors.hover))
+        } else {
+            None
+        },
+        text_color: if state.enabled {
+            colors.text
+        } else {
+            colors.muted
+        },
+        border: Border::default().rounded(BORDER_RADIUS),
+        ..button::Style::default()
     }
 }
 
@@ -137,10 +155,10 @@ mod tests {
 
     #[test]
     fn constructors_make_activation_explicit() {
-        let disabled: DropTarget<'_, ()> = DropTarget::disabled(Space::new());
+        let disabled: ActionTile<'_, ()> = ActionTile::disabled(Space::new());
         assert!(disabled.on_activate.is_none());
 
-        let active = DropTarget::new(Space::new(), ());
+        let active = ActionTile::new(Space::new(), ());
         assert_eq!(active.on_activate, Some(()));
     }
 }

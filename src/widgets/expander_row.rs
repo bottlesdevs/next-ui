@@ -5,7 +5,7 @@ use super::{list_row::ListRow, row_group::standalone_expander};
 pub struct ExpanderRow<'a, Message> {
     pub(crate) header: Header<'a, Message>,
     pub(crate) columns: usize,
-    pub(crate) content: Vec<ListRow<'a, Message>>,
+    pub(crate) content: Vec<Element<'a, Message>>,
     pub(crate) content_enabled: bool,
     pub(crate) enabled: bool,
 }
@@ -56,7 +56,7 @@ impl<'a, Message> ExpanderRow<'a, Message> {
         self
     }
 
-    pub fn row(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
+    pub fn row(mut self, row: impl Into<Element<'a, Message>>) -> Self {
         self.content.push(row.into());
         self
     }
@@ -78,15 +78,11 @@ impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Mes
     }
 }
 
-pub(crate) fn header_row<'a, Message: 'a>(
-    header: Header<'a, Message>,
-    enabled: bool,
-) -> ListRow<'a, Message> {
+pub(crate) fn header_row<'a, Message: 'a>(header: Header<'a, Message>) -> ListRow<'a, Message> {
     match header {
         Header::Labels { title, description } => {
             ListRow::new(super::list_row::labels(title, description))
         }
         Header::Custom(header) => header,
     }
-    .enabled(enabled)
 }

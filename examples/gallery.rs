@@ -5,8 +5,8 @@ use iced::{
 use next_ui::{
     Icon, theme,
     widget::{
-        ActionRow, ActionRowState, ArtworkCard, BottleStatus, Button, ButtonKind, Card, CardAction,
-        CycleRow, Dialog, DropTarget, ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow,
+        ActionRow, ActionRowState, ActionTile, ArtworkCard, BottleStatus, Button, ButtonKind, Card,
+        CardAction, CycleRow, Dialog, ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow,
         ListRow, PickerRow, Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult,
         SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _,
         TextRow, Title, WindowModal,
@@ -142,7 +142,7 @@ impl Gallery {
         .spacing(12);
 
         let cards = column![
-            row![drop_target_example(true), drop_target_example(false)].spacing(18),
+            row![action_tile_example(true), action_tile_example(false)].spacing(18),
             row![
                 Card::new(
                     column![
@@ -302,7 +302,7 @@ impl Gallery {
                 .icon(Icon::Timer),
             ListRow::new(text("Direct ListRow with arbitrary content"))
                 .leading(Icon::Info.view().width(16).height(16))
-                .on_press(Message::Noop),
+                .trailing(Button::new("Action").on_press(Message::Noop)),
             SwitcherRow::new("Title", self.switched_on)
                 .on_toggle(Message::Switched)
                 .description("Description"),
@@ -517,7 +517,7 @@ impl Gallery {
     }
 }
 
-fn drop_target_example<'a>(active: bool) -> DropTarget<'a, Message> {
+fn action_tile_example<'a>(active: bool) -> ActionTile<'a, Message> {
     const ICON_CONTAINER_SIZE: f32 = 44.0;
 
     let icon = container(Icon::Plus.view().width(16).height(16))
@@ -550,11 +550,11 @@ fn drop_target_example<'a>(active: bool) -> DropTarget<'a, Message> {
     let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Fill);
 
     if active {
-        DropTarget::new(content, Message::OpenDialog)
+        ActionTile::new(content, Message::OpenDialog)
             .width(Fill)
             .padding([72.0, 24.0])
     } else {
-        DropTarget::disabled(content)
+        ActionTile::disabled(content)
             .width(Fill)
             .padding([72.0, 24.0])
     }

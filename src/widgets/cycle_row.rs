@@ -6,9 +6,9 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    control::ActionSurface,
+    button::{Button, ButtonKind},
     list_row::{self, ListRow},
-    spacing, style,
+    spacing,
     text::TextExt as _,
 };
 
@@ -58,19 +58,15 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Messag
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        let enabled = cycle.previous.is_some() || cycle.next.is_some();
-        let previous_enabled = cycle.previous.is_some();
-        let previous = ActionSurface::new(Icon::Arrow.view())
-            .padding(spacing::XS)
-            .sensitive(previous_enabled)
-            .style(style::action)
+        let previous = Button::icon_only("Previous value", Icon::Arrow)
+            .kind(ButtonKind::Transparent)
+            .diameter(32.0)
             .on_press_maybe(cycle.previous);
 
-        let next_enabled = cycle.next.is_some();
-        let next = ActionSurface::new(Icon::Arrow.view().rotation(std::f32::consts::PI))
-            .padding(spacing::XS)
-            .sensitive(next_enabled)
-            .style(style::action)
+        let next = Button::icon_only("Next value", Icon::Arrow)
+            .kind(ButtonKind::Transparent)
+            .diameter(32.0)
+            .icon_rotation(std::f32::consts::PI)
             .on_press_maybe(cycle.next);
 
         let labels = column![
@@ -84,7 +80,6 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
         ListRow::new(labels)
             .leading(previous)
             .trailing(next)
-            .enabled(enabled)
             .padding([spacing::MD, spacing::LG])
     }
 }

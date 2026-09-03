@@ -14,8 +14,8 @@ use uuid::Uuid;
 use crate::{
     Icon, operation,
     widget::{
-        ActionRow, ActionRowState, ArtworkCard, BottleStatus, CardAction, DropTarget, InfoCard,
-        InfoCardKind, ListRow, PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
+        ActionRow, ActionRowState, ActionTile, ArtworkCard, BottleStatus, CardAction, InfoCard,
+        InfoCardKind, PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
     },
 };
 
@@ -192,13 +192,11 @@ impl State {
         responsive(move |size| {
             let columns = usize::from(size.width >= BOTTLE_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
             let rows = bottle_states.iter().map(|state| {
-                let row: ListRow<'_, Msg> =
-                    ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
-                        .description(state.runner().name())
-                        .icon(Icon::Bottles)
-                        .into();
-
-                row.selected(selected_id == Some(state.id())).into()
+                ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
+                    .description(state.runner().name())
+                    .icon(Icon::Bottles)
+                    .selected(selected_id == Some(state.id()))
+                    .into()
             });
             let grid = Grid::with_children(rows)
                 .columns(columns)
@@ -288,7 +286,7 @@ impl State {
     }
 }
 
-fn new_program_target<'a>() -> DropTarget<'a, Message> {
+fn new_program_target<'a>() -> ActionTile<'a, Message> {
     const ICON_CONTAINER_SIZE: f32 = 44.0;
 
     let icon = container(Icon::Plus.view().width(16).height(16))
@@ -309,7 +307,7 @@ fn new_program_target<'a>() -> DropTarget<'a, Message> {
 
     let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Length::Fill);
 
-    DropTarget::disabled(content)
+    ActionTile::disabled(content)
         .width(Length::Fill)
         .padding([72.0, spacing::LG])
 }
