@@ -7,7 +7,7 @@ use iced::{
 use crate::icons::{self, Icon};
 
 use super::{
-    control::{ActionState, ActionSurface},
+    focusable_action::{ActionState, FocusableAction},
     spacing,
     text::TextExt as _,
 };
@@ -187,8 +187,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
         let shape = button.shape;
         let kind = button.kind;
-        let mut control = ActionSurface::new(content)
-            .sensitive(!disabled)
+        let mut control = FocusableAction::new(content)
             .on_press_maybe(button.on_press.filter(|_| !button.loading))
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
@@ -260,7 +259,7 @@ fn appearance(
     let semantic = crate::theme::colors(theme);
     let colors = colors(
         theme,
-        !state.sensitive,
+        !state.enabled,
         state.hovered || state.focused,
         state.pressed,
         kind,
