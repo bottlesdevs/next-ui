@@ -768,16 +768,14 @@ fn visual_order(header_count: usize, columns: usize, expansions: &[Expansion]) -
 }
 
 fn reconcile_open(disclosures: &mut [Disclosure], expansions: &[Expansion]) {
-    for target in 0..disclosures.len() {
-        if disclosures[target].open {
-            let target_footprint = expansions[target].footprint;
+    let open = disclosures
+        .iter_mut()
+        .enumerate()
+        .filter_map(|(index, disclosure)| std::mem::take(&mut disclosure.open).then_some(index))
+        .collect::<Vec<_>>();
 
-            for (disclosure, expansion) in disclosures[..target].iter_mut().zip(expansions) {
-                if disclosure.open && expansion.footprint.overlaps(target_footprint) {
-                    disclosure.open = false;
-                }
-            }
-        }
+    for index in open {
+        toggle_open(disclosures, index, expansions);
     }
 }
 
