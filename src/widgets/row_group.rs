@@ -234,9 +234,14 @@ impl Footprint {
 }
 
 #[derive(Default)]
+struct Disclosure {
+    open: bool,
+    interaction: Interaction,
+}
+
+#[derive(Default)]
 struct State {
-    open: Vec<usize>,
-    interactions: Vec<Interaction>,
+    disclosures: Vec<Disclosure>,
     structure: Vec<Option<usize>>,
 }
 
@@ -247,7 +252,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
 
     fn state(&self) -> tree::State {
         tree::State::new(State {
-            interactions: std::iter::repeat_with(Interaction::default)
+            disclosures: std::iter::repeat_with(Disclosure::default)
                 .take(self.expansions.len())
                 .collect(),
             structure: self.structure.clone(),
@@ -272,12 +277,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         let state = tree.state.downcast_mut::<State>();
         state.structure.clone_from(&self.structure);
         if structure_changed {
-            state.open.clear();
-            state.interactions = std::iter::repeat_with(Interaction::default)
+            state.disclosures = std::iter::repeat_with(Disclosure::default)
                 .take(self.expansions.len())
                 .collect();
         } else {
-            reconcile_open(&mut state.open, &self.expansions);
+            reconcile_open(&mut state.disclosures, &self.expansions);
         }
     }
 
@@ -334,9 +338,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
             let mut body_height: f32 = 0.0;
             let mut line_open = false;
 
-            for expansion in &self.expansions {
-                if expansion.footprint.line != line || !state.open.contains(&expansion.header_index)
-                {
+            for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
+                if expansion.footprint.line != line || !disclosure.open {
                     continue;
                 }
 
@@ -394,17 +397,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
 
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
+            let mut expansion_index = 0;
+
             for index in &order {
-                if let Some(position) = self
+                if self
                     .expansions
-                    .iter()
-                    .position(|expansion| expansion.header_index == *index)
+                    .get(expansion_index)
+                    .is_some_and(|expansion| expansion.header_index == *index)
                 {
                     operation.focusable(
                         None,
                         children[*index].bounds(),
-                        &mut state.interactions[position],
+                        &mut state.disclosures[expansion_index].interaction,
                     );
+                    expansion_index += 1;
                 }
 
                 if is_visible(children[*index]) {
@@ -453,11 +459,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         let children: Vec<_> = layout.children().collect();
         let state = tree.state.downcast_mut::<State>();
         let activated = state
-            .interactions
+            .disclosures
             .iter_mut()
             .zip(&self.expansions)
-            .find_map(|(interaction, expansion)| {
-                interaction
+            .enumerate()
+            .find_map(|(index, (disclosure, expansion))| {
+                disclosure
+                    .interaction
                     .update(
                         event,
                         children[expansion.header_index]
@@ -473,11 +481,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
                         true,
                         shell,
                     )
-                    .then_some(expansion.header_index)
+                    .then_some(index)
             });
 
-        if let Some(header_index) = activated {
-            toggle_open(&mut state.open, header_index, &self.expansions);
+        if let Some(index) = activated {
+            toggle_open(&mut state.disclosures, index, &self.expansions);
             shell.invalidate_layout();
             shell.request_redraw();
         }
@@ -541,12 +549,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         let children: Vec<_> = layout.children().collect();
         let colors = crate::theme::colors(theme);
 
-        for header_index in &state.open {
-            let expansion = self
-                .expansions
-                .iter()
-                .find(|expansion| expansion.header_index == *header_index)
-                .expect("open expander is present in the current group");
+        for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
+            if !disclosure.open {
+                continue;
+            }
+
             let header = children[expansion.header_index].bounds();
             let panel = children[expansion.content_index].bounds();
 
@@ -588,12 +595,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
             }
         }
 
-        for (expansion, interaction) in self.expansions.iter().zip(&state.interactions) {
+        for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
             let bounds = children[expansion.header_index].bounds();
             let style = expander_header_style(
                 theme,
-                interaction,
-                state.open.contains(&expansion.header_index),
+                &disclosure.interaction,
+                disclosure.open,
                 bounds,
                 cursor,
             );
@@ -625,16 +632,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
             }
         }
 
-        for expansion in &self.expansions {
+        for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
             draw_caret(
                 renderer,
                 theme,
                 disclosure_bounds(children[expansion.header_index].bounds()),
-                if state.open.contains(&expansion.header_index) {
-                    1.0
-                } else {
-                    0.0
-                },
+                if disclosure.open { 1.0 } else { 0.0 },
             );
         }
     }
@@ -764,41 +767,35 @@ fn visual_order(header_count: usize, columns: usize, expansions: &[Expansion]) -
     order
 }
 
-fn reconcile_open(open: &mut Vec<usize>, expansions: &[Expansion]) {
-    let previous = std::mem::take(open);
+fn reconcile_open(disclosures: &mut [Disclosure], expansions: &[Expansion]) {
+    for target in 0..disclosures.len() {
+        if disclosures[target].open {
+            let target_footprint = expansions[target].footprint;
 
-    for expansion in expansions {
-        if previous.contains(&expansion.header_index) {
-            open.retain(|header_index| {
-                expansions
-                    .iter()
-                    .find(|candidate| candidate.header_index == *header_index)
-                    .is_some_and(|candidate| !candidate.footprint.overlaps(expansion.footprint))
-            });
-            open.push(expansion.header_index);
+            for (disclosure, expansion) in disclosures[..target].iter_mut().zip(expansions) {
+                if disclosure.open && expansion.footprint.overlaps(target_footprint) {
+                    disclosure.open = false;
+                }
+            }
         }
     }
 }
 
-fn toggle_open(open: &mut Vec<usize>, target: usize, expansions: &[Expansion]) {
-    if let Some(position) = open.iter().position(|index| *index == target) {
-        open.remove(position);
+fn toggle_open(disclosures: &mut [Disclosure], target: usize, expansions: &[Expansion]) {
+    if disclosures[target].open {
+        disclosures[target].open = false;
         return;
     }
 
-    let target_footprint = expansions
-        .iter()
-        .find(|expansion| expansion.header_index == target)
-        .expect("activated expander is present in the current group")
-        .footprint;
-    open.retain(|header_index| {
-        expansions
-            .iter()
-            .find(|expansion| expansion.header_index == *header_index)
-            .is_some_and(|expansion| !expansion.footprint.overlaps(target_footprint))
-    });
-    open.push(target);
-    open.sort_unstable();
+    let target_footprint = expansions[target].footprint;
+
+    for (disclosure, expansion) in disclosures.iter_mut().zip(expansions) {
+        if disclosure.open && expansion.footprint.overlaps(target_footprint) {
+            disclosure.open = false;
+        }
+    }
+
+    disclosures[target].open = true;
 }
 
 #[cfg(test)]
@@ -822,17 +819,19 @@ mod tests {
     #[test]
     fn toggles_keep_disjoint_panels_and_evict_overlaps() {
         let expansions = expansions(3, &[(0, 1), (1, 2), (2, 3)]);
-        let mut open = Vec::new();
+        let mut disclosures: Vec<_> = std::iter::repeat_with(Disclosure::default)
+            .take(expansions.len())
+            .collect();
 
-        toggle_open(&mut open, 0, &expansions);
-        toggle_open(&mut open, 1, &expansions);
-        assert_eq!(open, [0, 1]);
+        toggle_open(&mut disclosures, 0, &expansions);
+        toggle_open(&mut disclosures, 1, &expansions);
+        assert!(disclosures[0].open && disclosures[1].open);
 
-        toggle_open(&mut open, 2, &expansions);
-        assert_eq!(open, [2]);
+        toggle_open(&mut disclosures, 2, &expansions);
+        assert!(!disclosures[0].open && !disclosures[1].open && disclosures[2].open);
 
-        toggle_open(&mut open, 2, &expansions);
-        assert!(open.is_empty());
+        toggle_open(&mut disclosures, 2, &expansions);
+        assert!(disclosures.iter().all(|disclosure| !disclosure.open));
     }
 
     #[test]
