@@ -392,13 +392,21 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         let order = visual_order(self.header_count, self.columns, &self.expansions);
         let state = tree.state.downcast_mut::<State>();
 
-        for (interaction, expansion) in state.interactions.iter_mut().zip(&self.expansions) {
-            operation.focusable(None, children[expansion.header_index].bounds(), interaction);
-        }
-
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
             for index in &order {
+                if let Some(position) = self
+                    .expansions
+                    .iter()
+                    .position(|expansion| expansion.header_index == *index)
+                {
+                    operation.focusable(
+                        None,
+                        children[*index].bounds(),
+                        &mut state.interactions[position],
+                    );
+                }
+
                 if is_visible(children[*index]) {
                     self.children[*index].as_widget_mut().operate(
                         &mut tree.children[*index],
