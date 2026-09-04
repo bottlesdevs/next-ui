@@ -256,7 +256,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
                 .take(self.expansions.len())
                 .collect(),
             structure: self.structure.clone(),
-            ..State::default()
         })
     }
 
