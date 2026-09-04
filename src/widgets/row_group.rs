@@ -238,7 +238,6 @@ struct State {
     open: Vec<usize>,
     interactions: Vec<Interaction>,
     structure: Vec<Option<usize>>,
-    columns: usize,
 }
 
 impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Message> {
@@ -252,7 +251,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
                 .take(self.expansions.len())
                 .collect(),
             structure: self.structure.clone(),
-            columns: self.columns,
             ..State::default()
         })
     }
@@ -263,7 +261,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
 
     fn diff(&self, tree: &mut Tree) {
         let state = tree.state.downcast_ref::<State>();
-        let structure_changed = state.structure != self.structure || state.columns != self.columns;
+        let structure_changed = state.structure != self.structure;
 
         if structure_changed {
             tree.children = self.children();
@@ -273,12 +271,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
 
         let state = tree.state.downcast_mut::<State>();
         state.structure.clone_from(&self.structure);
-        state.columns = self.columns;
         if structure_changed {
             state.open.clear();
             state.interactions = std::iter::repeat_with(Interaction::default)
                 .take(self.expansions.len())
                 .collect();
+        } else {
+            reconcile_open(&mut state.open, &self.expansions);
         }
     }
 
@@ -755,6 +754,22 @@ fn visual_order(header_count: usize, columns: usize, expansions: &[Expansion]) -
     }
 
     order
+}
+
+fn reconcile_open(open: &mut Vec<usize>, expansions: &[Expansion]) {
+    let previous = std::mem::take(open);
+
+    for expansion in expansions {
+        if previous.contains(&expansion.header_index) {
+            open.retain(|header_index| {
+                expansions
+                    .iter()
+                    .find(|candidate| candidate.header_index == *header_index)
+                    .is_some_and(|candidate| !candidate.footprint.overlaps(expansion.footprint))
+            });
+            open.push(expansion.header_index);
+        }
+    }
 }
 
 fn toggle_open(open: &mut Vec<usize>, target: usize, expansions: &[Expansion]) {
