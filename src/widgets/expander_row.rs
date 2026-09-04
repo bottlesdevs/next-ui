@@ -6,8 +6,6 @@ pub struct ExpanderRow<'a, Message> {
     pub(crate) header: Header<'a, Message>,
     pub(crate) columns: usize,
     pub(crate) content: Vec<Element<'a, Message>>,
-    pub(crate) content_enabled: bool,
-    pub(crate) enabled: bool,
 }
 
 pub(crate) enum Header<'a, Message> {
@@ -27,8 +25,6 @@ impl<'a, Message> ExpanderRow<'a, Message> {
             },
             columns: 1,
             content: Vec::new(),
-            content_enabled: true,
-            enabled: true,
         }
     }
 
@@ -58,16 +54,6 @@ impl<'a, Message> ExpanderRow<'a, Message> {
 
     pub fn row(mut self, row: impl Into<Element<'a, Message>>) -> Self {
         self.content.push(row.into());
-        self
-    }
-
-    pub fn content_enabled(mut self, enabled: bool) -> Self {
-        self.content_enabled = enabled;
-        self
-    }
-
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
         self
     }
 }

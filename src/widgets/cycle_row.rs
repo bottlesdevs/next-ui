@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, Element, Fill,
-    widget::{column, text},
+    Alignment, Element, Fill, Theme,
+    widget::{column, container, text},
 };
 
 use crate::icons::Icon;
@@ -52,30 +52,48 @@ impl<'a, Message> CycleRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        ListRow::from(cycle).into()
+        cycle.lower().into()
     }
 }
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
+        cycle.lower()
+    }
+}
+
+impl<'a, Message: Clone + 'a> CycleRow<'a, Message> {
+    fn lower(self) -> ListRow<'a, Message> {
+        let previous = self.previous;
+        let next = self.next;
+        let enabled = previous.is_some() || next.is_some();
         let previous = Button::icon_only("Previous value", Icon::Arrow)
             .kind(ButtonKind::Transparent)
             .diameter(32.0)
-            .on_press_maybe(cycle.previous);
+            .on_press_maybe(previous);
 
         let next = Button::icon_only("Next value", Icon::Arrow)
             .kind(ButtonKind::Transparent)
             .diameter(32.0)
             .icon_rotation(std::f32::consts::PI)
-            .on_press_maybe(cycle.next);
+            .on_press_maybe(next);
 
-        let labels = column![
-            text(cycle.title).label().medium(),
-            text(cycle.value).size(list_row::BODY_SIZE).muted(),
-        ]
-        .width(Fill)
-        .align_x(Alignment::Center)
-        .spacing(spacing::XS);
+        let labels = container(
+            column![
+                text(self.title).label().medium(),
+                text(self.value).size(list_row::BODY_SIZE).muted(),
+            ]
+            .width(Fill)
+            .align_x(Alignment::Center)
+            .spacing(spacing::XS),
+        )
+        .style(move |theme: &Theme| {
+            container::Style::default().color(if enabled {
+                crate::theme::colors(theme).text
+            } else {
+                crate::theme::colors(theme).muted
+            })
+        });
 
         ListRow::new(labels)
             .leading(previous)

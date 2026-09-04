@@ -16,10 +16,7 @@ use iced::{
 use crate::widget::{InfoCard, InfoCardKind};
 use crate::{
     Icon,
-    widget::{
-        ActionRow, ActionRowState, CycleRow, ExpanderRow, InfoRow, ListRow, RowGroup, SwitcherRow,
-        spacing,
-    },
+    widget::{ActionRow, CycleRow, ExpanderRow, InfoRow, ListRow, RowGroup, SwitcherRow, spacing},
 };
 
 const SETTINGS_TRACK_MIN_WIDTH: f32 = 300.0;
@@ -140,20 +137,17 @@ impl State {
                                 ))
                                 .icon(Icon::Run),
                         )
-                        .row(unavailable())
-                        .content_enabled(false),
+                        .row(unavailable()),
                     )
                     .expander(
                         ExpanderRow::new("Dependencies")
                             .description("Install fonts, codecs, libraries...")
-                            .row(unavailable())
-                            .content_enabled(false),
+                            .row(unavailable()),
                     )
                     .expander(
                         ExpanderRow::new("Drives")
                             .description("Define your custom drives")
-                            .row(unavailable())
-                            .content_enabled(false),
+                            .row(unavailable()),
                     );
 
                 let graphics = RowGroup::new()
@@ -176,10 +170,7 @@ impl State {
                                 .description("FidelityFX Super Resolution"),
                         )
                         .columns(2)
-                        .row(
-                            ActionRow::new("Quality", ActionRowState::Disabled)
-                                .description("Balanced"),
-                        )
+                        .row(ActionRow::new("Quality", None).description("Balanced"))
                         .row(CycleRow::new("Sharpening", "5")),
                     );
 
@@ -198,8 +189,7 @@ impl State {
                         SwitcherRow::new("Display Settings", false)
                             .description("Resolution and other options"),
                     )
-                    .row(unavailable())
-                    .content_enabled(false),
+                    .row(unavailable()),
                 );
 
                 #[cfg(target_os = "linux")]

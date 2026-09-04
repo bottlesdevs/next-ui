@@ -27,7 +27,7 @@ enum PressOrigin {
 }
 
 #[derive(Debug, Default)]
-struct Interaction {
+pub(crate) struct Interaction {
     press: Option<PressOrigin>,
     focused: bool,
     hovered: bool,
@@ -42,7 +42,7 @@ impl Interaction {
         }
     }
 
-    fn update<Message>(
+    pub(crate) fn update<Message>(
         &mut self,
         event: &Event,
         bounds: Rectangle,
@@ -116,7 +116,7 @@ impl Interaction {
         activated
     }
 
-    fn state(
+    pub(crate) fn state(
         &self,
         enabled: bool,
         selected: bool,
@@ -343,7 +343,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
             layout.bounds(),
             cursor,
         );
-        let style = (self.style)(theme, state);
+        let mut style = (self.style)(theme, state);
+
+        if !state.enabled {
+            style.text_color = crate::theme::colors(theme).muted;
+        }
 
         if style.background.is_some() || style.border.width > 0.0 || style.shadow.color.a > 0.0 {
             renderer.fill_quad(

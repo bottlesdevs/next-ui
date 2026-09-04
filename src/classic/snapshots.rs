@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     Icon,
-    widget::{ActionRow, ActionRowState, InfoCard, InfoCardKind, RowGroup},
+    widget::{ActionRow, InfoCard, InfoCardKind, RowGroup},
 };
 
 const CONTENT_GRID_BREAKPOINT: f32 = 720.0;
@@ -124,7 +124,7 @@ impl State {
                     RowGroup::new().columns(columns),
                     |rows, (title, description)| {
                         rows.row(
-                            ActionRow::new(title, ActionRowState::Ready(Action::Selected))
+                            ActionRow::new(title, Action::Selected)
                                 .description(description)
                                 .icon(Icon::Timer),
                         )

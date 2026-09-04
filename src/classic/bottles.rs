@@ -14,8 +14,8 @@ use uuid::Uuid;
 use crate::{
     Icon, operation,
     widget::{
-        ActionRow, ActionRowState, ActionTile, ArtworkCard, BottleStatus, CardAction, InfoCard,
-        InfoCardKind, PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
+        ActionRow, ActionTile, ArtworkCard, BottleStatus, CardAction, InfoCard, InfoCardKind,
+        PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
     },
 };
 
@@ -192,7 +192,7 @@ impl State {
         responsive(move |size| {
             let columns = usize::from(size.width >= BOTTLE_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
             let rows = bottle_states.iter().map(|state| {
-                ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
+                ActionRow::new(state.name(), on_select(state.id()))
                     .description(state.runner().name())
                     .icon(Icon::Bottles)
                     .selected(selected_id == Some(state.id()))

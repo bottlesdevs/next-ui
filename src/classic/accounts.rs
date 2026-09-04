@@ -13,8 +13,8 @@ use uuid::Uuid;
 use crate::{
     Icon,
     widget::{
-        ActionRow, ActionRowState, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, InfoRow,
-        ListRow, PickerRow, Popover, PopoverItem, RowGroup, TextRow, Title,
+        ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, InfoRow, ListRow, PickerRow,
+        Popover, PopoverItem, RowGroup, TextRow, Title,
     },
 };
 
@@ -127,12 +127,9 @@ impl LoginDialog {
                 .center_x(iced::Fill),
             RowGroup::new()
                 .row(
-                    ActionRow::new(
-                        "Sign-in link (click to copy)",
-                        ActionRowState::Ready(Message::CopyLoginUrl),
-                    )
-                    .description(&self.prompt.url)
-                    .icon(Icon::Controller),
+                    ActionRow::new("Sign-in link (click to copy)", Message::CopyLoginUrl)
+                        .description(&self.prompt.url)
+                        .icon(Icon::Controller),
                 )
                 .row(action_button_row(
                     Icon::Arrow,

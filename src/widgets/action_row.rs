@@ -12,11 +12,9 @@ use super::{
     text::TextExt as _,
 };
 
-#[derive(Debug, Clone)]
-pub enum State<Message> {
+enum State<Message> {
     Ready(Message),
     Disabled,
-    /// In-flight state (e.g. downloading a component, linking an account), `0.0..=1.0`.
     Progress(f32),
 }
 
@@ -29,13 +27,20 @@ pub struct ActionRow<'a, Message> {
 }
 
 impl<'a, Message> ActionRow<'a, Message> {
-    pub fn new(title: &'a str, state: State<Message>) -> Self {
+    pub fn new(title: &'a str, action: impl Into<Option<Message>>) -> Self {
         Self {
             title,
             description: "",
             icon: None,
-            state,
+            state: action.into().map_or(State::Disabled, State::Ready),
             selected: false,
+        }
+    }
+
+    pub fn progress(title: &'a str, progress: f32) -> Self {
+        Self {
+            state: State::Progress(progress),
+            ..Self::new(title, None)
         }
     }
 
@@ -57,9 +62,15 @@ impl<'a, Message> ActionRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
+        action.lower()
+    }
+}
+
+impl<'a, Message: Clone + 'a> ActionRow<'a, Message> {
+    fn lower(self) -> Element<'a, Message> {
         let mut description = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
-        if let Some(icon) = action.icon {
+        if let Some(icon) = self.icon {
             description = description.push(
                 icon.view()
                     .width(list_row::BODY_SIZE)
@@ -67,24 +78,24 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Messa
             );
         }
 
-        description = description.push(text(action.description).size(list_row::BODY_SIZE).muted());
+        description = description.push(text(self.description).size(list_row::BODY_SIZE).muted());
 
-        let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
-        let trailing: Element<'a, Message> = match &action.state {
-            State::Progress(progress) => ProgressRing::new(*progress).into(),
-            State::Ready(_) | State::Disabled => {
-                Icon::Arrow.view().rotation(std::f32::consts::PI).into()
-            }
+        let labels = column![text(self.title).label().medium(), description].spacing(spacing::XS);
+        let (trailing, action): (Element<'a, Message>, _) = match self.state {
+            State::Ready(message) => (
+                Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
+                Some(message),
+            ),
+            State::Disabled => (
+                Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
+                None,
+            ),
+            State::Progress(progress) => (ProgressRing::new(progress).into(), None),
         };
-        let on_press = match action.state {
-            State::Ready(message) => Some(message),
-            State::Disabled | State::Progress(_) => None,
-        };
-
         list_row::action(
             ListRow::new(labels).trailing(trailing),
-            on_press,
-            action.selected,
+            action,
+            self.selected,
         )
     }
 }

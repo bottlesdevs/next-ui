@@ -6,8 +6,8 @@ mod setup;
 use crate::{
     Experience, Icon, theme,
     widget::{
-        ActionRow, ActionRowState as RowState, Button, ButtonKind, HeaderBar, InfoCard,
-        InfoCardKind, InfoRow, RowGroup, TextExt as _,
+        ActionRow, Button, ButtonKind, HeaderBar, InfoCard, InfoCardKind, InfoRow, RowGroup,
+        TextExt as _,
     },
     window,
 };
@@ -182,10 +182,8 @@ impl State {
         let mut has_failures = false;
 
         if matches!(self.setup.phase(), setup::Phase::Preparing(_)) {
-            group = group.row(
-                ActionRow::new("Resource catalog", RowState::Progress(0.0))
-                    .description("Preparing"),
-            );
+            group =
+                group.row(ActionRow::progress("Resource catalog", 0.0).description("Preparing"));
         }
 
         for item in self.setup.downloads() {
@@ -200,13 +198,11 @@ impl State {
             };
 
             group = match &item.state {
-                setup::DownloadState::Running(_) => group.row(
-                    ActionRow::new(&item.label, RowState::Progress(item.progress))
-                        .description(description),
-                ),
-                setup::DownloadState::Succeeded => group.row(
-                    ActionRow::new(&item.label, RowState::Progress(1.0)).description(description),
-                ),
+                setup::DownloadState::Running(_) => group
+                    .row(ActionRow::progress(&item.label, item.progress).description(description)),
+                setup::DownloadState::Succeeded => {
+                    group.row(ActionRow::progress(&item.label, 1.0).description(description))
+                }
                 setup::DownloadState::Pending
                 | setup::DownloadState::Cancelled
                 | setup::DownloadState::Unavailable
@@ -296,13 +292,10 @@ impl State {
 
     fn experience_button(&self, experience: Experience) -> Element<'_, Action> {
         let selected = experience == self.experience;
-        let state = if experience_available(experience) {
-            RowState::Ready(Action::SelectExperience(experience))
-        } else {
-            RowState::Disabled
-        };
+        let action =
+            experience_available(experience).then_some(Action::SelectExperience(experience));
 
-        ActionRow::new(experience_option_label(experience), state)
+        ActionRow::new(experience_option_label(experience), action)
             .description(experience_caption(experience))
             .selected(selected)
             .into()

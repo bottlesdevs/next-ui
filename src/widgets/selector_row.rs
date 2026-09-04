@@ -208,7 +208,6 @@ fn header<'a, Message: 'a>(
             .spacing(spacing::XS),
     )
     .into_disclosure_content()
-    .element
 }
 
 struct Selector<'a, Message> {

@@ -27,12 +27,6 @@ pub struct ListRow<'a, Message> {
     padding: Padding,
 }
 
-pub(crate) struct Content<'a, Message> {
-    pub(crate) element: Element<'a, Message>,
-    /// Index of the disclosure slot in the inner iced row, when present.
-    pub(crate) disclosure_index: Option<usize>,
-}
-
 #[doc(hidden)]
 pub fn labels<'a, Message: 'a>(
     title: impl IntoFragment<'a>,
@@ -76,20 +70,19 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
-    pub(crate) fn into_content(self) -> Content<'a, Message> {
+    pub(crate) fn into_content(self) -> Element<'a, Message> {
         self.lower(false)
     }
 
-    pub(crate) fn into_disclosure_content(self) -> Content<'a, Message> {
+    pub(crate) fn into_disclosure_content(self) -> Element<'a, Message> {
         self.lower(true)
     }
 
-    fn lower(self, disclosure: bool) -> Content<'a, Message> {
-        let disclosure_index = disclosure.then_some(self.leading.len() + 1);
+    fn lower(self, disclosure: bool) -> Element<'a, Message> {
         let mut trailing = self.trailing;
 
         if disclosure {
-            trailing.insert(0, Space::new().width(20).height(20).into());
+            trailing.push(Space::new().width(20).height(20).into());
         }
 
         let row = IcedRow::new()
@@ -99,21 +92,18 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             .push(container(self.body).width(Fill))
             .extend(trailing);
 
-        Content {
-            element: container(row)
-                .width(Fill)
-                .padding(self.padding)
-                .align_y(Alignment::Center)
-                .clip(true)
-                .into(),
-            disclosure_index,
-        }
+        container(row)
+            .width(Fill)
+            .padding(self.padding)
+            .align_y(Alignment::Center)
+            .clip(true)
+            .into()
     }
 }
 
 impl<'a, Message: 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
     fn from(row: ListRow<'a, Message>) -> Self {
-        container(row.into_content().element)
+        container(row.into_content())
             .width(Fill)
             .style(control_style)
             .into()
@@ -125,7 +115,7 @@ pub(crate) fn action<'a, Message: Clone + 'a>(
     on_press: Option<Message>,
     selected: bool,
 ) -> Element<'a, Message> {
-    FocusableAction::new(row.into_content().element)
+    FocusableAction::new(row.into_content())
         .width(Fill)
         .selected(selected)
         .on_press_maybe(on_press)
@@ -156,11 +146,7 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
 
     button::Style {
         background: Some(Background::Color(color)),
-        text_color: if state.enabled {
-            colors.text
-        } else {
-            colors.muted
-        },
+        text_color: colors.text,
         border: Border::default().rounded(6),
         ..button::Style::default()
     }

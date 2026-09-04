@@ -5,11 +5,11 @@ use iced::{
 use next_ui::{
     Icon, theme,
     widget::{
-        ActionRow, ActionRowState, ActionTile, ArtworkCard, BottleStatus, Button, ButtonKind, Card,
-        CardAction, CycleRow, Dialog, ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow,
-        ListRow, PickerRow, Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult,
-        SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _,
-        TextRow, Title, WindowModal,
+        ActionRow, ActionTile, ArtworkCard, BottleStatus, Button, ButtonKind, Card, CardAction,
+        CycleRow, Dialog, ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow, ListRow,
+        PickerRow, Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult, SearchState,
+        SelectorRow, StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _, TextRow, Title,
+        WindowModal,
     },
     window,
 };
@@ -291,12 +291,10 @@ impl Gallery {
                 (*option).to_owned()
             })
             .placeholder("No options available"),
-            ActionRow::new("Title", ActionRowState::Ready(Message::Noop))
-                .description("Description"),
-            ActionRow::new("Unavailable action", ActionRowState::Disabled)
+            ActionRow::new("Title", Message::Noop).description("Description"),
+            ActionRow::new("Unavailable action", None)
                 .description("This action cannot currently run"),
-            ActionRow::new("In progress", ActionRowState::Progress(0.65))
-                .description("65% complete"),
+            ActionRow::progress("In progress", 0.65).description("65% complete"),
             InfoRow::new("Title")
                 .description("Description")
                 .icon(Icon::Timer),
@@ -319,15 +317,19 @@ impl Gallery {
             )
             .columns(2)
             .row(
-                ActionRow::new("Quality", ActionRowState::Ready(Message::Noop))
+                ActionRow::new("Quality", self.switched_on.then_some(Message::Noop))
                     .description("Balanced"),
             )
             .row(
                 CycleRow::new("Sharpening", "5")
-                    .on_previous_maybe((self.value > 0).then_some(Message::Previous))
-                    .on_next_maybe((self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),),
-            )
-            .content_enabled(self.switched_on),
+                    .on_previous_maybe(
+                        (self.switched_on && self.value > 0).then_some(Message::Previous),
+                    )
+                    .on_next_maybe(
+                        (self.switched_on && self.value + 1 < DLSS_LEVELS.len())
+                            .then_some(Message::Next),
+                    ),
+            ),
         ]
         .spacing(24);
 
@@ -356,7 +358,7 @@ impl Gallery {
                     .on_press(Message::Noop),
             )
             .row(
-                ActionRow::new("Discrete GPU", ActionRowState::Ready(Message::Noop))
+                ActionRow::new("Discrete GPU", Message::Noop)
                     .description("Configure graphics adapter"),
             )
             .expander(
@@ -367,17 +369,19 @@ impl Gallery {
                 )
                 .columns(2)
                 .row(
-                    ActionRow::new("Quality", ActionRowState::Ready(Message::Noop))
+                    ActionRow::new("Quality", self.group_switched_on.then_some(Message::Noop))
                         .description("Balanced"),
                 )
                 .row(
                     CycleRow::new("Sharpening", DLSS_LEVELS[self.value])
-                        .on_previous_maybe((self.value > 0).then_some(Message::Previous))
+                        .on_previous_maybe(
+                            (self.group_switched_on && self.value > 0).then_some(Message::Previous),
+                        )
                         .on_next_maybe(
-                            (self.value + 1 < DLSS_LEVELS.len()).then_some(Message::Next),
+                            (self.group_switched_on && self.value + 1 < DLSS_LEVELS.len())
+                                .then_some(Message::Next),
                         ),
-                )
-                .content_enabled(self.group_switched_on),
+                ),
             );
 
         let multiple_expanders = RowGroup::new()
@@ -388,7 +392,7 @@ impl Gallery {
                 ExpanderRow::new("First expander")
                     .description("One-column panel")
                     .row(
-                        ActionRow::new("First action", ActionRowState::Ready(Message::Noop))
+                        ActionRow::new("First action", Message::Noop)
                             .description("Inside the first column"),
                     ),
             )
@@ -397,16 +401,16 @@ impl Gallery {
                     .description("Two-column panel")
                     .columns(2)
                     .row(
-                        ActionRow::new("Second action", ActionRowState::Ready(Message::Noop))
+                        ActionRow::new("Second action", Message::Noop)
                             .description("First panel column"),
                     )
                     .row(
-                        ActionRow::new("Third action", ActionRowState::Ready(Message::Noop))
+                        ActionRow::new("Third action", Message::Noop)
                             .description("Second panel column"),
                     ),
             )
             .row(
-                ActionRow::new("Independent action", ActionRowState::Ready(Message::Noop))
+                ActionRow::new("Independent action", Message::Noop)
                     .description("Beside the two expanders"),
             );
 
@@ -568,10 +572,7 @@ fn action_grid_expander(title: &'static str) -> ExpanderRow<'static, Message> {
                 .description("Contains four actions")
                 .columns(2),
             |expander, title| {
-                expander.row(
-                    ActionRow::new(title, ActionRowState::Ready(Message::Noop))
-                        .description("Available action"),
-                )
+                expander.row(ActionRow::new(title, Message::Noop).description("Available action"))
             },
         )
 }

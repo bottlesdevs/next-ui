@@ -96,11 +96,7 @@ fn style(theme: &Theme, state: ActionState) -> button::Style {
         } else {
             None
         },
-        text_color: if state.enabled {
-            colors.text
-        } else {
-            colors.muted
-        },
+        text_color: colors.text,
         border: Border::default().rounded(BORDER_RADIUS),
         ..button::Style::default()
     }

@@ -17,8 +17,8 @@ mod snapshots;
 use crate::{
     Icon, theme,
     widget::{
-        ActionRow, ActionRowState, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup,
-        Tab, Tabs, TextRow, Title,
+        ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
+        TextRow, Title,
     },
     window,
 };
@@ -633,12 +633,12 @@ impl State {
                 RowGroup::new()
                     .title("Experience")
                     .row(
-                        ActionRow::new("Classic", ActionRowState::Disabled)
+                        ActionRow::new("Classic", None)
                             .description("Current experience")
                             .icon(Icon::Checkmark),
                     )
                     .row(
-                        ActionRow::new("Next", ActionRowState::Disabled)
+                        ActionRow::new("Next", None)
                             .description("Not available yet")
                             .icon(Icon::Wand),
                     ),

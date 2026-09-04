@@ -22,7 +22,7 @@ pub use ui::chrome as window;
 /// behavior.
 pub mod widget {
     pub use crate::widgets::{
-        action_row::{ActionRow, State as ActionRowState},
+        action_row::ActionRow,
         action_tile::ActionTile,
         artwork_card::{ArtworkCard, CardAction},
         button::{Button, ButtonKind},
