@@ -1,12 +1,9 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
-    widget::{Row, Space, container, mouse_area, row},
+    widget::{Row, container, mouse_area, row},
 };
 
-use crate::{
-    theme,
-    ui::chrome::{WINDOW_CONTROL_AT_START, WINDOW_CONTROL_SIZE},
-};
+use crate::theme;
 
 use super::spacing;
 
@@ -16,7 +13,6 @@ pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
-    reserve_window_control: bool,
     transparent: bool,
     on_drag: Message,
 }
@@ -27,17 +23,8 @@ impl<'a, Message> HeaderBar<'a, Message> {
             start: Vec::new(),
             middle: Vec::new(),
             end: Vec::new(),
-            reserve_window_control: true,
             transparent: false,
             on_drag,
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn without_window_control(on_drag: Message) -> Self {
-        Self {
-            reserve_window_control: false,
-            ..Self::new(on_drag)
         }
     }
 
@@ -65,26 +52,12 @@ impl<'a, Message> HeaderBar<'a, Message> {
 impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
     fn from(header: HeaderBar<'a, Message>) -> Self {
         let HeaderBar {
-            mut start,
+            start,
             middle,
-            mut end,
-            reserve_window_control,
+            end,
             transparent,
             on_drag,
         } = header;
-
-        if reserve_window_control {
-            let spacer: Element<'a, Message> = Space::new()
-                .width(WINDOW_CONTROL_SIZE)
-                .height(WINDOW_CONTROL_SIZE)
-                .into();
-
-            if WINDOW_CONTROL_AT_START {
-                start.insert(0, spacer);
-            } else {
-                end.push(spacer);
-            }
-        }
 
         let content = row![
             container(section(start))
@@ -122,7 +95,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 
 fn style(current_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(theme::window_color(current_theme))),
+        background: Some(Background::Color(theme::colors(current_theme).window)),
         border: Border::default().rounded(iced::border::top(6)),
         ..container::Style::default()
     }

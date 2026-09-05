@@ -13,9 +13,9 @@ use iced::{
 };
 
 use crate::{
+    chrome::{self, WINDOW_CONTROL_AT_START},
     theme,
     widget::{HeaderBar, spacing},
-    window::WINDOW_CONTROL_AT_START,
 };
 
 const BREAKPOINT: f32 = 900.0;
@@ -44,12 +44,8 @@ impl PaneContext {
         self.standalone
     }
 
-    pub(super) fn header<'a, Message>(self, on_drag: Message) -> HeaderBar<'a, Message> {
-        if self.owns_window_control {
-            HeaderBar::new(on_drag)
-        } else {
-            HeaderBar::without_window_control(on_drag)
-        }
+    pub(super) fn header<'a, Message: 'a>(self, on_drag: Message) -> HeaderBar<'a, Message> {
+        chrome::header(on_drag, self.owns_window_control)
     }
 }
 
@@ -413,7 +409,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                     && progress > 0.0
                     && let Some(bounds) = child_layout.bounds().intersection(&clip)
                 {
-                    let window = theme::window_color(theme);
+                    let window = theme::colors(theme).window;
                     renderer.with_layer(bounds, |renderer| {
                         renderer.fill_quad(
                             renderer::Quad {

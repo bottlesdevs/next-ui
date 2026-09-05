@@ -4,12 +4,10 @@
 mod setup;
 
 use crate::{
-    Experience, Icon, theme,
+    Experience, Icon, chrome, theme,
     widget::{
-        ActionRow, Button, ButtonKind, HeaderBar, InfoCard, InfoCardKind, InfoRow, RowGroup,
-        TextExt as _,
+        ActionRow, Button, ButtonKind, InfoCard, InfoCardKind, InfoRow, RowGroup, TextExt as _,
     },
-    window,
 };
 use bottles_core::Addons;
 use iced::{
@@ -71,7 +69,7 @@ pub enum Action {
     NextTutorialStep,
     Setup(setup::Action),
     Finished(Experience),
-    Window(window::Action),
+    DragWindow,
 }
 
 #[derive(Clone)]
@@ -117,8 +115,7 @@ impl State {
                 }
             }
             Action::Setup(action) => return self.setup.update_action(action).map(Event::Setup),
-            Action::Window(action) => return action.task().unwrap_or_else(Task::none),
-            Action::Finished(_) => {}
+            Action::DragWindow | Action::Finished(_) => {}
         }
 
         Task::none()
@@ -137,7 +134,7 @@ impl State {
             Step::Downloads => self.downloads_view(),
         };
 
-        shell(content, Action::Window(window::Action::Drag))
+        shell(content, Action::DragWindow)
     }
 
     fn welcome_view(&self) -> Element<'_, Action> {
@@ -319,7 +316,7 @@ pub(crate) fn shell<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
     on_drag: Message,
 ) -> Element<'a, Message> {
-    let header = HeaderBar::new(on_drag).transparent(true);
+    let header = chrome::header(on_drag, true).transparent(true);
     let panel = container(
         column![
             header,

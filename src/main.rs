@@ -1,11 +1,12 @@
 mod app;
+mod chrome;
 mod classic;
 mod next;
 mod onboarding;
 mod operation;
 
 pub(crate) use app::Experience;
-pub(crate) use next_ui::{Icon, theme, widget, window};
+pub(crate) use next_ui::{Icon, theme, widget};
 
 fn main() -> iced::Result {
     iced::application(app::App::new, app::App::update, app::App::view)

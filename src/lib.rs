@@ -5,16 +5,13 @@
 //! semantic messages; widgets retain interaction mechanics such as focus,
 //! capture, disclosure, popup placement, resizing, and animation.
 //!
-//! The supported facade is [`theme`], [`widget`], [`window`], and [`Icon`].
+//! The supported facade is [`theme`], [`widget`], and [`Icon`].
 
 mod icons;
 pub mod theme;
-mod ui;
 mod widgets;
 
 pub use icons::Icon;
-pub use ui::chrome as window;
-
 /// The complete public widget catalog.
 ///
 /// The caller owns values and semantic messages. Widgets own their interaction

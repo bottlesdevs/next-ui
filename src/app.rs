@@ -5,14 +5,13 @@ use std::{
 };
 
 use bottles_core::{Bottles, Config as CoreConfig, error::Error as CoreError};
-use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode};
+use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
 use next_config::Config;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    classic, next, onboarding, theme,
-    widget::{Button, ButtonKind, Dialog, HeaderBar, WindowModal},
-    window,
+    chrome, classic, next, onboarding, theme,
+    widget::{Button, ButtonKind, Dialog, WindowModal},
 };
 
 const APP_CONFIG_FILE: &str = "config.toml";
@@ -162,7 +161,7 @@ pub(crate) enum AppAction {
     ConfirmExperienceSwitch,
     CancelExperienceSwitch,
     DismissNotice,
-    Window(window::Action),
+    Window(chrome::Action),
 }
 
 #[derive(Clone)]
@@ -219,7 +218,7 @@ impl App {
         let mut subscriptions = vec![
             iced::system::theme_changes()
                 .map(|mode| AppMessage::Event(AppEvent::SystemThemeChanged(mode))),
-            window::subscription().map(|action| AppMessage::Action(AppAction::Window(action))),
+            chrome::subscription().map(|action| AppMessage::Action(AppAction::Window(action))),
         ];
 
         if let Phase::Session(session) = &self.phase
@@ -242,7 +241,7 @@ impl App {
     }
 
     fn update_action(&mut self, action: AppAction) -> Task<AppMessage> {
-        if matches!(action, AppAction::Window(window::Action::RequestClose)) {
+        if matches!(action, AppAction::Window(chrome::Action::RequestClose)) {
             return self.request_close();
         }
 
@@ -254,9 +253,17 @@ impl App {
         }
 
         if let AppAction::Window(action) = action {
-            return action
-                .task()
-                .expect("a window close request was handled before the action gate");
+            return match action {
+                chrome::Action::Drag => window::latest().and_then(window::drag),
+                chrome::Action::Resize(direction) => {
+                    window::latest().and_then(move |id| window::drag_resize(id, direction))
+                }
+                chrome::Action::FocusPrevious => iced::widget::operation::focus_previous(),
+                chrome::Action::FocusNext => iced::widget::operation::focus_next(),
+                chrome::Action::RequestClose => {
+                    unreachable!("close requests are handled before the action gate")
+                }
+            };
         }
 
         match action {
@@ -400,9 +407,7 @@ impl App {
                         if let Some(error) = &session.notice {
                             onboarding_notice_view("Setup could not be saved", error.to_string())
                         } else {
-                            state
-                                .view()
-                                .map(|action| AppMessage::Action(AppAction::Onboarding(action)))
+                            state.view().map(onboarding_action_message)
                         }
                     }
                     SessionScreen::Running { .. } => workspace_view(session),
@@ -437,9 +442,8 @@ impl App {
             },
             Phase::Failed(error) => status_view("Bottles could not start", error.to_string()),
         };
-        let page: Element<'_, AppMessage> =
-            window::WindowFrame::new(body, |action| AppMessage::Action(AppAction::Window(action)))
-                .into();
+        let page =
+            chrome::window_frame(body, |action| AppMessage::Action(AppAction::Window(action)));
         let dialog = match &self.phase {
             Phase::Session(Session {
                 screen:
@@ -780,6 +784,22 @@ fn onboarding_event_message(event: onboarding::Event) -> AppMessage {
     AppMessage::Event(AppEvent::Onboarding(event))
 }
 
+fn onboarding_action_message(action: onboarding::Action) -> AppMessage {
+    match action {
+        onboarding::Action::DragWindow => {
+            AppMessage::Action(AppAction::Window(chrome::Action::Drag))
+        }
+        action => AppMessage::Action(AppAction::Onboarding(action)),
+    }
+}
+
+fn classic_action_message(action: classic::Action) -> AppMessage {
+    match action {
+        classic::Action::DragWindow => AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
+        action => AppMessage::Action(AppAction::Classic(Box::new(action))),
+    }
+}
+
 fn classic_event_message(generation: u64, event: classic::Event) -> AppMessage {
     AppMessage::Event(AppEvent::Classic {
         generation,
@@ -876,7 +896,7 @@ fn onboarding_status_view<'a>(
 
     onboarding::shell(
         column![text(title).size(32), text(description)].spacing(12),
-        AppMessage::Action(AppAction::Window(window::Action::Drag)),
+        AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
     )
 }
 
@@ -895,7 +915,7 @@ fn onboarding_notice_view<'a>(
                 .on_press(AppMessage::Action(AppAction::DismissNotice)),
         ]
         .spacing(12),
-        AppMessage::Action(AppAction::Window(window::Action::Drag)),
+        AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
     )
 }
 
@@ -904,9 +924,7 @@ fn workspace_view(session: &Session) -> Element<'_, AppMessage> {
         unreachable!("only running sessions render a workspace")
     };
     match workspace {
-        Workspace::Classic(state) => state
-            .view()
-            .map(|action| AppMessage::Action(AppAction::Classic(Box::new(action)))),
+        Workspace::Classic(state) => state.view().map(classic_action_message),
         Workspace::Next(state) => root_body(
             state
                 .view()
@@ -972,7 +990,10 @@ fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
     use iced::widget::{center, column};
 
     column![
-        HeaderBar::new(AppMessage::Action(AppAction::Window(window::Action::Drag))),
+        chrome::header(
+            AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
+            true,
+        ),
         center(content).width(Fill).height(Fill),
     ]
     .width(Fill)

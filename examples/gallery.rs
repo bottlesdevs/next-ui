@@ -1,3 +1,6 @@
+#[path = "../src/chrome.rs"]
+mod chrome;
+
 use iced::{
     Center, Element, Fill, Subscription, Task, Theme,
     widget::{Space, column, container, image, row, scrollable, text},
@@ -6,12 +9,10 @@ use next_ui::{
     Icon, theme,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
-        ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow,
-        Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult, SearchState,
-        SelectorRow, StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _, TextRow, Title,
-        WindowModal,
+        ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,
+        PopoverItem, ProgressRing, RowGroup, Search, SearchResult, SearchState, SelectorRow,
+        StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
     },
-    window,
 };
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
@@ -78,7 +79,7 @@ enum Message {
     TabSelected(usize),
     Switched(bool),
     GroupSwitched(bool),
-    Window(window::Action),
+    Window(chrome::Action),
     OpenDialog,
     DismissDialog,
     Previous,
@@ -97,8 +98,16 @@ impl Gallery {
             Message::TabSelected(index) => self.selected_tab = index,
             Message::Switched(value) => self.switched_on = value,
             Message::GroupSwitched(value) => self.group_switched_on = value,
-            Message::Window(window::Action::RequestClose) => return iced::exit(),
-            Message::Window(action) => return action.task().unwrap_or_else(Task::none),
+            Message::Window(action) => {
+                return match action {
+                    chrome::Action::Drag => iced::window::latest().and_then(iced::window::drag),
+                    chrome::Action::Resize(direction) => iced::window::latest()
+                        .and_then(move |id| iced::window::drag_resize(id, direction)),
+                    chrome::Action::RequestClose => iced::exit(),
+                    chrome::Action::FocusPrevious => iced::widget::operation::focus_previous(),
+                    chrome::Action::FocusNext => iced::widget::operation::focus_next(),
+                };
+            }
             Message::OpenDialog => self.dialog_open = true,
             Message::DismissDialog => self.dialog_open = false,
             Message::Previous => self.value = self.value.saturating_sub(1),
@@ -110,7 +119,7 @@ impl Gallery {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        window::subscription().map(Message::Window)
+        chrome::subscription().map(Message::Window)
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -425,7 +434,7 @@ impl Gallery {
         ]
         .spacing(18);
 
-        let header = HeaderBar::new(Message::Window(window::Action::Drag)).middle(
+        let header = chrome::header(Message::Window(chrome::Action::Drag), true).middle(
             iced::widget::container(
                 Search::new(
                     "Search for software and games…",
@@ -471,8 +480,7 @@ impl Gallery {
         .width(Fill)
         .height(Fill);
 
-        let page: Element<'_, Message> =
-            window::WindowFrame::new(column![header, gallery], Message::Window).into();
+        let page = chrome::window_frame(column![header, gallery], Message::Window);
         let dialog = self.dialog_open.then(|| {
             Dialog::new(
                 column![

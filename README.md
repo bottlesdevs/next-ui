@@ -13,7 +13,7 @@ Application state, Classic/Next workspaces, onboarding, and operation
 orchestration are private binary modules. Toolkit users depend only on:
 
 ```rust
-use next_ui::{theme, widget, window, Icon};
+use next_ui::{theme, widget, Icon};
 ```
 
 ## Toolkit contract
@@ -30,8 +30,8 @@ Use the normal label/icon button constructors unless arbitrary content requires
 `Button::custom`.
 
 Animated widgets use Iced's animation support directly; the toolkit exposes no
-separate reduced-motion policy. Use `window::subscription()` for close requests
-and unhandled global Tab traversal.
+separate reduced-motion policy. Window chrome, close handling, resizing, and
+global Tab traversal belong to the application shell.
 
 The gallery is an external consumer of every public widget:
 

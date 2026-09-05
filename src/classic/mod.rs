@@ -20,7 +20,6 @@ use crate::{
         ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
         TextRow, Title,
     },
-    window,
 };
 use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
 use iced::{
@@ -170,7 +169,7 @@ pub enum Action {
     CancelBottle,
     OpenMenu,
     TogglePower,
-    Window(window::Action),
+    DragWindow,
     Bottles(bottles::Message),
     Settings(settings::Message),
     #[cfg(feature = "fvs")]
@@ -320,8 +319,7 @@ impl State {
                     self.close_panel();
                 }
             }
-            Action::OpenMenu | Action::TogglePower => {}
-            Action::Window(action) => return action.task().unwrap_or_else(Task::none),
+            Action::OpenMenu | Action::TogglePower | Action::DragWindow => {}
             Action::Bottles(message) => {
                 let (task, output) = self.bottles.update(message);
                 let task = task.map(Event::Bottles);
@@ -575,7 +573,7 @@ impl State {
             Action::PrimaryTabSelected,
         );
         let header = context
-            .header(Action::Window(window::Action::Drag))
+            .header(Action::DragWindow)
             .start(header_button("Add bottle", Icon::Plus, Action::AddBottle))
             .middle(tabs)
             .end(
@@ -603,7 +601,7 @@ impl State {
 
     fn profile_settings_page(&self, context: PaneContext) -> Element<'_, Action> {
         let header = context
-            .header(Action::Window(window::Action::Drag))
+            .header(Action::DragWindow)
             .start(header_button("Cancel", Icon::Arrow, Action::Back))
             .middle(
                 container(
@@ -685,7 +683,7 @@ impl State {
 
     fn new_bottle_page(&self, context: PaneContext) -> Element<'_, Action> {
         let header = context
-            .header(Action::Window(window::Action::Drag))
+            .header(Action::DragWindow)
             .start(header_button(
                 "Cancel bottle creation",
                 Icon::Arrow,
@@ -734,7 +732,7 @@ impl State {
             }),
             Action::DetailTabSelected,
         );
-        let mut header = context.header(Action::Window(window::Action::Drag));
+        let mut header = context.header(Action::DragWindow);
 
         if context.is_standalone() {
             header = header.start(

@@ -231,22 +231,6 @@ pub(crate) fn muted(theme: &IcedTheme) -> Color {
     colors(theme).muted
 }
 
-#[doc(hidden)]
-pub fn window_color(theme: &IcedTheme) -> Color {
-    colors(theme).window
-}
-
-pub(crate) fn window(theme: &IcedTheme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(window_color(theme))),
-        border: Border::default()
-            .rounded(6)
-            .color(colors(theme).window_border)
-            .width(1),
-        ..container::Style::default()
-    }
-}
-
 pub(crate) fn scrim(theme: &IcedTheme) -> Color {
     colors(theme).scrim
 }

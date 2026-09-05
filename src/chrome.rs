@@ -1,6 +1,8 @@
-//! Toolkit-owned chrome for an undecorated application window.
+//! Application-owned chrome for the undecorated app and gallery windows.
 
-use iced::{Element, Fill, Subscription, Task, event, keyboard, widget::container, window};
+use iced::{
+    Background, Border, Element, Fill, Subscription, event, keyboard, widget::container, window,
+};
 
 use iced::{
     alignment::{Horizontal, Vertical},
@@ -9,54 +11,36 @@ use iced::{
     window::Direction,
 };
 
-use crate::{
-    icons::Icon,
-    theme,
-    widgets::button::{Button, ButtonKind},
+use next_ui::{
+    Icon, theme,
+    widget::{Button, ButtonKind, HeaderBar},
 };
 
 const RESIZE_EDGE: f32 = 6.0;
 const RESIZE_CORNER: f32 = 12.0;
 const PANEL_INSET: [f32; 2] = [6.0, 8.0];
 const WINDOW_CONTROL_INSET: [f32; 2] = [22.0, 20.0];
-pub(crate) const WINDOW_CONTROL_SIZE: f32 = 32.0;
+const WINDOW_CONTROL_SIZE: f32 = 32.0;
 
-#[doc(hidden)]
-pub const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
+pub(crate) const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
 
 /// A semantic window-frame interaction for the application to handle.
 #[derive(Debug, Clone, Copy)]
-pub enum Action {
+pub(crate) enum Action {
     /// Begin dragging the current window.
     Drag,
     /// Begin resizing the current window from an edge or corner.
     Resize(window::Direction),
     /// Ask the application to run its shutdown lifecycle.
     RequestClose,
-    /// Move to the previous (`true`) or next (`false`) global focus target.
-    MoveFocus(bool),
-}
-
-impl Action {
-    /// Returns the direct window operation for this action.
-    ///
-    /// A close request returns `None` so the application can shut down its
-    /// services before exiting.
-    pub fn task<Message: Send + 'static>(self) -> Option<Task<Message>> {
-        match self {
-            Self::Drag => Some(window::latest().and_then(window::drag)),
-            Self::Resize(direction) => {
-                Some(window::latest().and_then(move |id| window::drag_resize(id, direction)))
-            }
-            Self::RequestClose => None,
-            Self::MoveFocus(true) => Some(iced::widget::operation::focus_previous()),
-            Self::MoveFocus(false) => Some(iced::widget::operation::focus_next()),
-        }
-    }
+    /// Move to the previous global focus target.
+    FocusPrevious,
+    /// Move to the next global focus target.
+    FocusNext,
 }
 
 /// Listens for application-window requests and unhandled keyboard traversal.
-pub fn subscription() -> Subscription<Action> {
+pub(crate) fn subscription() -> Subscription<Action> {
     iced::event::listen_with(|event, status, _| subscription_action(event, status))
 }
 
@@ -68,75 +52,91 @@ fn subscription_action(event: iced::Event, status: event::Status) -> Option<Acti
             modifiers,
             repeat: false,
             ..
-        }) if status == event::Status::Ignored => Some(Action::MoveFocus(modifiers.shift())),
+        }) if status == event::Status::Ignored => Some(if modifiers.shift() {
+            Action::FocusPrevious
+        } else {
+            Action::FocusNext
+        }),
         _ => None,
     }
 }
 
 /// An undecorated application frame with resize edges and a close control.
-pub struct WindowFrame<'a, Message> {
-    content: Element<'a, Message>,
-    on_action: Box<dyn Fn(Action) -> Message + 'a>,
-}
+pub(crate) fn window_frame<'a, Message: Clone + 'a>(
+    content: impl Into<Element<'a, Message>>,
+    on_action: impl Fn(Action) -> Message,
+) -> Element<'a, Message> {
+    let content: Element<'a, Message> = container(content)
+        .width(Fill)
+        .height(Fill)
+        .padding(PANEL_INSET)
+        .style(|current_theme| {
+            let colors = theme::colors(current_theme);
 
-impl<'a, Message> WindowFrame<'a, Message> {
-    /// Wraps application content and maps frame interactions to app messages.
-    pub fn new(
-        content: impl Into<Element<'a, Message>>,
-        on_action: impl Fn(Action) -> Message + 'a,
-    ) -> Self {
-        Self {
-            content: content.into(),
-            on_action: Box::new(on_action),
-        }
+            container::Style {
+                background: Some(Background::Color(colors.window)),
+                border: Border::default()
+                    .rounded(6)
+                    .color(colors.window_border)
+                    .width(1),
+                ..container::Style::default()
+            }
+        })
+        .clip(true)
+        .into();
+
+    let mut layers = stack![content].width(Fill).height(Fill).clip(true);
+
+    for direction in [
+        Direction::North,
+        Direction::South,
+        Direction::East,
+        Direction::West,
+        Direction::NorthEast,
+        Direction::NorthWest,
+        Direction::SouthEast,
+        Direction::SouthWest,
+    ] {
+        layers = layers.push(resize_edge(direction, on_action(Action::Resize(direction))))
     }
+
+    let close = Button::icon_only("Close window", Icon::Cross)
+        .diameter(WINDOW_CONTROL_SIZE)
+        .icon_size(16.0)
+        .kind(ButtonKind::Transparent)
+        .on_press(on_action(Action::RequestClose));
+    let close = container(close)
+        .width(Fill)
+        .height(Fill)
+        .align_x(if WINDOW_CONTROL_AT_START {
+            Horizontal::Left
+        } else {
+            Horizontal::Right
+        })
+        .align_y(Vertical::Top)
+        .padding(WINDOW_CONTROL_INSET);
+
+    layers.push(close).into()
 }
 
-impl<'a, Message: Clone + 'a> From<WindowFrame<'a, Message>> for Element<'a, Message> {
-    fn from(frame: WindowFrame<'a, Message>) -> Self {
-        let content: Element<'a, Message> = container(frame.content)
-            .width(Fill)
-            .height(Fill)
-            .padding(PANEL_INSET)
-            .style(theme::window)
-            .clip(true)
-            .into();
+pub(crate) fn header<'a, Message: 'a>(
+    on_drag: Message,
+    owns_window_control: bool,
+) -> HeaderBar<'a, Message> {
+    let header = HeaderBar::new(on_drag);
 
-        let mut layers = stack![content].width(Fill).height(Fill).clip(true);
+    if !owns_window_control {
+        return header;
+    }
 
-        for direction in [
-            Direction::North,
-            Direction::South,
-            Direction::East,
-            Direction::West,
-            Direction::NorthEast,
-            Direction::NorthWest,
-            Direction::SouthEast,
-            Direction::SouthWest,
-        ] {
-            layers = layers.push(resize_edge(
-                direction,
-                (frame.on_action)(Action::Resize(direction)),
-            ))
-        }
+    let spacer = Space::new()
+        .width(WINDOW_CONTROL_SIZE)
+        .height(WINDOW_CONTROL_SIZE);
 
-        let close = Button::icon_only("Close window", Icon::Cross)
-            .diameter(WINDOW_CONTROL_SIZE)
-            .icon_size(16.0)
-            .kind(ButtonKind::Transparent)
-            .on_press((frame.on_action)(Action::RequestClose));
-        let close = container(close)
-            .width(Fill)
-            .height(Fill)
-            .align_x(if WINDOW_CONTROL_AT_START {
-                Horizontal::Left
-            } else {
-                Horizontal::Right
-            })
-            .align_y(Vertical::Top)
-            .padding(WINDOW_CONTROL_INSET);
-
-        layers.push(close).into()
+    if WINDOW_CONTROL_AT_START {
+        header.start(spacer)
+    } else {
+        header.end(spacer)
     }
 }
 
@@ -240,14 +240,14 @@ mod tests {
                 tab(keyboard::Modifiers::NONE, false),
                 event::Status::Ignored
             ),
-            Some(Action::MoveFocus(false))
+            Some(Action::FocusNext)
         ));
         assert!(matches!(
             subscription_action(
                 tab(keyboard::Modifiers::SHIFT, false),
                 event::Status::Ignored
             ),
-            Some(Action::MoveFocus(true))
+            Some(Action::FocusPrevious)
         ));
         assert!(
             subscription_action(
