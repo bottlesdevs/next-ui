@@ -1,6 +1,9 @@
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{
+        column, row, text,
+        text::{Fragment, IntoFragment},
+    },
 };
 
 use crate::icons::Icon;
@@ -19,33 +22,33 @@ enum State<Message> {
 }
 
 pub struct ActionRow<'a, Message> {
-    title: &'a str,
-    description: &'a str,
+    title: Fragment<'a>,
+    description: Fragment<'a>,
     icon: Option<Icon>,
     state: State<Message>,
     selected: bool,
 }
 
 impl<'a, Message> ActionRow<'a, Message> {
-    pub fn new(title: &'a str, action: impl Into<Option<Message>>) -> Self {
+    pub fn new(title: impl IntoFragment<'a>, action: impl Into<Option<Message>>) -> Self {
         Self {
-            title,
-            description: "",
+            title: title.into_fragment(),
+            description: "".into_fragment(),
             icon: None,
             state: action.into().map_or(State::Disabled, State::Ready),
             selected: false,
         }
     }
 
-    pub fn progress(title: &'a str, progress: f32) -> Self {
+    pub fn progress(title: impl IntoFragment<'a>, progress: f32) -> Self {
         Self {
             state: State::Progress(progress),
             ..Self::new(title, None)
         }
     }
 
-    pub fn description(mut self, description: &'a str) -> Self {
-        self.description = description;
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.description = description.into_fragment();
         self
     }
 

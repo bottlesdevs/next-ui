@@ -10,13 +10,13 @@ mod bottles_view;
 mod layout;
 mod library_view;
 mod profiles_view;
-mod settings;
+mod settings_view;
 #[cfg(feature = "fvs")]
-mod snapshots;
+mod snapshots_view;
 
 use crate::{
     Icon,
-    features::{bottles, library, profiles},
+    features::{bottles, library, profiles, settings},
     theme,
     widget::{
         ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
@@ -30,6 +30,9 @@ use iced::{
 };
 use layout::{PaneContext, Side, navigation_split, side_panel};
 use uuid::Uuid;
+
+#[cfg(feature = "fvs")]
+use crate::features::snapshots;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
 
@@ -174,7 +177,7 @@ pub enum Action {
     Bottles(bottles::Message),
     Settings(settings::Message),
     #[cfg(feature = "fvs")]
-    Snapshots(snapshots::Action),
+    Snapshots(snapshots_view::Message),
     Library(library::Message),
     Profiles(profiles::Message),
 }
@@ -207,10 +210,10 @@ impl State {
             read_model,
             bottles: bottles::State::new(bottle_manager, core.addons()),
             #[cfg(feature = "fvs")]
-            snapshots: snapshots::State::new(),
+            snapshots: snapshots::State::default(),
             profiles,
             library,
-            settings: settings::State::new(),
+            settings: settings::State::default(),
             effects_suspended: false,
         };
 
@@ -326,7 +329,7 @@ impl State {
             }
             Action::Settings(message) => return self.update_settings(message),
             #[cfg(feature = "fvs")]
-            Action::Snapshots(snapshots::Action::Selected) => {}
+            Action::Snapshots(snapshots_view::Message::Selected) => {}
             Action::Profiles(message) => {
                 let (task, output) = self
                     .profiles
@@ -725,9 +728,11 @@ impl State {
                     column![].into()
                 }
             }
-            DetailTab::Settings => self.settings.view(&settings_ctx).map(Action::Settings),
+            DetailTab::Settings => {
+                settings_view::view(&self.settings, &settings_ctx).map(Action::Settings)
+            }
             #[cfg(feature = "fvs")]
-            DetailTab::Snapshots => self.snapshots.view().map(Action::Snapshots),
+            DetailTab::Snapshots => snapshots_view::view(&self.snapshots).map(Action::Snapshots),
         };
 
         let mut body = column![scroll_content(content)].width(Fill).height(Fill);
