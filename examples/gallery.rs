@@ -503,7 +503,7 @@ impl Gallery {
             .iter()
             .filter(|(title, _, _)| title.to_lowercase().contains(&query))
             .map(|(title, action, action_icon)| {
-                SearchResult::new(*title, title, Message::Noop)
+                SearchResult::new(title, Message::Noop)
                     .icon(Icon::Bottles)
                     .action(action, *action_icon, Message::Noop)
             })

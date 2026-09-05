@@ -2,7 +2,7 @@ use iced::{
     Event, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree},
+        widget::{Id, Operation, Tree, operation},
     },
     keyboard::{self, key},
     touch,
@@ -10,7 +10,6 @@ use iced::{
 
 use super::{
     control::{descendant_is_focused, focus_descendant, unfocus_descendants},
-    list_navigation::reveal,
     spacing,
 };
 
@@ -50,6 +49,7 @@ pub(super) struct PopupCore<'a, Message> {
     content: &'a mut dyn Widget<Message, Theme, iced::Renderer>,
     tree: &'a mut Tree,
     viewport_inset: f32,
+    match_anchor_width: bool,
     focus: PopupFocus<'a>,
     on_dismiss: Box<dyn FnMut(DismissReason) -> DismissOutcome + 'a>,
 }
@@ -70,9 +70,15 @@ impl<'a, Message> PopupCore<'a, Message> {
             content,
             tree,
             viewport_inset,
+            match_anchor_width: false,
             focus,
             on_dismiss: Box::new(on_dismiss),
         }
+    }
+
+    pub(super) fn match_anchor_width(mut self) -> Self {
+        self.match_anchor_width = true;
+        self
     }
 
     fn dismiss(&mut self, reason: DismissReason) -> DismissOutcome {
@@ -170,8 +176,16 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         let viewport = self.viewport.intersection(&bounds).unwrap_or(bounds);
         let geometry = geometry(self.anchor, viewport, self.viewport_inset);
         let max_height = geometry.below.max(geometry.above).max(0.0);
-        let min = Size::ZERO;
-        let max = Size::new(geometry.max_width, max_height);
+        let width = self.anchor.width.min(geometry.max_width);
+        let min = Size::new(if self.match_anchor_width { width } else { 0.0 }, 0.0);
+        let max = Size::new(
+            if self.match_anchor_width {
+                width
+            } else {
+                geometry.max_width
+            },
+            max_height,
+        );
         let content = self
             .content
             .layout(self.tree, renderer, &layout::Limits::new(min, max));
@@ -318,6 +332,103 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         self.content
             .overlay(self.tree, layout, renderer, &self.viewport, Vector::ZERO)
+    }
+}
+
+fn reveal<Message>(
+    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
+    tree: &mut Tree,
+    layout: Layout<'_>,
+    renderer: &iced::Renderer,
+    marker: &Id,
+) -> bool {
+    let mut find = FindTargetBounds {
+        target: marker.clone(),
+        bounds: None,
+    };
+    content.operate(tree, layout, renderer, &mut find);
+    let Some(bounds) = find.bounds else {
+        return false;
+    };
+    let mut reveal = RevealBounds {
+        bounds,
+        changed: false,
+    };
+    content.operate(tree, layout, renderer, &mut reveal);
+    reveal.changed
+}
+
+struct FindTargetBounds {
+    target: Id,
+    bounds: Option<Rectangle>,
+}
+
+impl<Message> Operation<Message> for FindTargetBounds {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Message>)) {
+        operate(self);
+    }
+
+    fn container(&mut self, id: Option<&Id>, bounds: Rectangle) {
+        if id == Some(&self.target) {
+            self.bounds = Some(bounds);
+        }
+    }
+}
+
+struct RevealBounds {
+    bounds: Rectangle,
+    changed: bool,
+}
+
+impl<Message> Operation<Message> for RevealBounds {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Message>)) {
+        operate(self);
+    }
+
+    fn scrollable(
+        &mut self,
+        _id: Option<&Id>,
+        bounds: Rectangle,
+        content_bounds: Rectangle,
+        translation: Vector,
+        state: &mut dyn operation::Scrollable,
+    ) {
+        if !content_bounds.contains(self.bounds.center()) {
+            return;
+        }
+
+        let target = Rectangle {
+            x: self.bounds.x - translation.x,
+            y: self.bounds.y - translation.y,
+            ..self.bounds
+        };
+        let x = if target.x < bounds.x {
+            target.x - bounds.x
+        } else if target.x + target.width > bounds.x + bounds.width {
+            target.x + target.width - (bounds.x + bounds.width)
+        } else {
+            0.0
+        };
+        let y = if target.y < bounds.y {
+            target.y - bounds.y
+        } else if target.y + target.height > bounds.y + bounds.height {
+            target.y + target.height - (bounds.y + bounds.height)
+        } else {
+            0.0
+        };
+        let delta = Vector::new(x, y);
+
+        if delta != Vector::ZERO {
+            state.scroll_by(
+                operation::scrollable::AbsoluteOffset {
+                    x: delta.x,
+                    y: delta.y,
+                },
+                bounds,
+                content_bounds,
+            );
+            self.changed = true;
+        }
     }
 }
 

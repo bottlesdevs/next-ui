@@ -84,7 +84,6 @@ where
                 row_content(option.to_string().into(), None, None),
                 message,
                 selected == Some(option),
-                || false,
             )
             .into()
         });

@@ -158,7 +158,7 @@ fn item_row<'a, Message: Clone + 'a>(
         content = content.push(Button::new(label).kind(ButtonKind::Surface));
     }
 
-    let mut row = menu_item(content, item.on_select, item.selected, || false);
+    let mut row = menu_item(content, item.on_select, item.selected);
     if let Some(id) = primary {
         row = row.id(id);
     }

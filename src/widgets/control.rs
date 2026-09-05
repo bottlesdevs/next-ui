@@ -17,10 +17,7 @@ pub(crate) struct ActionState {
     pub(crate) hovered: bool,
     pub(crate) pressed: bool,
     pub(crate) focused: bool,
-    pub(crate) focus_within: bool,
     pub(crate) selected: bool,
-    pub(crate) expanded: bool,
-    pub(crate) keyboard_highlighted: bool,
 }
 
 /// The complete appearance of an [`ActionSurface`].
@@ -82,7 +79,6 @@ pub(crate) struct Interaction {
     press: Option<PressOrigin>,
     focused: bool,
     hovered: bool,
-    descendant_focused: bool,
 }
 
 impl Interaction {
@@ -91,7 +87,6 @@ impl Interaction {
             self.press = None;
             self.focused = false;
             self.hovered = false;
-            self.descendant_focused = false;
         } else if !actionable {
             self.press = None;
             self.focused = false;
@@ -117,7 +112,6 @@ impl Interaction {
             self.press = None;
             self.focused = false;
             self.hovered = false;
-            self.descendant_focused = false;
         } else {
             if matches!(event, Event::Mouse(mouse::Event::CursorLeft)) {
                 self.hovered = false;
@@ -221,15 +215,8 @@ impl Interaction {
             hovered,
             pressed: sensitive && actionable && self.press.is_some(),
             focused,
-            focus_within: sensitive && (focused || self.descendant_focused),
             selected: false,
-            expanded: false,
-            keyboard_highlighted: false,
         }
-    }
-
-    pub(crate) fn set_descendant_focused(&mut self, focused: bool) {
-        self.descendant_focused = focused;
     }
 
     pub(crate) fn mouse_interaction(
@@ -446,18 +433,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ActionSurface<'_
         }
 
         let interaction = tree.state.downcast_mut::<Interaction>();
-
-        if matches!(event, Event::Window(window::Event::RedrawRequested(_))) {
-            interaction.set_descendant_focused(
-                self.sensitive
-                    && descendant_is_focused(
-                        self.content.as_widget_mut(),
-                        &mut tree.children[0],
-                        content_layout,
-                        renderer,
-                    ),
-            );
-        }
 
         if interaction.update(
             event,

@@ -35,17 +35,13 @@ pub(super) fn item<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
     on_press: Option<Message>,
     selected: bool,
-    keyboard_highlighted: impl Fn() -> bool + 'a,
 ) -> ActionSurface<'a, Message> {
     ActionSurface::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press_maybe(on_press)
         .selected(selected)
-        .style(move |theme, mut state| {
-            state.keyboard_highlighted = keyboard_highlighted();
-            row_style(theme, state)
-        })
+        .style(row_style)
 }
 
 pub(super) fn footer<'a, Message: Clone + 'a>(
@@ -63,13 +59,16 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     .width(Fill)
     .padding(spacing::MD)
     .on_press(message)
-    .style(row_style)
+    .style(|theme, state| button::Style {
+        background: Some(Background::Color(crate::theme::colors(theme).selection)),
+        border: Border::default().rounded(iced::border::bottom(6)),
+        ..row_style(theme, state)
+    })
 }
 
 pub(super) fn row_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
-    let highlighted = state.actionable
-        && (state.keyboard_highlighted || state.hovered || state.pressed || state.focused);
+    let highlighted = state.actionable && (state.hovered || state.pressed || state.focused);
 
     button::Style {
         background: highlighted.then_some(Background::Color(colors.selection)),
