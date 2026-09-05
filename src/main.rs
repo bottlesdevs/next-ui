@@ -1,6 +1,7 @@
 mod app;
 mod chrome;
 mod classic;
+mod features;
 mod next;
 mod onboarding;
 mod operation;

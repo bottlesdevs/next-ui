@@ -1,18 +1,17 @@
-//! Bottles: the list of bottles, the new-bottle creation flow, and the
-//! "Programs" detail tab.
+//! Classic presentation for bottles, creation, and installed programs.
 
 use std::sync::Arc;
 
-use bottles_core::{Addons, Bottle, BottleManager, BottleState, Slot, Storage};
+use bottles_core::{Bottle, BottleState};
 use iced::{
-    Center, Element, Length, Task, Theme,
+    Center, Element, Length, Theme,
     widget::{Grid, column, container, responsive, row, text},
 };
-use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
-    Icon, operation,
+    Icon,
+    features::bottles::{Message, State},
     widget::{
         ActionRow, ActionTile, ArtworkCard, CardAction, InfoCard, InfoCardKind, LogPanel,
         PickerRow, SelectorRow, TextExt as _, TextRow, spacing,
@@ -21,257 +20,95 @@ use crate::{
 
 const BOTTLE_LIST_MAX_WIDTH: f32 = 720.0;
 const BOTTLE_TRACK_MIN_WIDTH: f32 = 300.0;
-
 const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 
-#[derive(Clone, PartialEq)]
-pub struct RunnerOption {
-    id: Uuid,
-    label: String,
+pub fn rows<'a, Msg: 'static + Clone>(
+    bottle_states: &'a [Arc<BottleState>],
+    selected_id: Option<Uuid>,
+    on_select: impl Fn(Uuid) -> Msg + 'a,
+) -> Element<'a, Msg> {
+    responsive(move |size| {
+        let columns = usize::from(size.width >= BOTTLE_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
+        let rows = bottle_states.iter().map(|state| {
+            ActionRow::new(state.name(), on_select(state.id()))
+                .description(state.runner().name())
+                .icon(Icon::Bottles)
+                .selected(selected_id == Some(state.id()))
+                .into()
+        });
+        let grid = Grid::with_children(rows)
+            .columns(columns)
+            .spacing(spacing::SM)
+            .height(Length::Shrink);
+
+        container(
+            container(grid)
+                .width(Length::Fill)
+                .max_width(BOTTLE_LIST_MAX_WIDTH),
+        )
+        .center_x(Length::Fill)
+        .into()
+    })
+    .height(Length::Shrink)
+    .into()
 }
 
-impl std::fmt::Display for RunnerOption {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.label)
+pub fn creation(state: &State) -> Element<'_, Message> {
+    let creating = state.is_creating();
+    let name = TextRow::new("Bottle Name", state.bottle_name()).icon(Icon::Person);
+    let name = if creating {
+        name
+    } else {
+        name.on_input(Message::BottleNameChanged)
+    };
+    let runner =
+        SelectorRow::new("Runner", state.runners(), state.selected_runner()).icon(Icon::Run);
+    let runner = if creating {
+        runner
+    } else {
+        runner.on_selected(Message::RunnerSelected)
+    };
+    let content = column![
+        name,
+        runner,
+        SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0])),
+        SelectorRow::new("Architecture", &ARCHITECTURES, Some(&ARCHITECTURES[0])).icon(Icon::Chip),
+        PickerRow::new("Use Recipe").description("Choose the location"),
+    ]
+    .spacing(12);
+
+    if let Some(error) = state.last_error() {
+        column![
+            InfoCard::new(InfoCardKind::Error, "Could not create bottle", error)
+                .width(Length::Fill),
+            content,
+        ]
+        .spacing(12)
+        .into()
+    } else {
+        content.into()
     }
 }
 
-pub fn bottle_events(
-    manager: &BottleManager,
-) -> impl iced::futures::Stream<Item = Vec<Bottle>> + Send + 'static + use<> {
-    manager.watch()
+pub fn status(state: &BottleState) -> Element<'_, Message> {
+    LogPanel::new("Win64", state.runner().name(), "Stopped", Icon::Power).into()
 }
 
-pub fn bottle_state_events(
-    bottle: &Bottle,
-) -> impl iced::futures::Stream<Item = Arc<BottleState>> + Send + 'static + use<> {
-    bottle.watch()
-}
-
-#[derive(Clone)]
-pub enum Message {
-    CreateBottle,
-    BottleCreation(operation::Event<u64, Bottle>),
-    BottleNameChanged(String),
-    RunnerSelected(RunnerOption),
-    LaunchProgram { bottle: Bottle, program_id: Uuid },
-    ProgramLaunched(Result<u32, Arc<bottles_core::error::Error>>),
-}
-
-pub enum Output {
-    Created,
-}
-
-pub struct State {
-    manager: BottleManager,
-    bottle_name: String,
-    runners: Vec<RunnerOption>,
-    selected_runner: Option<RunnerOption>,
-    creation_generation: u64,
-    creation_cancellation: Option<CancellationToken>,
-    program_launches: usize,
-    last_error: Option<String>,
-}
-
-impl State {
-    pub fn new(manager: BottleManager, addons: &Addons) -> Self {
-        let runners = addons
-            .components()
+pub fn programs(bottle: Bottle, state: &BottleState) -> Element<'_, Message> {
+    let programs = state.programs().collect::<Vec<_>>();
+    let items = std::iter::once(new_program_target().into()).chain(
+        programs
             .iter()
-            .filter(|entry| entry.slot() == Slot::Runner)
-            .map(|entry| RunnerOption {
-                id: entry.id(),
-                label: format!("{} {}", entry.name(), entry.version()),
-            })
-            .collect::<Vec<_>>();
-        let selected_runner = runners.first().cloned();
-        Self {
-            manager,
-            bottle_name: "Gaming paradise".into(),
-            runners,
-            selected_runner,
-            creation_generation: 0,
-            creation_cancellation: None,
-            program_launches: 0,
-            last_error: None,
-        }
-    }
+            .copied()
+            .map(|program| program_card(bottle.clone(), program)),
+    );
 
-    pub(super) fn manager(&self) -> &BottleManager {
-        &self.manager
-    }
-
-    pub fn reset_creation(&mut self) {
-        self.last_error = None;
-    }
-
-    pub fn cancel_creation(&self) {
-        if let Some(cancellation) = &self.creation_cancellation {
-            cancellation.cancel();
-        }
-    }
-
-    pub fn has_active_operation(&self) -> bool {
-        self.creation_cancellation.is_some() || self.program_launches > 0
-    }
-
-    pub(super) fn is_creating(&self) -> bool {
-        self.creation_cancellation.is_some()
-    }
-
-    pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
-        let mut output = None;
-        match message {
-            Message::CreateBottle => {
-                if self.creation_cancellation.is_none()
-                    && let Some(runner) = self.selected_runner.clone()
-                {
-                    let name = self.bottle_name.clone();
-                    let manager = self.manager.clone();
-                    let operation = manager.create(name, Storage::Standard, runner.id);
-                    self.creation_generation = self.creation_generation.wrapping_add(1);
-                    let generation = self.creation_generation;
-                    let (cancellation, task) = operation::run(operation, generation);
-                    self.creation_cancellation = Some(cancellation);
-
-                    self.last_error = None;
-
-                    return (task.map(Message::BottleCreation), None);
-                }
-            }
-            Message::BottleCreation(operation::Event::Finished { key, outcome })
-                if key == self.creation_generation =>
-            {
-                self.creation_cancellation = None;
-                match outcome {
-                    operation::Outcome::Succeeded(_) => {
-                        self.last_error = None;
-                        output = Some(Output::Created);
-                    }
-                    operation::Outcome::Cancelled => {
-                        self.last_error = Some("Bottle creation was cancelled.".into());
-                    }
-                    operation::Outcome::Failed(error) => {
-                        self.last_error = Some(error.to_string());
-                    }
-                }
-            }
-            Message::BottleNameChanged(name) => self.bottle_name = name,
-            Message::RunnerSelected(runner) => self.selected_runner = Some(runner),
-            Message::LaunchProgram { bottle, program_id } => {
-                self.program_launches += 1;
-                return (
-                    Task::perform(
-                        async move { bottle.launch_program(program_id).await.map_err(Arc::new) },
-                        Message::ProgramLaunched,
-                    ),
-                    None,
-                );
-            }
-            Message::ProgramLaunched(Err(error)) => {
-                self.program_launches = self.program_launches.saturating_sub(1);
-                self.last_error = Some(error.to_string());
-            }
-            Message::ProgramLaunched(Ok(_)) => {
-                self.program_launches = self.program_launches.saturating_sub(1);
-                self.last_error = None;
-            }
-            Message::BottleCreation(_) => {}
-        }
-
-        (Task::none(), output)
-    }
-
-    pub fn rows_view<'a, Msg: 'static + Clone>(
-        &self,
-        bottle_states: &'a [Arc<BottleState>],
-        selected_id: Option<Uuid>,
-        on_select: impl Fn(Uuid) -> Msg + 'a,
-    ) -> Element<'a, Msg> {
-        responsive(move |size| {
-            let columns = usize::from(size.width >= BOTTLE_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
-            let rows = bottle_states.iter().map(|state| {
-                ActionRow::new(state.name(), on_select(state.id()))
-                    .description(state.runner().name())
-                    .icon(Icon::Bottles)
-                    .selected(selected_id == Some(state.id()))
-                    .into()
-            });
-            let grid = Grid::with_children(rows)
-                .columns(columns)
-                .spacing(spacing::SM)
-                .height(Length::Shrink);
-
-            container(
-                container(grid)
-                    .width(Length::Fill)
-                    .max_width(BOTTLE_LIST_MAX_WIDTH),
-            )
-            .center_x(Length::Fill)
-            .into()
-        })
+    Grid::with_children(items)
+        .fluid(400.0)
+        .spacing(spacing::MD)
         .height(Length::Shrink)
         .into()
-    }
-
-    pub fn creation_view(&self) -> Element<'_, Message> {
-        let creating = self.is_creating();
-        let name = TextRow::new("Bottle Name", &self.bottle_name).icon(Icon::Person);
-        let name = if creating {
-            name
-        } else {
-            name.on_input(Message::BottleNameChanged)
-        };
-        let runner = SelectorRow::new("Runner", &self.runners, self.selected_runner.as_ref())
-            .icon(Icon::Run);
-        let runner = if creating {
-            runner
-        } else {
-            runner.on_selected(Message::RunnerSelected)
-        };
-        let content = column![
-            name,
-            runner,
-            SelectorRow::new("Purpose", &PURPOSES, Some(&PURPOSES[0])),
-            SelectorRow::new("Architecture", &ARCHITECTURES, Some(&ARCHITECTURES[0]))
-                .icon(Icon::Chip),
-            PickerRow::new("Use Recipe").description("Choose the location"),
-        ]
-        .spacing(12);
-
-        if let Some(error) = &self.last_error {
-            column![
-                InfoCard::new(InfoCardKind::Error, "Could not create bottle", error)
-                    .width(Length::Fill),
-                content,
-            ]
-            .spacing(12)
-            .into()
-        } else {
-            content.into()
-        }
-    }
-
-    pub fn bottle_status<'a>(&self, state: &'a BottleState) -> Element<'a, Message> {
-        LogPanel::new("Win64", state.runner().name(), "Stopped", Icon::Power).into()
-    }
-
-    pub fn program_grid<'a>(&self, bottle: Bottle, state: &'a BottleState) -> Element<'a, Message> {
-        let programs = state.programs().collect::<Vec<_>>();
-        let items = std::iter::once(new_program_target().into()).chain(
-            programs
-                .iter()
-                .copied()
-                .map(|program| program_card(bottle.clone(), program)),
-        );
-
-        Grid::with_children(items)
-            .fluid(400.0)
-            .spacing(spacing::MD)
-            .height(Length::Shrink)
-            .into()
-    }
 }
 
 fn new_program_target<'a>() -> ActionTile<'a, Message> {
