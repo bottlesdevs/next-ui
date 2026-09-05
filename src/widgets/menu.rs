@@ -6,7 +6,7 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    control::{ActionState, ActionSurface},
+    focusable_action::{ActionState, FocusableAction},
     spacing,
     text::TextExt as _,
 };
@@ -35,8 +35,8 @@ pub(super) fn item<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
     on_press: Option<Message>,
     selected: bool,
-) -> ActionSurface<'a, Message> {
-    ActionSurface::new(content)
+) -> FocusableAction<'a, Message> {
+    FocusableAction::new(content)
         .width(Fill)
         .padding([spacing::XS, spacing::MD])
         .on_press_maybe(on_press)
@@ -47,8 +47,8 @@ pub(super) fn item<'a, Message: Clone + 'a>(
 pub(super) fn footer<'a, Message: Clone + 'a>(
     label: &'a str,
     message: Message,
-) -> ActionSurface<'a, Message> {
-    ActionSurface::new(
+) -> FocusableAction<'a, Message> {
+    FocusableAction::new(
         row![
             text(label),
             Icon::Arrow.view().rotation(std::f32::consts::PI)
@@ -58,7 +58,7 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     )
     .width(Fill)
     .padding(spacing::MD)
-    .on_press(message)
+    .on_press_maybe(Some(message))
     .style(|theme, state| button::Style {
         background: Some(Background::Color(crate::theme::colors(theme).selection)),
         border: Border::default().rounded(iced::border::bottom(6)),
@@ -68,7 +68,7 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
 
 pub(super) fn row_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
-    let highlighted = state.actionable && (state.hovered || state.pressed || state.focused);
+    let highlighted = state.enabled && (state.hovered || state.pressed || state.focused);
 
     button::Style {
         background: highlighted.then_some(Background::Color(colors.selection)),

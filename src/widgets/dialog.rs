@@ -324,7 +324,7 @@ mod tests {
     use iced::{Point, advanced::widget::Tree, widget::Space};
 
     use super::*;
-    use crate::widgets::control::Interaction;
+    use crate::widgets::focusable_action::{FocusableAction, Interaction};
 
     #[derive(Clone)]
     enum Message {
@@ -332,7 +332,7 @@ mod tests {
     }
 
     fn host(open: bool) -> Element<'static, Message> {
-        WindowModal::new(ActionSurface::new(Space::new()).on_press(Message::Dismiss))
+        WindowModal::new(FocusableAction::new(Space::new()).on_press_maybe(Some(Message::Dismiss)))
             .dialog(open.then(|| Dialog::new(Space::new(), Message::Dismiss)))
             .into()
     }

@@ -13,6 +13,7 @@ use super::{
     anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
     menu::{item as menu_item, row_content},
+    picker_row::PickerRow,
     spacing,
     surface::{Surface, SurfaceRole},
 };
@@ -26,9 +27,16 @@ pub struct Popover<'a, Message> {
 }
 
 impl<'a, Message> Popover<'a, Message> {
-    pub fn new(trigger: impl Into<Element<'a, ()>>) -> Self {
+    pub fn new(trigger: Button<'a, ()>) -> Self {
         Self {
-            trigger: trigger.into(),
+            trigger: trigger.on_press(()).into(),
+            items: Vec::new(),
+        }
+    }
+
+    pub fn row(trigger: PickerRow<'a, ()>) -> Self {
+        Self {
+            trigger: trigger.on_press(()).into(),
             items: Vec::new(),
         }
     }
@@ -63,15 +71,15 @@ pub struct PopoverItem<'a, Message> {
     title: Fragment<'a>,
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
-    on_select: Option<Message>,
-    action: Option<(&'a str, Message)>,
-    /// Shows a disabled action button (still visible, greyed out and
-    /// non-interactive) instead of omitting it entirely — used to explain
-    /// *why* an action isn't available (e.g. "Taken") rather than just
-    /// hiding it.
-    disabled_action: Option<&'a str>,
+    action: Option<ItemAction<'a, Message>>,
     tooltip: Option<Element<'a, Message>>,
     selected: bool,
+}
+
+enum ItemAction<'a, Message> {
+    Row(Message),
+    Trailing(&'a str, Message),
+    Disabled(&'a str),
 }
 
 impl<'a, Message> PopoverItem<'a, Message> {
@@ -80,9 +88,7 @@ impl<'a, Message> PopoverItem<'a, Message> {
             title: title.into_fragment(),
             subtitle: None,
             icon: None,
-            on_select: None,
             action: None,
-            disabled_action: None,
             tooltip: None,
             selected: false,
         }
@@ -99,17 +105,17 @@ impl<'a, Message> PopoverItem<'a, Message> {
     }
 
     pub fn on_select(mut self, message: Message) -> Self {
-        self.on_select = Some(message);
+        self.action = Some(ItemAction::Row(message));
         self
     }
 
     pub fn action(mut self, label: &'a str, message: Message) -> Self {
-        self.action = Some((label, message));
+        self.action = Some(ItemAction::Trailing(label, message));
         self
     }
 
     pub fn disabled_action(mut self, label: &'a str) -> Self {
-        self.disabled_action = Some(label);
+        self.action = Some(ItemAction::Disabled(label));
         self
     }
 
@@ -133,7 +139,7 @@ fn item_row<'a, Message: Clone + 'a>(
     item: PopoverItem<'a, Message>,
     focus_targets: &mut Vec<Id>,
 ) -> Element<'a, Message> {
-    let primary = item.on_select.as_ref().map(|_| Id::unique());
+    let primary = matches!(item.action.as_ref(), Some(ItemAction::Row(_))).then(Id::unique);
     focus_targets.extend(primary.iter().cloned());
     let mut content = row_content(item.title, item.subtitle, item.icon);
 
@@ -145,20 +151,27 @@ fn item_row<'a, Message: Clone + 'a>(
         ));
     }
 
-    if let Some((label, message)) = item.action {
-        let id = Id::unique();
-        focus_targets.push(id.clone());
-        content = content.push(
-            Button::new(label)
-                .kind(ButtonKind::Surface)
-                .id(id)
-                .on_press(message),
-        );
-    } else if let Some(label) = item.disabled_action {
-        content = content.push(Button::new(label).kind(ButtonKind::Surface));
-    }
+    let on_select = match item.action {
+        Some(ItemAction::Row(message)) => Some(message),
+        Some(ItemAction::Trailing(label, message)) => {
+            let id = Id::unique();
+            focus_targets.push(id.clone());
+            content = content.push(
+                Button::new(label)
+                    .kind(ButtonKind::Surface)
+                    .id(id)
+                    .on_press(message),
+            );
+            None
+        }
+        Some(ItemAction::Disabled(label)) => {
+            content = content.push(Button::new(label).kind(ButtonKind::Surface));
+            None
+        }
+        None => None,
+    };
 
-    let mut row = menu_item(content, item.on_select, item.selected);
+    let mut row = menu_item(content, on_select, item.selected);
     if let Some(id) = primary {
         row = row.id(id);
     }
@@ -230,11 +243,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
     }
 
     fn diff(&self, tree: &mut Tree) {
-        if tree.children.len() != 2 {
-            tree.children = self.children();
-            return;
-        }
-
         tree.children[0].diff(&self.trigger);
         tree.children[1].diff(&self.panel);
     }
@@ -427,7 +435,7 @@ mod tests {
     use super::*;
 
     fn popover() -> Element<'static, ()> {
-        Popover::new(Button::new("Open").on_press(()))
+        Popover::new(Button::new("Open"))
             .item(PopoverItem::new("Item").on_select(()))
             .into()
     }

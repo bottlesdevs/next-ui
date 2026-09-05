@@ -272,8 +272,7 @@ impl State {
         let trigger = Button::icon_only(label, Icon::Person)
             .diameter(32.0)
             .icon_size(16.0)
-            .kind(ButtonKind::Transparent)
-            .on_press(());
+            .kind(ButtonKind::Transparent);
 
         let mut switcher = Popover::new(trigger);
 

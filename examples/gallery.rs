@@ -242,29 +242,25 @@ impl Gallery {
         let selected = self
             .selected_option
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
-        let popover = Popover::new(
-            Button::new("Open menu")
-                .trailing_icon(Icon::DownCaret)
-                .on_press(()),
-        )
-        .item(
-            PopoverItem::new("Current profile")
-                .subtitle("Selected")
-                .icon(Icon::Person)
-                .selected(true)
-                .on_select(Message::Noop),
-        )
-        .item(
-            PopoverItem::new("Available account")
-                .subtitle("Child action captures the row click")
-                .action("Link", Message::Noop),
-        )
-        .item(
-            PopoverItem::new("Unavailable account")
-                .disabled_action("Taken")
-                .tooltip(text("Already linked to another profile")),
-        )
-        .item(PopoverItem::new("Manage profiles").on_select(Message::Noop));
+        let popover = Popover::new(Button::new("Open menu").trailing_icon(Icon::DownCaret))
+            .item(
+                PopoverItem::new("Current profile")
+                    .subtitle("Selected")
+                    .icon(Icon::Person)
+                    .selected(true)
+                    .on_select(Message::Noop),
+            )
+            .item(
+                PopoverItem::new("Available account")
+                    .subtitle("Trailing action is the only interactive target")
+                    .action("Link", Message::Noop),
+            )
+            .item(
+                PopoverItem::new("Unavailable account")
+                    .disabled_action("Taken")
+                    .tooltip(text("Already linked to another profile")),
+            )
+            .item(PopoverItem::new("Manage profiles").on_select(Message::Noop));
         let popovers = column![popover].spacing(12);
         let fields = column![
             TextRow::new("Input Name", &self.text_rows[0])

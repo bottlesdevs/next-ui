@@ -282,28 +282,8 @@ impl<'a, Message> ActionSurface<'a, Message> {
         }
     }
 
-    pub(crate) fn on_press(mut self, message: Message) -> Self {
-        self.on_press = Some(message);
-        self
-    }
-
-    pub(crate) fn id(mut self, id: Id) -> Self {
-        self.id = Some(id);
-        self
-    }
-
-    pub(crate) fn on_press_maybe(mut self, message: Option<Message>) -> Self {
-        self.on_press = message;
-        self
-    }
-
     pub(crate) fn sensitive(mut self, sensitive: bool) -> Self {
         self.sensitive = sensitive;
-        self
-    }
-
-    pub(crate) fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
         self
     }
 
@@ -314,19 +294,6 @@ impl<'a, Message> ActionSurface<'a, Message> {
 
     pub(crate) fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
-        self
-    }
-
-    pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
-        self.padding = padding.into();
-        self
-    }
-
-    pub(crate) fn style<S>(mut self, style: impl Fn(&Theme, ActionState) -> S + 'a) -> Self
-    where
-        S: Into<ActionStyle>,
-    {
-        self.style = Box::new(move |theme, state| style(theme, state).into());
         self
     }
 

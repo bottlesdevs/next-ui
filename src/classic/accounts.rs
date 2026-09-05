@@ -357,9 +357,8 @@ impl State {
         }
 
         let link_trigger = PickerRow::new("Link a storefront account")
-            .description("Choose the account provider to connect")
-            .on_press(());
-        let mut link_menu = Popover::new(link_trigger);
+            .description("Choose the account provider to connect");
+        let mut link_menu = Popover::row(link_trigger);
 
         for provider in ctx.profiles.account_providers() {
             if active
