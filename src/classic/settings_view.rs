@@ -1,3 +1,4 @@
+use bottles_core::BottleState;
 use iced::{
     Element, Length,
     widget::{column, responsive},
@@ -7,14 +8,14 @@ use iced::{
 use crate::widget::{InfoCard, InfoCardKind};
 use crate::{
     Icon,
-    features::settings::{Context, Message, State},
+    features::bottle_settings::{Message, State},
     widget::{ActionRow, CycleRow, ExpanderRow, InfoRow, ListRow, RowGroup, SwitcherRow, spacing},
 };
 
 const TRACK_MIN_WIDTH: f32 = 300.0;
 
-pub fn view<'a>(state: &'a State, ctx: &Context<'a>) -> Element<'a, Message> {
-    let Some(bottle_state) = ctx.bottle_state else {
+pub fn view<'a>(state: &'a State, bottle_state: Option<&'a BottleState>) -> Element<'a, Message> {
+    let Some(bottle_state) = bottle_state else {
         return column![].into();
     };
     let content = column![

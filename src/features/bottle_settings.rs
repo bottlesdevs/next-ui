@@ -1,15 +1,9 @@
 use std::sync::Arc;
 
-use bottles_core::BottleState;
+use bottles_core::{Bottle, BottleState};
 #[cfg(target_os = "linux")]
-use bottles_core::{Bottle, MangoHudConfig, error::Error as CoreError};
+use bottles_core::{MangoHudConfig, error::Error as CoreError};
 use iced::Task;
-
-pub struct Context<'a> {
-    #[cfg(target_os = "linux")]
-    pub bottle: Option<Bottle>,
-    pub bottle_state: Option<&'a Arc<BottleState>>,
-}
 
 #[derive(Clone)]
 pub enum Message {
@@ -36,11 +30,15 @@ pub struct State {
 
 impl State {
     #[cfg(target_os = "linux")]
-    pub fn update(&mut self, message: Message, ctx: &Context<'_>) -> Task<Message> {
+    pub fn update(
+        &mut self,
+        message: Message,
+        selected: Option<(Bottle, &BottleState)>,
+    ) -> Task<Message> {
         match message {
             Message::ToggleGamescope(enabled) => {
                 if !self.pending
-                    && let (Some(bottle), Some(state)) = (ctx.bottle.clone(), ctx.bottle_state)
+                    && let Some((bottle, state)) = selected
                 {
                     let mut config = state.wrappers().gamescope.clone();
                     config.enabled = enabled;
@@ -58,7 +56,7 @@ impl State {
             }
             Message::ToggleMangoHud(enabled) => {
                 if !self.pending
-                    && let Some(bottle) = ctx.bottle.clone()
+                    && let Some((bottle, _)) = selected
                 {
                     let generation = self.next_generation();
                     return Task::perform(
@@ -82,7 +80,11 @@ impl State {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn update(&mut self, message: Message, _ctx: &Context<'_>) -> Task<Message> {
+    pub fn update(
+        &mut self,
+        message: Message,
+        _selected: Option<(Bottle, &BottleState)>,
+    ) -> Task<Message> {
         match message {}
     }
 

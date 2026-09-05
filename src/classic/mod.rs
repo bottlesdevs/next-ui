@@ -16,7 +16,7 @@ mod snapshots_view;
 
 use crate::{
     Icon,
-    features::{bottles, library, profiles, settings},
+    features::{bottle_settings, bottles, library, profiles},
     theme,
     widget::{
         ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
@@ -159,7 +159,7 @@ pub struct State {
     snapshots: snapshots::State,
     profiles: profiles::State,
     library: library::State,
-    settings: settings::State,
+    settings: bottle_settings::State,
     effects_suspended: bool,
 }
 
@@ -175,7 +175,7 @@ pub enum Action {
     TogglePower,
     DragWindow,
     Bottles(bottles::Message),
-    Settings(settings::Message),
+    Settings(bottle_settings::Message),
     Library(library::Message),
     Profiles(profiles::Message),
 }
@@ -183,7 +183,7 @@ pub enum Action {
 #[derive(Clone)]
 pub enum Event {
     Bottles(bottles::Message),
-    Settings(settings::Message),
+    Settings(bottle_settings::Message),
     #[cfg(feature = "fvs")]
     Snapshots(snapshots::Message),
     Library(library::Message),
@@ -211,7 +211,7 @@ impl State {
             snapshots: snapshots::State::default(),
             profiles,
             library,
-            settings: settings::State::default(),
+            settings: bottle_settings::State::default(),
             effects_suspended: false,
         };
 
@@ -407,20 +407,18 @@ impl State {
         }
     }
 
-    fn update_settings(&mut self, message: settings::Message) -> Task<Event> {
+    fn update_settings(&mut self, message: bottle_settings::Message) -> Task<Event> {
         let selected_id = match self.route {
             Route::Bottle { id, .. } => Some(id),
             _ => None,
         };
-        #[cfg(target_os = "linux")]
-        let bottle = selected_id.and_then(|id| self.read_model.bottle(id));
-        let bottle_state = selected_id.and_then(|id| self.read_model.bottle_state(id));
-        let ctx = settings::Context {
-            #[cfg(target_os = "linux")]
-            bottle,
-            bottle_state,
-        };
-        self.settings.update(message, &ctx).map(Event::Settings)
+        let selected = selected_id.and_then(|id| {
+            Some((
+                self.read_model.bottle(id)?,
+                self.read_model.bottle_state(id)?.as_ref(),
+            ))
+        });
+        self.settings.update(message, selected).map(Event::Settings)
     }
 
     fn panel_is_open(&self, kind: PanelKind) -> bool {
@@ -705,11 +703,6 @@ impl State {
                 ))
                 .middle(tabs)
         });
-        let settings_ctx = settings::Context {
-            #[cfg(target_os = "linux")]
-            bottle: self.selected_bottle_handle(),
-            bottle_state: self.selected_bottle_state(),
-        };
         let detail_tab = match self.route {
             Route::Bottle { tab, .. } => tab,
             _ => DetailTab::Programs,
@@ -724,9 +717,11 @@ impl State {
                     column![].into()
                 }
             }
-            DetailTab::Settings => {
-                settings_view::view(&self.settings, &settings_ctx).map(Action::Settings)
-            }
+            DetailTab::Settings => settings_view::view(
+                &self.settings,
+                self.selected_bottle_state().map(|state| state.as_ref()),
+            )
+            .map(Action::Settings),
             #[cfg(feature = "fvs")]
             DetailTab::Snapshots => snapshots_view::view(&self.snapshots),
         };
