@@ -176,8 +176,6 @@ pub enum Action {
     DragWindow,
     Bottles(bottles::Message),
     Settings(settings::Message),
-    #[cfg(feature = "fvs")]
-    Snapshots(snapshots_view::Message),
     Library(library::Message),
     Profiles(profiles::Message),
 }
@@ -328,8 +326,6 @@ impl State {
                 return task;
             }
             Action::Settings(message) => return self.update_settings(message),
-            #[cfg(feature = "fvs")]
-            Action::Snapshots(snapshots_view::Message::Selected) => {}
             Action::Profiles(message) => {
                 let (task, output) = self
                     .profiles
@@ -732,7 +728,7 @@ impl State {
                 settings_view::view(&self.settings, &settings_ctx).map(Action::Settings)
             }
             #[cfg(feature = "fvs")]
-            DetailTab::Snapshots => snapshots_view::view(&self.snapshots).map(Action::Snapshots),
+            DetailTab::Snapshots => snapshots_view::view(&self.snapshots),
         };
 
         let mut body = column![scroll_content(content)].width(Fill).height(Fill);

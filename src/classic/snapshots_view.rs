@@ -6,17 +6,12 @@ use iced::{
 use crate::{
     Icon,
     features::snapshots::State,
-    widget::{ActionRow, InfoCard, InfoCardKind, RowGroup},
+    widget::{InfoCard, InfoCardKind, InfoRow, RowGroup},
 };
 
 const GRID_BREAKPOINT: f32 = 720.0;
 
-#[derive(Clone, Copy)]
-pub enum Message {
-    Selected,
-}
-
-pub fn view(state: &State) -> Element<'_, Message> {
+pub fn view<Message: Clone + 'static>(state: &State) -> Element<'_, Message> {
     let rows = responsive(move |size| {
         let columns = usize::from(size.width >= GRID_BREAKPOINT) + 1;
         state
@@ -35,7 +30,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                     .unwrap_or_default();
 
                 rows.row(
-                    ActionRow::new(title, Message::Selected)
+                    InfoRow::new(title)
                         .description(description)
                         .icon(Icon::Timer),
                 )
