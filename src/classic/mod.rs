@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 mod accounts;
-mod bottles;
+mod bottles_view;
 mod layout;
-mod library;
+mod library_view;
 mod profiles;
 mod settings;
 #[cfg(feature = "fvs")]
@@ -16,7 +16,7 @@ mod snapshots;
 
 use crate::{
     Icon,
-    features::{bottles as bottle_feature, library as library_feature},
+    features::{bottles, library},
     theme,
     widget::{
         ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
@@ -151,11 +151,11 @@ pub struct State {
     route: Route,
     panel: Option<PanelState>,
     read_model: ReadModel,
-    bottles: bottle_feature::State,
+    bottles: bottles::State,
     #[cfg(feature = "fvs")]
     snapshots: snapshots::State,
     profiles: profiles::State,
-    library: library_feature::State,
+    library: library::State,
     accounts: accounts::State,
     settings: settings::State,
     effects_suspended: bool,
@@ -172,22 +172,22 @@ pub enum Action {
     OpenMenu,
     TogglePower,
     DragWindow,
-    Bottles(bottle_feature::Message),
+    Bottles(bottles::Message),
     Settings(settings::Message),
     #[cfg(feature = "fvs")]
     Snapshots(snapshots::Action),
-    Library(library_feature::Message),
+    Library(library::Message),
     Profiles(profiles::Message),
     Accounts(accounts::Message),
 }
 
 #[derive(Clone)]
 pub enum Event {
-    Bottles(bottle_feature::Message),
+    Bottles(bottles::Message),
     Settings(settings::Message),
     #[cfg(feature = "fvs")]
     Snapshots(snapshots::Message),
-    Library(library_feature::Message),
+    Library(library::Message),
     Profiles(profiles::Message),
     Accounts(accounts::Message),
     BottleListChanged(Vec<Bottle>),
@@ -201,14 +201,14 @@ impl State {
         let profiles_manager = core.profiles().clone();
         let read_model = ReadModel::new(&bottle_manager, &profiles_manager);
         let profiles = profiles::State::new(profiles_manager, read_model.profiles.selected());
-        let mut library = library_feature::State::new(core.library().clone());
+        let mut library = library::State::new(core.library().clone());
         let library_boot = library.reload().map(Event::Library);
 
         let state = Self {
             route: Route::Bottles,
             panel: None,
             read_model,
-            bottles: bottle_feature::State::new(bottle_manager, core.addons()),
+            bottles: bottles::State::new(bottle_manager, core.addons()),
             #[cfg(feature = "fvs")]
             snapshots: snapshots::State::new(),
             profiles,
@@ -325,7 +325,7 @@ impl State {
             Action::Bottles(message) => {
                 let (task, output) = self.bottles.update(message);
                 let task = task.map(Event::Bottles);
-                if matches!(output, Some(bottle_feature::Output::Created))
+                if matches!(output, Some(bottles::Output::Created))
                     && self.panel_is_open(PanelKind::NewBottle)
                 {
                     self.close_panel();
@@ -360,7 +360,7 @@ impl State {
                 let task = self.update_accounts(message);
                 return task;
             }
-            Action::Library(message) => return self.update_library(message),
+            Action::Library(message) => return self.library.update(message).map(Event::Library),
         }
 
         Task::none()
@@ -370,7 +370,7 @@ impl State {
         match event {
             Event::Bottles(message) => {
                 let (task, output) = self.bottles.update(message);
-                if matches!(output, Some(bottle_feature::Output::Created))
+                if matches!(output, Some(bottles::Output::Created))
                     && self.panel_is_open(PanelKind::NewBottle)
                 {
                     self.close_panel();
@@ -380,7 +380,7 @@ impl State {
             Event::Settings(message) => self.update_settings(message),
             #[cfg(feature = "fvs")]
             Event::Snapshots(message) => self.snapshots.update(message).map(Event::Snapshots),
-            Event::Library(message) => self.update_library(message),
+            Event::Library(message) => self.library.update(message).map(Event::Library),
             Event::Profiles(message) => {
                 let (task, _) = self.profiles.update(message);
                 task.map(Event::Profiles)
@@ -456,15 +456,6 @@ impl State {
         self.accounts.update(message, &ctx).map(Event::Accounts)
     }
 
-    fn update_library(&mut self, message: library_feature::Message) -> Task<Event> {
-        let (task, output) = self.library.update(message);
-        if matches!(output, Some(library_feature::Output::Reload)) {
-            Task::batch([task.map(Event::Library), self.reload_library()])
-        } else {
-            task.map(Event::Library)
-        }
-    }
-
     fn panel_is_open(&self, kind: PanelKind) -> bool {
         self.panel
             .is_some_and(|panel| panel.open && panel.kind == kind)
@@ -500,16 +491,13 @@ impl State {
     pub fn event_subscription(&self) -> Subscription<Event> {
         let mut subscriptions = Vec::new();
         subscriptions.push(
-            Subscription::run_with(
-                self.bottles.manager().clone(),
-                bottle_feature::bottle_events,
-            )
-            .map(Event::BottleListChanged),
+            Subscription::run_with(self.bottles.manager().clone(), BottleManager::watch)
+                .map(Event::BottleListChanged),
         );
 
         for bottle in &self.read_model.bottles {
             subscriptions.push(
-                Subscription::run_with(bottle.clone(), bottle_feature::bottle_state_events)
+                Subscription::run_with(bottle.clone(), Bottle::watch)
                     .map(Event::BottleStateChanged),
             );
         }
@@ -588,7 +576,7 @@ impl State {
                 )
         });
         let content: Element<'_, Action> = match self.primary_tab() {
-            PrimaryTab::Bottles => bottles::rows(
+            PrimaryTab::Bottles => bottles_view::rows(
                 &self.read_model.bottle_states,
                 match self.route {
                     Route::Bottle { id, .. } => Some(id),
@@ -596,7 +584,7 @@ impl State {
                 },
                 Action::BottleSelected,
             ),
-            PrimaryTab::Library => library::view(&self.library).map(Action::Library),
+            PrimaryTab::Library => library_view::view(&self.library).map(Action::Library),
         };
 
         column![header, scroll_panel(content)]
@@ -704,15 +692,15 @@ impl State {
                     header_button(
                         "Create bottle",
                         Icon::Checkmark,
-                        Action::Bottles(bottle_feature::Message::CreateBottle),
+                        Action::Bottles(bottles::Message::CreateBottle),
                     )
                     .on_press_maybe(
                         (!self.bottles.is_creating())
-                            .then_some(Action::Bottles(bottle_feature::Message::CreateBottle)),
+                            .then_some(Action::Bottles(bottles::Message::CreateBottle)),
                     ),
                 )
         });
-        let content = bottles::creation(&self.bottles).map(Action::Bottles);
+        let content = bottles_view::creation(&self.bottles).map(Action::Bottles);
 
         column![header, scroll_panel(content)]
             .width(Fill)
@@ -778,7 +766,7 @@ impl State {
                 if let (Some(bottle), Some(state)) =
                     (self.selected_bottle_handle(), self.selected_bottle_state())
                 {
-                    bottles::programs(bottle, state).map(Action::Bottles)
+                    bottles_view::programs(&self.bottles, bottle, state).map(Action::Bottles)
                 } else {
                     column![].into()
                 }
@@ -792,7 +780,7 @@ impl State {
 
         if let Some(state) = self.selected_bottle_state() {
             body = body.push(
-                keyed_column([(state.id(), bottles::status(state).map(Action::Bottles))])
+                keyed_column([(state.id(), bottles_view::status(state).map(Action::Bottles))])
                     .width(Fill),
             );
         }

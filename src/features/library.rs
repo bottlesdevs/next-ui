@@ -78,10 +78,6 @@ pub enum Message {
     Launched(Result<u32, Arc<CoreError>>),
 }
 
-pub enum Output {
-    Reload,
-}
-
 pub struct State {
     library: Library,
     query: String,
@@ -130,25 +126,22 @@ impl State {
         Task::run(events.chain(finished), std::convert::identity)
     }
 
-    pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::QueryChanged(query) => {
                 self.query = query;
-                return (Task::none(), Some(Output::Reload));
+                return self.reload();
             }
             Message::Entry { generation, entry } => self.search.push_entry(generation, entry),
             Message::Loaded(generation) => self.search.finish(generation),
             Message::Launch(item) => {
                 if self.launching {
-                    return (Task::none(), None);
+                    return Task::none();
                 }
                 self.launching = true;
-                return (
-                    Task::perform(
-                        async move { item.launch().await.map_err(Arc::new) },
-                        Message::Launched,
-                    ),
-                    None,
+                return Task::perform(
+                    async move { item.launch().await.map_err(Arc::new) },
+                    Message::Launched,
                 );
             }
             Message::Launched(Err(error)) => {
@@ -161,7 +154,7 @@ impl State {
             }
         }
 
-        (Task::none(), None)
+        Task::none()
     }
 
     pub fn has_active_operation(&self) -> bool {

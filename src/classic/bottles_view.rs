@@ -78,7 +78,7 @@ pub fn creation(state: &State) -> Element<'_, Message> {
     ]
     .spacing(12);
 
-    if let Some(error) = state.last_error() {
+    if let Some(error) = state.creation_error() {
         column![
             InfoCard::new(InfoCardKind::Error, "Could not create bottle", error)
                 .width(Length::Fill),
@@ -95,8 +95,12 @@ pub fn status(state: &BottleState) -> Element<'_, Message> {
     LogPanel::new("Win64", state.runner().name(), "Stopped", Icon::Power).into()
 }
 
-pub fn programs(bottle: Bottle, state: &BottleState) -> Element<'_, Message> {
-    let programs = state.programs().collect::<Vec<_>>();
+pub fn programs<'a>(
+    feature: &'a State,
+    bottle: Bottle,
+    bottle_state: &'a BottleState,
+) -> Element<'a, Message> {
+    let programs = bottle_state.programs().collect::<Vec<_>>();
     let items = std::iter::once(new_program_target().into()).chain(
         programs
             .iter()
@@ -104,11 +108,21 @@ pub fn programs(bottle: Bottle, state: &BottleState) -> Element<'_, Message> {
             .map(|program| program_card(bottle.clone(), program)),
     );
 
-    Grid::with_children(items)
+    let grid = Grid::with_children(items)
         .fluid(400.0)
         .spacing(spacing::MD)
-        .height(Length::Shrink)
+        .height(Length::Shrink);
+
+    if let Some(error) = feature.launch_error() {
+        column![
+            InfoCard::new(InfoCardKind::Error, "Program launch failed", error).width(Length::Fill),
+            grid,
+        ]
+        .spacing(12)
         .into()
+    } else {
+        grid.into()
+    }
 }
 
 fn new_program_target<'a>() -> ActionTile<'a, Message> {
