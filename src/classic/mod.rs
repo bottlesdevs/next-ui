@@ -5,18 +5,18 @@
 
 use std::sync::Arc;
 
-mod accounts;
+mod accounts_view;
 mod bottles_view;
 mod layout;
 mod library_view;
-mod profiles;
+mod profiles_view;
 mod settings;
 #[cfg(feature = "fvs")]
 mod snapshots;
 
 use crate::{
     Icon,
-    features::{bottles, library},
+    features::{bottles, library, profiles},
     theme,
     widget::{
         ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
@@ -156,7 +156,6 @@ pub struct State {
     snapshots: snapshots::State,
     profiles: profiles::State,
     library: library::State,
-    accounts: accounts::State,
     settings: settings::State,
     effects_suspended: bool,
 }
@@ -178,7 +177,6 @@ pub enum Action {
     Snapshots(snapshots::Action),
     Library(library::Message),
     Profiles(profiles::Message),
-    Accounts(accounts::Message),
 }
 
 #[derive(Clone)]
@@ -189,7 +187,6 @@ pub enum Event {
     Snapshots(snapshots::Message),
     Library(library::Message),
     Profiles(profiles::Message),
-    Accounts(accounts::Message),
     BottleListChanged(Vec<Bottle>),
     BottleStateChanged(Arc<BottleState>),
     ProfilesChanged(Arc<ProfilesConfig>),
@@ -213,7 +210,6 @@ impl State {
             snapshots: snapshots::State::new(),
             profiles,
             library,
-            accounts: accounts::State::default(),
             settings: settings::State::new(),
             effects_suspended: false,
         };
@@ -238,7 +234,6 @@ impl State {
     pub fn has_active_operations(&self) -> bool {
         let active = self.bottles.has_active_operation()
             || self.profiles.has_active_operation()
-            || self.accounts.has_active_operation()
             || self.settings.has_active_operation()
             || self.library.has_active_operation();
         #[cfg(feature = "fvs")]
@@ -248,9 +243,8 @@ impl State {
 
     pub fn cancel_active_operations(&mut self) {
         self.effects_suspended = true;
-        self.profiles.dismiss_dialog();
+        self.profiles.dismiss_dialogs();
         self.bottles.cancel_creation();
-        self.accounts.cancel_active_operation();
         self.library.cancel_active_operations();
         #[cfg(feature = "fvs")]
         self.snapshots.cancel_active_operations();
@@ -300,8 +294,7 @@ impl State {
                 }
             }
             Action::Back => {
-                self.profiles.dismiss_dialog();
-                self.accounts.cancel_active_operation();
+                self.profiles.dismiss_dialogs();
                 if self.panel_is_open(PanelKind::Profiles) {
                     self.close_panel();
                 } else {
@@ -310,8 +303,7 @@ impl State {
                 }
             }
             Action::AddBottle => {
-                self.profiles.dismiss_dialog();
-                self.accounts.cancel_active_operation();
+                self.profiles.dismiss_dialogs();
                 self.panel = Some(PanelState::open(PanelKind::NewBottle));
                 self.bottles.reset_creation();
             }
@@ -336,29 +328,18 @@ impl State {
             #[cfg(feature = "fvs")]
             Action::Snapshots(snapshots::Action::Selected) => {}
             Action::Profiles(message) => {
-                if matches!(message, profiles::Message::OpenCreate)
-                    && !self.profiles.has_active_operation()
-                {
-                    self.accounts.cancel_active_operation();
-                }
-                let (task, output) = self.profiles.update(message);
+                let (task, output) = self
+                    .profiles
+                    .update(message, self.read_model.profiles.selected());
                 if matches!(output, Some(profiles::Output::ToggleSettings)) {
                     if self.panel_is_open(PanelKind::Profiles) {
                         self.close_panel();
-                        self.profiles.dismiss_dialog();
-                        self.accounts.cancel_active_operation();
+                        self.profiles.dismiss_dialogs();
                     } else {
                         self.panel = Some(PanelState::open(PanelKind::Profiles));
                     }
                 }
                 return task.map(Event::Profiles);
-            }
-            Action::Accounts(message) => {
-                if matches!(message, accounts::Message::BeginLogin(_)) {
-                    self.profiles.dismiss_dialog();
-                }
-                let task = self.update_accounts(message);
-                return task;
             }
             Action::Library(message) => return self.library.update(message).map(Event::Library),
         }
@@ -382,10 +363,11 @@ impl State {
             Event::Snapshots(message) => self.snapshots.update(message).map(Event::Snapshots),
             Event::Library(message) => self.library.update(message).map(Event::Library),
             Event::Profiles(message) => {
-                let (task, _) = self.profiles.update(message);
+                let (task, _) = self
+                    .profiles
+                    .update(message, self.read_model.profiles.selected());
                 task.map(Event::Profiles)
             }
-            Event::Accounts(message) => self.update_accounts(message),
             Event::BottleListChanged(bottles) => {
                 let changed = self.read_model.set_bottles(bottles);
                 let selected_exists = match self.route {
@@ -412,17 +394,11 @@ impl State {
                 if self.read_model.profiles == snapshot {
                     return Task::none();
                 }
-                let (selection_changed, selected_profile_changed) = {
+                let selected_profile_changed = {
                     let current = self.read_model.profiles.selected();
                     let next = snapshot.selected();
-                    (
-                        current.id() != next.id(),
-                        current.id() != next.id() || current.name() != next.name(),
-                    )
+                    current.id() != next.id() || current.name() != next.name()
                 };
-                if selection_changed {
-                    self.accounts.cancel_active_operation();
-                }
                 if selected_profile_changed {
                     self.profiles.sync_selected(snapshot.selected());
                 }
@@ -446,14 +422,6 @@ impl State {
             bottle_state,
         };
         self.settings.update(message, &ctx).map(Event::Settings)
-    }
-
-    fn update_accounts(&mut self, message: accounts::Message) -> Task<Event> {
-        let ctx = accounts::Context {
-            active_profile: self.read_model.profiles.selected(),
-            profiles: self.profiles.manager(),
-        };
-        self.accounts.update(message, &ctx).map(Event::Accounts)
     }
 
     fn panel_is_open(&self, kind: PanelKind) -> bool {
@@ -503,7 +471,7 @@ impl State {
         }
 
         subscriptions.push(
-            Subscription::run_with(self.profiles.manager().clone(), profiles::profile_events)
+            Subscription::run_with(self.profiles.manager().clone(), Profiles::watch)
                 .map(Event::ProfilesChanged),
         );
 
@@ -546,13 +514,10 @@ impl State {
             return None;
         }
 
-        self.profiles
-            .dialog()
+        profiles_view::dialog(&self.profiles)
             .map(|dialog| dialog.map(Action::Profiles))
             .or_else(|| {
-                self.accounts
-                    .dialog()
-                    .map(|dialog| dialog.map(Action::Accounts))
+                accounts_view::dialog(&self.profiles).map(|dialog| dialog.map(Action::Profiles))
             })
     }
 
@@ -569,11 +534,7 @@ impl State {
             header
                 .start(header_button("Add bottle", Icon::Plus, Action::AddBottle))
                 .middle(tabs)
-                .end(
-                    self.profiles
-                        .view_switcher(&self.read_model.profiles)
-                        .map(Action::Profiles),
-                )
+                .end(profiles_view::switcher(&self.read_model.profiles).map(Action::Profiles))
         });
         let content: Element<'_, Action> = match self.primary_tab() {
             PrimaryTab::Bottles => bottles_view::rows(
@@ -613,14 +574,7 @@ impl State {
 
         let content: Element<'_, Action> = {
             let active = self.read_model.profiles.selected();
-            let accounts_ctx = accounts::Context {
-                active_profile: active,
-                profiles: self.profiles.manager(),
-            };
-            let links = self
-                .accounts
-                .view_links(&accounts_ctx)
-                .map(Action::Accounts);
+            let links = accounts_view::links(&self.profiles, active).map(Action::Profiles);
 
             column![
                 RowGroup::new()
@@ -645,7 +599,7 @@ impl State {
                             })
                             .on_submit(Action::Profiles(profiles::Message::RenameSubmit,)),
                     )
-                    .row(accounts::action_button_row(
+                    .row(accounts_view::action_button_row(
                         Icon::Cross,
                         "Delete profile",
                         "Removes this profile and its linked accounts from this device",

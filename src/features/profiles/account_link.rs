@@ -1,27 +1,15 @@
-//! Storefront account linking backed directly by `next-core` providers.
-
 use std::sync::{Arc, Mutex};
 
 use bottles_core::{
     AccountLinkInteraction, PluginId, Profile, Profiles, StorefrontProvider,
     error::Error as CoreError,
 };
-use iced::futures::channel::{mpsc, oneshot};
+use iced::{
+    Task,
+    futures::channel::{mpsc, oneshot},
+};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-
-use crate::{
-    Icon,
-    widget::{
-        ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, InfoRow, ListRow, PickerRow,
-        Popover, PopoverItem, RowGroup, TextRow, Title,
-    },
-};
-
-pub struct Context<'a> {
-    pub active_profile: &'a Profile,
-    pub profiles: &'a Profiles,
-}
 
 #[derive(Clone)]
 pub struct LoginPrompt {
@@ -81,7 +69,7 @@ impl AccountLinkInteraction for LoginInteraction {
     }
 }
 
-struct LoginDialog {
+pub struct LoginDialog {
     code_draft: String,
     prompt: LoginPrompt,
     submitting: bool,
@@ -98,12 +86,28 @@ impl LoginDialog {
         }
     }
 
-    fn set_code(&mut self, code: String) {
-        self.code_draft = code;
+    pub fn code(&self) -> &str {
+        &self.code_draft
     }
 
-    fn url(&self) -> &str {
+    pub fn url(&self) -> &str {
         &self.prompt.url
+    }
+
+    pub fn instructions(&self) -> &str {
+        &self.prompt.instructions
+    }
+
+    pub fn is_submitting(&self) -> bool {
+        self.submitting
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    fn set_code(&mut self, code: String) {
+        self.code_draft = code;
     }
 
     fn submit(&mut self) {
@@ -111,64 +115,6 @@ impl LoginDialog {
             Ok(()) => self.submitting = true,
             Err(error) => self.error = Some(error.to_string()),
         }
-    }
-
-    fn view(&self) -> iced::widget::Column<'_, Message> {
-        use iced::widget::{column, container, row};
-
-        let submit_label = if self.submitting {
-            "Submitting…"
-        } else {
-            "Submit"
-        };
-
-        let mut content = column![
-            container(Title::new("Sign in").subtitle(&self.prompt.instructions))
-                .center_x(iced::Fill),
-            RowGroup::new()
-                .row(
-                    ActionRow::new("Sign-in link (click to copy)", Message::CopyLoginUrl)
-                        .description(&self.prompt.url)
-                        .icon(Icon::Controller),
-                )
-                .row(action_button_row(
-                    Icon::Arrow,
-                    "Open in your browser",
-                    "Sign in there, then paste the requested value below.",
-                    "Open",
-                    Message::OpenLoginUrl,
-                ))
-                .row(
-                    TextRow::new("Authorization code", &self.code_draft)
-                        .icon(Icon::Checkmark)
-                        .on_input(Message::LoginCodeChanged)
-                        .on_submit(Message::SubmitLogin),
-                ),
-        ]
-        .spacing(18);
-        if let Some(error) = &self.error {
-            content = content.push(
-                InfoCard::new(
-                    InfoCardKind::Error,
-                    "Could not answer the sign-in prompt",
-                    error,
-                )
-                .width(iced::Fill),
-            );
-        }
-        content = content.push(
-            row![
-                Button::new(submit_label)
-                    .kind(ButtonKind::Primary)
-                    .on_press_maybe((!self.submitting).then_some(Message::SubmitLogin)),
-                Button::new("Cancel")
-                    .kind(ButtonKind::Transparent)
-                    .on_press(Message::DismissLogin),
-            ]
-            .spacing(12),
-        );
-
-        content
     }
 }
 
@@ -207,7 +153,14 @@ pub struct State {
 }
 
 impl State {
-    /// Requests cancellation without dropping the task that drives the session.
+    pub fn dialog(&self) -> Option<&LoginDialog> {
+        self.login_dialog.as_ref()
+    }
+
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
+    }
+
     pub fn cancel_active_operation(&mut self) {
         self.login_dialog = None;
         if let Some(cancellation) = &self.link_cancellation {
@@ -219,14 +172,19 @@ impl State {
         self.link_cancellation.is_some() || self.mutation_pending
     }
 
-    pub fn update(&mut self, message: Message, ctx: &Context<'_>) -> iced::Task<Message> {
+    pub fn update(
+        &mut self,
+        message: Message,
+        active_profile: &Profile,
+        profiles: &Profiles,
+    ) -> Task<Message> {
         match message {
             Message::UnlinkAccount(provider_id) => {
                 if !self.mutation_pending && self.link_cancellation.is_none() {
-                    let profiles = ctx.profiles.clone();
-                    let profile_id = ctx.active_profile.id();
+                    let profiles = profiles.clone();
+                    let profile_id = active_profile.id();
                     self.mutation_pending = true;
-                    return iced::Task::perform(
+                    return Task::perform(
                         async move {
                             profiles
                                 .unlink_account(profile_id, provider_id)
@@ -241,12 +199,8 @@ impl State {
                 if self.link_cancellation.is_none() && !self.mutation_pending {
                     self.link_generation = self.link_generation.wrapping_add(1);
                     let generation = self.link_generation;
-                    let (cancellation, task) = link_account(
-                        ctx.profiles,
-                        ctx.active_profile.id(),
-                        provider.id,
-                        generation,
-                    );
+                    let (cancellation, task) =
+                        link_account(profiles, active_profile.id(), provider.id, generation);
                     self.link_cancellation = Some(cancellation);
                     self.last_error = None;
                     return task;
@@ -258,19 +212,19 @@ impl State {
             Message::DismissLogin => self.cancel_active_operation(),
             Message::LoginCodeChanged(code) => {
                 let Some(dialog) = &mut self.login_dialog else {
-                    return iced::Task::none();
+                    return Task::none();
                 };
                 dialog.set_code(code);
             }
             Message::OpenLoginUrl => {
                 let Some(dialog) = &mut self.login_dialog else {
-                    return iced::Task::none();
+                    return Task::none();
                 };
                 let url = dialog.url().to_owned();
                 dialog.error = None;
                 self.last_error = None;
 
-                return iced::Task::perform(
+                return Task::perform(
                     async move { open_url(&url).map_err(Arc::new) },
                     Message::UrlOpened,
                 );
@@ -279,7 +233,7 @@ impl State {
                 return self
                     .login_dialog
                     .as_ref()
-                    .map_or_else(iced::Task::none, |dialog| {
+                    .map_or_else(Task::none, |dialog| {
                         iced::clipboard::write(dialog.url().to_owned())
                     });
             }
@@ -294,7 +248,7 @@ impl State {
             Message::ProfileUpdated(result) => self.finish_mutation(result),
         }
 
-        iced::Task::none()
+        Task::none()
     }
 
     fn receive_prompt(&mut self, generation: u64, prompt: LoginPrompt) {
@@ -331,88 +285,6 @@ impl State {
             }
         }
     }
-
-    pub(super) fn dialog(&self) -> Option<Dialog<'_, Message>> {
-        self.login_dialog
-            .as_ref()
-            .map(|dialog| Dialog::new(dialog.view(), Message::DismissLogin))
-    }
-
-    pub fn view_links<'a>(&'a self, ctx: &Context<'a>) -> iced::Element<'a, Message> {
-        use iced::widget::{column, container};
-
-        let active = ctx.active_profile;
-
-        let mut accounts = RowGroup::new().title("Linked accounts");
-        for account in active.accounts() {
-            accounts = accounts.row(account_row(
-                provider_icon(&account.provider),
-                format!(
-                    "{} on {}",
-                    account.identity.display_name, account.provider.name
-                ),
-                "Connected",
-                Message::UnlinkAccount(account.provider.id.clone()),
-            ));
-        }
-
-        let link_trigger = PickerRow::new("Link a storefront account")
-            .description("Choose the account provider to connect");
-        let mut link_menu = Popover::row(link_trigger);
-
-        for provider in ctx.profiles.account_providers() {
-            if active
-                .accounts()
-                .iter()
-                .any(|account| account.provider.id == provider.id)
-            {
-                continue;
-            }
-
-            link_menu = link_menu.item(
-                PopoverItem::new(provider.name.clone())
-                    .icon(provider_icon(&provider))
-                    .action("Link", Message::BeginLogin(provider)),
-            );
-        }
-
-        link_menu = link_menu.item(
-            PopoverItem::new("Not listed, install a provider plugin")
-                .on_select(Message::InstallProviderPlugin),
-        );
-
-        let mut content = column![accounts, container(link_menu).width(iced::Fill)].spacing(18);
-        if let Some(error) = &self.last_error {
-            content = content.push(
-                InfoCard::new(InfoCardKind::Error, "Account update failed", error)
-                    .width(iced::Fill),
-            );
-        }
-        content.into()
-    }
-}
-
-pub fn account_row<'a>(
-    icon: Icon,
-    title: impl iced::widget::text::IntoFragment<'a>,
-    description: &'a str,
-    on_unlink: Message,
-) -> ListRow<'a, Message> {
-    action_button_row(icon, title, description, "Unlink", on_unlink)
-}
-
-pub fn action_button_row<'a, M: Clone + 'a>(
-    icon: Icon,
-    title: impl iced::widget::text::IntoFragment<'a>,
-    description: &'a str,
-    button_label: &'a str,
-    on_press: M,
-) -> ListRow<'a, M> {
-    ListRow::from(InfoRow::new(title).description(description).icon(icon)).trailing(
-        Button::new(button_label)
-            .kind(ButtonKind::Surface)
-            .on_press(on_press),
-    )
 }
 
 fn link_account(
@@ -420,21 +292,21 @@ fn link_account(
     profile_id: Uuid,
     provider_id: PluginId,
     generation: u64,
-) -> (CancellationToken, iced::Task<Message>) {
+) -> (CancellationToken, Task<Message>) {
     let (send_prompt, prompts) = mpsc::unbounded();
     let interaction = Arc::new(LoginInteraction {
         prompts: send_prompt,
     });
     let operation = profiles.link_account(profile_id, provider_id, interaction);
     let cancellation = operation.cancellation_token();
-    let prompts = iced::Task::run(prompts, move |prompt| Message::LoginRequested {
+    let prompts = Task::run(prompts, move |prompt| Message::LoginRequested {
         generation,
         prompt,
     });
-    let operation = iced::Task::perform(operation, |result| {
+    let operation = Task::perform(operation, |result| {
         Message::LinkFinished(result.map_err(Arc::new))
     });
-    (cancellation, iced::Task::batch([prompts, operation]))
+    (cancellation, Task::batch([prompts, operation]))
 }
 
 fn presentation_error(result: Result<Profile, Arc<CoreError>>) -> Option<String> {
@@ -459,14 +331,6 @@ fn open_url(url: &str) -> std::io::Result<()> {
     ));
 
     result.map(drop)
-}
-
-fn provider_icon(provider: &StorefrontProvider) -> Icon {
-    if provider.id.as_str() == "steam" {
-        Icon::Computer
-    } else {
-        Icon::Controller
-    }
 }
 
 #[cfg(test)]

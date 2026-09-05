@@ -1,26 +1,12 @@
-//! Profile management backed directly by `next-core`.
+mod account_link;
 
 use std::sync::Arc;
 
-use bottles_core::{Profile, Profiles, ProfilesConfig, error::Error as CoreError};
-use iced::{
-    Element, Task,
-    widget::{column, container, row},
-};
+use bottles_core::{Profile, Profiles, error::Error as CoreError};
+use iced::Task;
 use uuid::Uuid;
 
-use crate::{
-    Icon,
-    widget::{
-        Button, ButtonKind, Dialog, InfoCard, InfoCardKind, Popover, PopoverItem, TextRow, Title,
-    },
-};
-
-pub fn profile_events(
-    profiles: &Profiles,
-) -> impl iced::futures::Stream<Item = Arc<ProfilesConfig>> + Send + 'static + use<> {
-    profiles.watch()
-}
+pub use account_link::{LoginDialog, Message as AccountMessage, State as AccountLinkState};
 
 #[derive(Clone)]
 pub enum Message {
@@ -35,6 +21,7 @@ pub enum Message {
     RenameSubmit,
     DeleteProfile(Uuid),
     ProfileDeleted(Result<(), Arc<CoreError>>),
+    Account(AccountMessage),
 }
 
 pub enum Output {
@@ -42,42 +29,18 @@ pub enum Output {
 }
 
 #[derive(Default)]
-struct NewProfileDialog {
+pub struct NewProfile {
     name: String,
     error: Option<String>,
 }
 
-impl NewProfileDialog {
-    fn view(&self, pending: bool) -> iced::widget::Column<'_, Message> {
-        let mut content = column![
-            container(Title::new("New profile").subtitle("Give this profile a name."))
-                .center_x(iced::Fill),
-            TextRow::new("Profile name", &self.name)
-                .icon(Icon::Person)
-                .on_input(Message::CreateNameChanged)
-                .on_submit(Message::SubmitCreate),
-        ]
-        .spacing(18);
+impl NewProfile {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 
-        if let Some(error) = &self.error {
-            content = content.push(
-                InfoCard::new(InfoCardKind::Error, "Could not create profile", error)
-                    .width(iced::Fill),
-            );
-        }
-
-        content.push(
-            row![
-                Button::new("Create")
-                    .kind(ButtonKind::Primary)
-                    .on_press(Message::SubmitCreate)
-                    .loading(pending),
-                Button::new("Cancel")
-                    .kind(ButtonKind::Transparent)
-                    .on_press(Message::DismissCreate),
-            ]
-            .spacing(12),
-        )
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
     }
 }
 
@@ -93,9 +56,10 @@ pub struct State {
     profiles: Profiles,
     selected_id: Uuid,
     name_draft: String,
-    new_profile: Option<NewProfileDialog>,
+    new_profile: Option<NewProfile>,
     last_error: Option<String>,
     request_kind: Option<RequestKind>,
+    account_link: AccountLinkState,
 }
 
 impl State {
@@ -107,51 +71,63 @@ impl State {
             new_profile: None,
             last_error: None,
             request_kind: None,
+            account_link: AccountLinkState::default(),
         }
     }
 
-    /// Synchronizes local edit state with the Classic read model's selection.
     pub fn sync_selected(&mut self, selected: &Profile) {
+        if self.selected_id != selected.id() {
+            self.account_link.cancel_active_operation();
+        }
         self.selected_id = selected.id();
         self.name_draft = selected.name().to_owned();
+    }
+
+    pub fn manager(&self) -> &Profiles {
+        &self.profiles
     }
 
     pub fn name_draft(&self) -> &str {
         &self.name_draft
     }
 
-    pub(super) fn manager(&self) -> &Profiles {
-        &self.profiles
+    pub fn new_profile(&self) -> Option<&NewProfile> {
+        self.new_profile.as_ref()
+    }
+
+    pub fn is_creating_profile(&self) -> bool {
+        self.request_kind == Some(RequestKind::Create)
     }
 
     pub fn last_error(&self) -> Option<&str> {
         self.last_error.as_deref()
     }
 
+    pub fn account_link(&self) -> &AccountLinkState {
+        &self.account_link
+    }
+
     pub fn has_active_operation(&self) -> bool {
-        self.request_kind.is_some()
+        self.request_kind.is_some() || self.account_link.has_active_operation()
     }
 
-    pub(super) fn dialog(&self) -> Option<Dialog<'_, Message>> {
-        self.new_profile.as_ref().map(|dialog| {
-            Dialog::new(
-                dialog.view(self.request_kind == Some(RequestKind::Create)),
-                Message::DismissCreate,
-            )
-        })
-    }
-
-    pub(super) fn dismiss_dialog(&mut self) {
+    pub fn dismiss_dialogs(&mut self) {
         self.new_profile = None;
+        self.account_link.cancel_active_operation();
     }
 
-    pub fn update(&mut self, message: Message) -> (Task<Message>, Option<Output>) {
+    pub fn update(
+        &mut self,
+        message: Message,
+        active_profile: &Profile,
+    ) -> (Task<Message>, Option<Output>) {
         let mut output = None;
         match message {
             Message::ToggleProfileSettings => output = Some(Output::ToggleSettings),
             Message::OpenCreate => {
                 if self.request_kind.is_none() && self.new_profile.is_none() {
-                    self.new_profile = Some(NewProfileDialog::default());
+                    self.account_link.cancel_active_operation();
+                    self.new_profile = Some(NewProfile::default());
                 }
             }
             Message::CreateNameChanged(name) => {
@@ -159,7 +135,7 @@ impl State {
                     dialog.name = name;
                 }
             }
-            Message::DismissCreate => self.dismiss_dialog(),
+            Message::DismissCreate => self.new_profile = None,
             Message::ActivateProfile(id) => {
                 if self.request_kind.is_none() {
                     let profiles = self.profiles.clone();
@@ -256,6 +232,17 @@ impl State {
                 self.last_error = result.err().map(|error| error.to_string());
             }
             Message::ProfileDeleted(_) => {}
+            Message::Account(message) => {
+                if matches!(message, AccountMessage::BeginLogin(_)) {
+                    self.new_profile = None;
+                }
+                return (
+                    self.account_link
+                        .update(message, active_profile, &self.profiles)
+                        .map(Message::Account),
+                    None,
+                );
+            }
         }
 
         (Task::none(), output)
@@ -264,30 +251,5 @@ impl State {
     fn begin_request(&mut self, kind: RequestKind) {
         self.request_kind = Some(kind);
         self.last_error = None;
-    }
-
-    pub fn view_switcher<'a>(&self, snapshot: &'a ProfilesConfig) -> Element<'a, Message> {
-        let selected = snapshot.selected();
-        let label = selected.name();
-        let trigger = Button::icon_only(label, Icon::Person)
-            .diameter(32.0)
-            .icon_size(16.0)
-            .kind(ButtonKind::Transparent);
-
-        let mut switcher = Popover::new(trigger);
-
-        for profile in snapshot.profiles() {
-            switcher = switcher.item(
-                PopoverItem::new(profile.name())
-                    .icon(Icon::Person)
-                    .selected(selected.id() == profile.id())
-                    .on_select(Message::ActivateProfile(profile.id())),
-            );
-        }
-
-        switcher =
-            switcher.item(PopoverItem::new("Profiles").on_select(Message::ToggleProfileSettings));
-
-        switcher.into()
     }
 }
