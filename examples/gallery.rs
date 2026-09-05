@@ -5,9 +5,9 @@ use iced::{
 use next_ui::{
     Icon, theme,
     widget::{
-        ActionRow, ActionTile, ArtworkCard, BottleStatus, Button, ButtonKind, Card, CardAction,
-        CycleRow, Dialog, ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow, ListRow,
-        PickerRow, Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult, SearchState,
+        ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
+        ExpanderRow, HeaderBar, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow,
+        Popover, PopoverItem, ProgressRing, RowGroup, Search, SearchResult, SearchState,
         SelectorRow, StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _, TextRow, Title,
         WindowModal,
     },
@@ -416,11 +416,12 @@ impl Gallery {
             .expander(action_grid_expander("Expander D"));
 
         let status = column![
-            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Running).log(LOG),
-            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Stopped).log(LOG),
-            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Starting),
-            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Stopping),
-            StatusBar::new("Win64", "soda-7.0.9", BottleStatus::Failed),
+            LogPanel::new("Win64", "soda-7.0.9", "Running", Icon::Lightning).log(LOG),
+            LogPanel::new("Win64", "soda-7.0.9", "Stopped", Icon::Power).log(LOG),
+            LogPanel::new("Win64", "soda-7.0.9", "Starting", Icon::Lightning),
+            LogPanel::new("Win64", "soda-7.0.9", "Stopping", Icon::Power),
+            LogPanel::new("Win64", "soda-7.0.9", "Failed", Icon::Cross).danger(),
+            StatusBar::new("Generic status", Icon::Info).detail(Icon::Chip, "Generic detail"),
         ]
         .spacing(18);
 

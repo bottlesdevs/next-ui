@@ -14,8 +14,8 @@ use uuid::Uuid;
 use crate::{
     Icon, operation,
     widget::{
-        ActionRow, ActionTile, ArtworkCard, BottleStatus, CardAction, InfoCard, InfoCardKind,
-        PickerRow, SelectorRow, StatusBar, TextExt as _, TextRow, spacing,
+        ActionRow, ActionTile, ArtworkCard, CardAction, InfoCard, InfoCardKind, LogPanel,
+        PickerRow, SelectorRow, TextExt as _, TextRow, spacing,
     },
 };
 
@@ -254,7 +254,7 @@ impl State {
     }
 
     pub fn bottle_status<'a>(&self, state: &'a BottleState) -> Element<'a, Message> {
-        StatusBar::new("Win64", state.runner().name(), BottleStatus::Stopped).into()
+        LogPanel::new("Win64", state.runner().name(), "Stopped", Icon::Power).into()
     }
 
     pub fn program_grid<'a>(&self, bottle: Bottle, state: &'a BottleState) -> Element<'a, Message> {

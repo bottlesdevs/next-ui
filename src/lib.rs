@@ -41,7 +41,7 @@ pub mod widget {
         search::{Search, SearchResult, SearchState},
         selector_row::SelectorRow,
         spacing,
-        status_bar::{BottleStatus, StatusBar},
+        status_bar::{LogPanel, StatusBar},
         switcher::Switcher,
         switcher_row::SwitcherRow,
         tabs::{Tab, Tabs},
