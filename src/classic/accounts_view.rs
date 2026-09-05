@@ -39,7 +39,7 @@ pub fn links<'a>(state: &'a State, active: &'a Profile) -> Element<'a, profiles:
         .description("Choose the account provider to connect");
     let mut menu = Popover::row(trigger);
 
-    for provider in state.manager().account_providers() {
+    for provider in state.account_providers() {
         if active
             .accounts()
             .iter()

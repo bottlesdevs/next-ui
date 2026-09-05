@@ -80,10 +80,6 @@ impl State {
         }
     }
 
-    pub fn manager(&self) -> &BottleManager {
-        &self.creation.manager
-    }
-
     pub fn bottle_name(&self) -> &str {
         &self.creation.bottle_name
     }

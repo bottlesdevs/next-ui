@@ -2,7 +2,7 @@ mod account_link;
 
 use std::sync::Arc;
 
-use bottles_core::{Profile, Profiles, error::Error as CoreError};
+use bottles_core::{Profile, Profiles, StorefrontProvider, error::Error as CoreError};
 use iced::Task;
 use uuid::Uuid;
 
@@ -83,8 +83,8 @@ impl State {
         self.name_draft = selected.name().to_owned();
     }
 
-    pub fn manager(&self) -> &Profiles {
-        &self.profiles
+    pub fn account_providers(&self) -> Vec<StorefrontProvider> {
+        self.profiles.account_providers()
     }
 
     pub fn name_draft(&self) -> &str {

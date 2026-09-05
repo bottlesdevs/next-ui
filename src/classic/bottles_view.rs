@@ -1,7 +1,5 @@
 //! Classic presentation for bottles, creation, and installed programs.
 
-use std::sync::Arc;
-
 use bottles_core::{Bottle, BottleState};
 use iced::{
     Center, Element, Length, Theme,
@@ -11,6 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     Icon,
+    domain::BottleSnapshot,
     features::bottles::{Message, State},
     widget::{
         ActionRow, ActionTile, ArtworkCard, CardAction, InfoCard, InfoCardKind, LogPanel,
@@ -24,13 +23,14 @@ const PURPOSES: [&str; 4] = ["Gaming", "Software", "Gaming (ULWGL)", "Custom"];
 const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 
 pub fn rows<'a, Msg: 'static + Clone>(
-    bottle_states: &'a [Arc<BottleState>],
+    bottles: &'a [BottleSnapshot],
     selected_id: Option<Uuid>,
     on_select: impl Fn(Uuid) -> Msg + 'a,
 ) -> Element<'a, Msg> {
     responsive(move |size| {
         let columns = usize::from(size.width >= BOTTLE_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
-        let rows = bottle_states.iter().map(|state| {
+        let rows = bottles.iter().map(|snapshot| {
+            let state = snapshot.state.as_ref();
             ActionRow::new(state.name(), on_select(state.id()))
                 .description(state.runner().name())
                 .icon(Icon::Bottles)

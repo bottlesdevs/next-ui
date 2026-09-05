@@ -3,8 +3,6 @@
 //! A future Next experience is a sibling of this module and cannot access these
 //! private workflow modules.
 
-use std::sync::Arc;
-
 mod accounts_view;
 mod bottles_view;
 mod layout;
@@ -16,6 +14,7 @@ mod snapshots_view;
 
 use crate::{
     Icon,
+    domain::{BottleSnapshot, DomainSnapshots},
     features::{bottle_settings, bottles, library, profiles},
     theme,
     widget::{
@@ -23,9 +22,9 @@ use crate::{
         TextRow, Title,
     },
 };
-use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
+use bottles_core::Bottles;
 use iced::{
-    Element, Fill, Subscription, Task,
+    Element, Fill, Task,
     widget::{column, container, keyed_column, scrollable},
 };
 use layout::{PaneContext, Side, navigation_split, side_panel};
@@ -79,81 +78,9 @@ impl PanelState {
     }
 }
 
-struct ReadModel {
-    bottles: Vec<Bottle>,
-    bottle_states: Vec<Arc<BottleState>>,
-    profiles: Arc<ProfilesConfig>,
-}
-
-impl ReadModel {
-    fn new(bottle_manager: &BottleManager, profiles: &Profiles) -> Self {
-        let bottles = bottle_manager.list();
-        let bottle_states = bottles
-            .iter()
-            .filter_map(|bottle| bottle.state().ok())
-            .collect();
-
-        Self {
-            bottles,
-            bottle_states,
-            profiles: profiles.snapshot(),
-        }
-    }
-
-    fn set_bottles(&mut self, bottles: Vec<Bottle>) -> bool {
-        if self.bottles.len() == bottles.len()
-            && self
-                .bottles
-                .iter()
-                .zip(&bottles)
-                .all(|(current, next)| current.id() == next.id())
-        {
-            return false;
-        }
-        self.bottle_states = bottles
-            .iter()
-            .filter_map(|bottle| bottle.state().ok())
-            .collect();
-        self.bottles = bottles;
-        true
-    }
-
-    fn set_bottle_state(&mut self, state: Arc<BottleState>) -> bool {
-        if !self.bottles.iter().any(|bottle| bottle.id() == state.id()) {
-            return false;
-        }
-
-        if let Some(current) = self
-            .bottle_states
-            .iter_mut()
-            .find(|current| current.id() == state.id())
-        {
-            if current.as_ref() == state.as_ref() {
-                return false;
-            }
-            *current = state;
-        } else {
-            self.bottle_states.push(state);
-        }
-        true
-    }
-
-    fn bottle(&self, id: Uuid) -> Option<Bottle> {
-        self.bottles
-            .iter()
-            .find(|bottle| bottle.id() == id)
-            .cloned()
-    }
-
-    fn bottle_state(&self, id: Uuid) -> Option<&Arc<BottleState>> {
-        self.bottle_states.iter().find(|state| state.id() == id)
-    }
-}
-
 pub struct State {
     route: Route,
     panel: Option<PanelState>,
-    read_model: ReadModel,
     bottles: bottles::State,
     #[cfg(feature = "fvs")]
     snapshots: snapshots::State,
@@ -188,24 +115,19 @@ pub enum Event {
     Snapshots(snapshots::Message),
     Library(library::Message),
     Profiles(profiles::Message),
-    BottleListChanged(Vec<Bottle>),
-    BottleStateChanged(Arc<BottleState>),
-    ProfilesChanged(Arc<ProfilesConfig>),
 }
 
 impl State {
-    pub fn new(core: &Bottles) -> (Self, Task<Event>) {
+    pub fn new(core: &Bottles, domain: &DomainSnapshots) -> (Self, Task<Event>) {
         let bottle_manager = core.bottles().clone();
         let profiles_manager = core.profiles().clone();
-        let read_model = ReadModel::new(&bottle_manager, &profiles_manager);
-        let profiles = profiles::State::new(profiles_manager, read_model.profiles.selected());
+        let profiles = profiles::State::new(profiles_manager, domain.profiles().selected());
         let mut library = library::State::new(core.library().clone());
         let library_boot = library.reload().map(Event::Library);
 
         let state = Self {
             route: Route::Bottles,
             panel: None,
-            read_model,
             bottles: bottles::State::new(bottle_manager, core.addons()),
             #[cfg(feature = "fvs")]
             snapshots: snapshots::State::default(),
@@ -251,18 +173,21 @@ impl State {
         self.snapshots.cancel_active_operations();
     }
 
-    pub fn resume_after_failed_switch(&mut self) -> Task<Event> {
+    pub fn resume_after_failed_switch(&mut self, _domain: &DomainSnapshots) -> Task<Event> {
         self.effects_suspended = false;
         let library = self.reload_library();
         #[cfg(feature = "fvs")]
-        if let Some(bottle) = self.selected_bottle_handle() {
-            let snapshots = self.snapshots.load(bottle).map(Event::Snapshots);
+        if let Some(snapshot) = self.selected_bottle(_domain) {
+            let snapshots = self
+                .snapshots
+                .load(snapshot.bottle.clone())
+                .map(Event::Snapshots);
             return Task::batch([library, snapshots]);
         }
         library
     }
 
-    pub fn update_action(&mut self, action: Action) -> Task<Event> {
+    pub fn update_action(&mut self, action: Action, domain: &DomainSnapshots) -> Task<Event> {
         match action {
             Action::PrimaryTabSelected(tab) => {
                 self.leave_bottle_route();
@@ -280,7 +205,7 @@ impl State {
                 }
             }
             Action::BottleSelected(id) => {
-                if self.read_model.bottle(id).is_none() {
+                if domain.bottle(id).is_none() {
                     return Task::none();
                 }
                 self.route = Route::Bottle {
@@ -290,8 +215,11 @@ impl State {
                 #[cfg(feature = "fvs")]
                 self.snapshots.clear();
                 #[cfg(feature = "fvs")]
-                if let Some(bottle) = self.selected_bottle_handle() {
-                    return self.snapshots.load(bottle).map(Event::Snapshots);
+                if let Some(snapshot) = self.selected_bottle(domain) {
+                    return self
+                        .snapshots
+                        .load(snapshot.bottle.clone())
+                        .map(Event::Snapshots);
                 }
             }
             Action::Back => {
@@ -325,11 +253,9 @@ impl State {
                 }
                 return task;
             }
-            Action::Settings(message) => return self.update_settings(message),
+            Action::Settings(message) => return self.update_settings(message, domain),
             Action::Profiles(message) => {
-                let (task, output) = self
-                    .profiles
-                    .update(message, self.read_model.profiles.selected());
+                let (task, output) = self.profiles.update(message, domain.profiles().selected());
                 if matches!(output, Some(profiles::Output::ToggleSettings)) {
                     if self.panel_is_open(PanelKind::Profiles) {
                         self.close_panel();
@@ -346,7 +272,7 @@ impl State {
         Task::none()
     }
 
-    pub fn update_event(&mut self, event: Event) -> Task<Event> {
+    pub fn update_event(&mut self, event: Event, domain: &DomainSnapshots) -> Task<Event> {
         match event {
             Event::Bottles(message) => {
                 let (task, output) = self.bottles.update(message);
@@ -357,67 +283,47 @@ impl State {
                 }
                 task.map(Event::Bottles)
             }
-            Event::Settings(message) => self.update_settings(message),
+            Event::Settings(message) => self.update_settings(message, domain),
             #[cfg(feature = "fvs")]
             Event::Snapshots(message) => self.snapshots.update(message).map(Event::Snapshots),
             Event::Library(message) => self.library.update(message).map(Event::Library),
             Event::Profiles(message) => {
-                let (task, _) = self
-                    .profiles
-                    .update(message, self.read_model.profiles.selected());
+                let (task, _) = self.profiles.update(message, domain.profiles().selected());
                 task.map(Event::Profiles)
-            }
-            Event::BottleListChanged(bottles) => {
-                let changed = self.read_model.set_bottles(bottles);
-                let selected_exists = match self.route {
-                    Route::Bottle { id, .. } => self.read_model.bottle(id).is_some(),
-                    Route::Bottles | Route::Library => true,
-                };
-                if reconcile_route(&mut self.route, selected_exists) {
-                    self.leave_bottle_route();
-                }
-                if changed {
-                    self.reload_library()
-                } else {
-                    Task::none()
-                }
-            }
-            Event::BottleStateChanged(state) => {
-                if self.read_model.set_bottle_state(state) {
-                    self.reload_library()
-                } else {
-                    Task::none()
-                }
-            }
-            Event::ProfilesChanged(snapshot) => {
-                if self.read_model.profiles == snapshot {
-                    return Task::none();
-                }
-                let selected_profile_changed = {
-                    let current = self.read_model.profiles.selected();
-                    let next = snapshot.selected();
-                    current.id() != next.id() || current.name() != next.name()
-                };
-                if selected_profile_changed {
-                    self.profiles.sync_selected(snapshot.selected());
-                }
-                self.read_model.profiles = snapshot;
-                self.reload_library()
             }
         }
     }
 
-    fn update_settings(&mut self, message: bottle_settings::Message) -> Task<Event> {
-        let selected_id = match self.route {
-            Route::Bottle { id, .. } => Some(id),
-            _ => None,
+    pub fn bottles_changed(&mut self, domain: &DomainSnapshots) -> Task<Event> {
+        let selected_exists = match self.route {
+            Route::Bottle { id, .. } => domain.bottle(id).is_some(),
+            Route::Bottles | Route::Library => true,
         };
-        let selected = selected_id.and_then(|id| {
-            Some((
-                self.read_model.bottle(id)?,
-                self.read_model.bottle_state(id)?.as_ref(),
-            ))
-        });
+        if reconcile_route(&mut self.route, selected_exists) {
+            self.leave_bottle_route();
+        }
+        self.reload_library()
+    }
+
+    pub fn profiles_changed(
+        &mut self,
+        domain: &DomainSnapshots,
+        selected_changed: bool,
+    ) -> Task<Event> {
+        if selected_changed {
+            self.profiles.sync_selected(domain.profiles().selected());
+        }
+        self.reload_library()
+    }
+
+    fn update_settings(
+        &mut self,
+        message: bottle_settings::Message,
+        domain: &DomainSnapshots,
+    ) -> Task<Event> {
+        let selected = self
+            .selected_bottle(domain)
+            .map(|snapshot| (snapshot.bottle.clone(), snapshot.state.as_ref()));
         self.settings.update(message, selected).map(Event::Settings)
     }
 
@@ -437,45 +343,14 @@ impl State {
         self.snapshots.clear();
     }
 
-    fn selected_bottle_handle(&self) -> Option<Bottle> {
+    fn selected_bottle<'a>(&self, domain: &'a DomainSnapshots) -> Option<&'a BottleSnapshot> {
         let Route::Bottle { id, .. } = self.route else {
             return None;
         };
-
-        self.read_model.bottle(id)
+        domain.bottle(id)
     }
 
-    fn selected_bottle_state(&self) -> Option<&Arc<BottleState>> {
-        let Route::Bottle { id, .. } = self.route else {
-            return None;
-        };
-
-        self.read_model.bottle_state(id)
-    }
-
-    pub fn event_subscription(&self) -> Subscription<Event> {
-        let mut subscriptions = Vec::new();
-        subscriptions.push(
-            Subscription::run_with(self.bottles.manager().clone(), BottleManager::watch)
-                .map(Event::BottleListChanged),
-        );
-
-        for bottle in &self.read_model.bottles {
-            subscriptions.push(
-                Subscription::run_with(bottle.clone(), Bottle::watch)
-                    .map(Event::BottleStateChanged),
-            );
-        }
-
-        subscriptions.push(
-            Subscription::run_with(self.profiles.manager().clone(), Profiles::watch)
-                .map(Event::ProfilesChanged),
-        );
-
-        Subscription::batch(subscriptions)
-    }
-
-    pub fn view(&self) -> Element<'_, Action> {
+    pub fn view<'a>(&'a self, domain: &'a DomainSnapshots) -> Element<'a, Action> {
         let panel = self.panel.unwrap_or(PanelState {
             kind: PanelKind::NewBottle,
             open: false,
@@ -490,13 +365,13 @@ impl State {
                 navigation_split(
                     base_context,
                     matches!(self.route, Route::Bottle { .. }),
-                    |context| self.primary_page(context),
-                    |context| self.detail_page(context),
+                    |context| self.primary_page(context, domain),
+                    |context| self.detail_page(context, domain),
                 )
             },
             move |context| {
                 if panel.kind == PanelKind::Profiles {
-                    self.profile_settings_page(context)
+                    self.profile_settings_page(context, domain)
                 } else {
                     self.new_bottle_page(context)
                 }
@@ -518,7 +393,11 @@ impl State {
             })
     }
 
-    fn primary_page(&self, context: PaneContext) -> Element<'_, Action> {
+    fn primary_page<'a>(
+        &'a self,
+        context: PaneContext,
+        domain: &'a DomainSnapshots,
+    ) -> Element<'a, Action> {
         let tabs = Tabs::new(
             [
                 Tab::new(PrimaryTab::Bottles, "Bottles"),
@@ -531,11 +410,11 @@ impl State {
             header
                 .start(header_button("Add bottle", Icon::Plus, Action::AddBottle))
                 .middle(tabs)
-                .end(profiles_view::switcher(&self.read_model.profiles).map(Action::Profiles))
+                .end(profiles_view::switcher(domain.profiles()).map(Action::Profiles))
         });
         let content: Element<'_, Action> = match self.primary_tab() {
             PrimaryTab::Bottles => bottles_view::rows(
-                &self.read_model.bottle_states,
+                domain.bottles(),
                 match self.route {
                     Route::Bottle { id, .. } => Some(id),
                     _ => None,
@@ -551,7 +430,11 @@ impl State {
             .into()
     }
 
-    fn profile_settings_page(&self, context: PaneContext) -> Element<'_, Action> {
+    fn profile_settings_page<'a>(
+        &'a self,
+        context: PaneContext,
+        domain: &'a DomainSnapshots,
+    ) -> Element<'a, Action> {
         let header = context.header(Action::DragWindow, |header| {
             header
                 .start(header_button("Cancel", Icon::Arrow, Action::Back))
@@ -570,7 +453,7 @@ impl State {
         });
 
         let content: Element<'_, Action> = {
-            let active = self.read_model.profiles.selected();
+            let active = domain.profiles().selected();
             let links = accounts_view::links(&self.profiles, active).map(Action::Profiles);
 
             column![
@@ -659,7 +542,11 @@ impl State {
             .into()
     }
 
-    fn detail_page(&self, context: PaneContext) -> Element<'_, Action> {
+    fn detail_page<'a>(
+        &'a self,
+        context: PaneContext,
+        domain: &'a DomainSnapshots,
+    ) -> Element<'a, Action> {
         #[cfg(feature = "fvs")]
         let detail_tabs = [
             Tab::new(DetailTab::Programs, "Programs"),
@@ -709,17 +596,21 @@ impl State {
         };
         let content = match detail_tab {
             DetailTab::Programs => {
-                if let (Some(bottle), Some(state)) =
-                    (self.selected_bottle_handle(), self.selected_bottle_state())
-                {
-                    bottles_view::programs(&self.bottles, bottle, state).map(Action::Bottles)
+                if let Some(snapshot) = self.selected_bottle(domain) {
+                    bottles_view::programs(
+                        &self.bottles,
+                        snapshot.bottle.clone(),
+                        snapshot.state.as_ref(),
+                    )
+                    .map(Action::Bottles)
                 } else {
                     column![].into()
                 }
             }
             DetailTab::Settings => settings_view::view(
                 &self.settings,
-                self.selected_bottle_state().map(|state| state.as_ref()),
+                self.selected_bottle(domain)
+                    .map(|snapshot| snapshot.state.as_ref()),
             )
             .map(Action::Settings),
             #[cfg(feature = "fvs")]
@@ -728,7 +619,8 @@ impl State {
 
         let mut body = column![scroll_content(content)].width(Fill).height(Fill);
 
-        if let Some(state) = self.selected_bottle_state() {
+        if let Some(snapshot) = self.selected_bottle(domain) {
+            let state = snapshot.state.as_ref();
             body = body.push(
                 keyed_column([(state.id(), bottles_view::status(state).map(Action::Bottles))])
                     .width(Fill),
