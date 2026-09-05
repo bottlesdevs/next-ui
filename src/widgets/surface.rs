@@ -11,7 +11,6 @@ use iced::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SurfaceRole {
-    Panel,
     Card,
     Overlay,
 }
@@ -22,7 +21,7 @@ impl SurfaceRole {
 
         Pair {
             color: match self {
-                Self::Panel | Self::Overlay => colors.border,
+                Self::Overlay => colors.border,
                 Self::Card => colors.surface,
             },
             text: colors.text,
@@ -54,7 +53,6 @@ impl SurfaceRole {
         extended.background.base = colors;
         extended.background.strong = Pair {
             color: match self {
-                Self::Panel => semantic.hover,
                 Self::Card => semantic.border,
                 Self::Overlay => semantic.selection,
             },
@@ -66,7 +64,6 @@ impl SurfaceRole {
 
     const fn name(self) -> &'static str {
         match self {
-            Self::Panel => "Bottles Next Panel",
             Self::Card => "Bottles Next Card",
             Self::Overlay => "Bottles Next Overlay",
         }

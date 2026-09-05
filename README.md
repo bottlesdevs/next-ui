@@ -24,10 +24,9 @@ interaction mechanics: pointer/touch capture, focus and keyboard behavior,
 popup disclosure, modal focus/capture, RowGroup disclosure, StatusBar
 resizing/follow-tail, and animation.
 
-Use domain-derived stable keys for `SelectorRow` and `SearchResult`; they
-preserve highlighted identity across collection changes. `SelectorRow` is an
-in-flow, single-Tab-stop disclosure
-navigated with arrow keys, while `Search` and `Popover` use anchored overlays.
+Use domain-derived stable keys for `SearchResult` to preserve highlighted
+identity across collection changes. `SelectorRow` expands in flow, while
+`Search` and `Popover` use anchored overlays.
 Use the normal label/icon button constructors unless arbitrary content requires
 `Button::custom`.
 

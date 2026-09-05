@@ -281,16 +281,12 @@ impl Gallery {
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
-            SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected, |option| {
-                (*option).to_owned()
-            },)
-            .on_selected(Message::OptionSelected)
-            .placeholder("Placeholder")
-            .icon(Icon::Person),
-            SelectorRow::new("Empty selector", EMPTY_OPTIONS, None, |option| {
-                (*option).to_owned()
-            })
-            .placeholder("No options available"),
+            SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected)
+                .on_selected(Message::OptionSelected)
+                .placeholder("Placeholder")
+                .icon(Icon::Person),
+            SelectorRow::new("Empty selector", EMPTY_OPTIONS, None)
+                .placeholder("No options available"),
             ActionRow::new("Title", Message::Noop).description("Description"),
             ActionRow::new("Unavailable action", None)
                 .description("This action cannot currently run"),

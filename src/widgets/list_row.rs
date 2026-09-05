@@ -4,7 +4,6 @@ use iced::{
 };
 
 use super::{
-    control::{ActionState as LegacyActionState, ActionStyle},
     focusable_action::{ActionState, FocusableAction},
     spacing,
     text::TextExt as _,
@@ -149,26 +148,5 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
         text_color: colors.text,
         border: Border::default().rounded(6),
         ..button::Style::default()
-    }
-}
-
-pub(crate) fn style(theme: &Theme, state: LegacyActionState) -> ActionStyle {
-    let colors = crate::theme::colors(theme);
-    let color = if state.pressed {
-        colors.selection
-    } else if state.selected || state.expanded || state.focus_within {
-        colors.border
-    } else if state.actionable && state.hovered {
-        colors.hover
-    } else {
-        colors.surface
-    };
-
-    ActionStyle {
-        background: Some(Background::Color(color)),
-        text_color: colors.text,
-        border: Border::default().rounded(6),
-        foreground: (!state.sensitive).then_some(Background::Color(crate::theme::scrim(theme))),
-        ..ActionStyle::default()
     }
 }

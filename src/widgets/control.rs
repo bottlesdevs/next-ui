@@ -9,12 +9,6 @@ use iced::{
     widget::button,
     window,
 };
-use std::{cell::Cell, rc::Rc};
-
-/// A one-shot activation event from an [`ActionSurface`] to its composite owner.
-/// It does not own persistent widget state.
-pub(crate) type ActivationSignal = Rc<Cell<bool>>;
-
 /// The independent states used to resolve a control's appearance.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ActionState {
@@ -275,7 +269,6 @@ pub(crate) struct ActionSurface<'a, Message> {
     content: Element<'a, Message>,
     id: Option<Id>,
     on_press: Option<Message>,
-    activation: Option<ActivationSignal>,
     sensitive: bool,
     selected: bool,
     width: Length,
@@ -290,7 +283,6 @@ impl<'a, Message> ActionSurface<'a, Message> {
             content: content.into(),
             id: None,
             on_press: None,
-            activation: None,
             sensitive: true,
             selected: false,
             width: Length::Shrink,
@@ -315,11 +307,6 @@ impl<'a, Message> ActionSurface<'a, Message> {
 
     pub(crate) fn on_press_maybe(mut self, message: Option<Message>) -> Self {
         self.on_press = message;
-        self
-    }
-
-    pub(crate) fn activation_signal(mut self, signal: ActivationSignal) -> Self {
-        self.activation = Some(signal);
         self
     }
 
@@ -357,7 +344,7 @@ impl<'a, Message> ActionSurface<'a, Message> {
     }
 
     fn actionable(&self) -> bool {
-        self.on_press.is_some() || self.activation.is_some()
+        self.on_press.is_some()
     }
 }
 
@@ -480,14 +467,9 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ActionSurface<'_
             self.actionable(),
             shell,
         ) == Outcome::Activated
+            && let Some(message) = &self.on_press
         {
-            if let Some(activation) = &self.activation {
-                activation.set(true);
-            }
-
-            if let Some(message) = &self.on_press {
-                shell.publish(message.clone());
-            }
+            shell.publish(message.clone());
         }
     }
 
