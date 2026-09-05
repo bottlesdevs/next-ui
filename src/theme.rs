@@ -265,6 +265,16 @@ pub fn panel(theme: &IcedTheme) -> container::Style {
     surface(pair(colors.background, colors.text))
 }
 
+pub(crate) fn card(theme: &IcedTheme) -> container::Style {
+    let colors = colors(theme);
+    surface(pair(colors.surface, colors.text))
+}
+
+pub(crate) fn overlay(theme: &IcedTheme) -> container::Style {
+    let colors = colors(theme);
+    surface(pair(colors.border, colors.text))
+}
+
 pub(crate) fn surface(colors: Pair) -> container::Style {
     container::Style::default()
         .color(colors.text)

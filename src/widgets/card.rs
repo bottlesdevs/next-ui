@@ -3,11 +3,7 @@ use iced::{
     widget::{Space, column, container, image, stack, text},
 };
 
-use super::{
-    spacing,
-    surface::{Surface, SurfaceRole},
-    text::TextExt as _,
-};
+use super::{spacing, text::TextExt as _};
 
 pub(crate) const BANNER_HEIGHT: f32 = 132.0;
 
@@ -46,15 +42,13 @@ impl<'a, Message> Card<'a, Message> {
 
 impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
     fn from(card: Card<'a, Message>) -> Self {
-        Surface::new(
-            SurfaceRole::Card,
-            container(card.content)
-                .padding(card.padding)
-                .width(card.width)
-                .height(card.height)
-                .clip(true),
-        )
-        .into()
+        container(card.content)
+            .padding(card.padding)
+            .width(card.width)
+            .height(card.height)
+            .clip(true)
+            .style(crate::theme::card)
+            .into()
     }
 }
 

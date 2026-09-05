@@ -1,10 +1,9 @@
 pub mod action_tile;
 mod anchored_overlay;
-mod control;
+mod focus;
 mod focusable_action;
 mod menu;
 mod style;
-mod surface;
 
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 

@@ -9,7 +9,7 @@ use iced::{
 };
 
 use super::{
-    control::{descendant_is_focused, focus_descendant, unfocus_descendants},
+    focus::{descendant_is_focused, focus_descendant, unfocus_descendants},
     spacing,
 };
 

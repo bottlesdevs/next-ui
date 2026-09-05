@@ -14,10 +14,9 @@ use crate::icons::Icon;
 use super::{
     anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    control::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
+    focus::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
     menu::{footer as panel_footer, item as menu_item, row_content},
     spacing,
-    surface::{Surface, SurfaceRole},
     text::TextExt as _,
 };
 
@@ -178,7 +177,7 @@ fn panel<'a, Message: Clone + 'a>(
     }
 
     (
-        Surface::new(SurfaceRole::Overlay, content).into(),
+        container(content).style(crate::theme::overlay).into(),
         visible,
         focus_targets,
     )

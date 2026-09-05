@@ -15,7 +15,6 @@ use super::{
     menu::{item as menu_item, row_content},
     picker_row::PickerRow,
     spacing,
-    surface::{Surface, SurfaceRole},
 };
 
 const WIDTH: f32 = 240.0;
@@ -60,7 +59,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
 
         Element::new(PopoverWidget {
             trigger: popover.trigger,
-            panel: Surface::new(SurfaceRole::Overlay, content).into(),
+            panel: container(content).style(crate::theme::overlay).into(),
             focus_targets,
         })
     }
@@ -288,7 +287,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
         let state = tree.state.downcast_mut::<State>();
 
         if state.focus_trigger {
-            super::control::focus_first_descendant(
+            super::focus::focus_first_descendant(
                 self.trigger.as_widget_mut(),
                 &mut tree.children[0],
                 layout,
@@ -318,7 +317,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_
             let focus_panel =
                 opening && !self.focus_targets.is_empty() && matches!(event, Event::Keyboard(_));
             if focus_panel {
-                super::control::unfocus_descendants(
+                super::focus::unfocus_descendants(
                     self.trigger.as_widget_mut(),
                     &mut tree.children[0],
                     layout,

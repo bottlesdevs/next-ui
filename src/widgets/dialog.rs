@@ -11,7 +11,7 @@ use iced::{
 
 use crate::theme;
 
-use super::control::{ActionSurface, cycle_descendant_focus, event_cursor, focus_first_descendant};
+use super::focus::{cycle_descendant_focus, event_cursor, focus_first_descendant};
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
 
@@ -73,10 +73,12 @@ impl<'a, Message> WindowModal<'a, Message> {
 impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Message> {
     fn from(modal: WindowModal<'a, Message>) -> Self {
         let open = modal.dialog.is_some();
-        let base = ActionSurface::new(modal.base)
-            .width(Fill)
-            .height(Fill)
-            .sensitive(!open);
+        let base: Element<'a, Message> = container(modal.base).width(Fill).height(Fill).into();
+        let base = if open {
+            Element::new(ModalBase { content: base })
+        } else {
+            base
+        };
         let mut layers = stack![base].width(Fill).height(Fill);
 
         if let Some(dialog) = modal.dialog {
@@ -91,6 +93,57 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
         }
 
         layers.into()
+    }
+}
+
+/// Draws the base without forwarding input, focus operations, or overlays.
+struct ModalBase<'a, Message> {
+    content: Element<'a, Message>,
+}
+
+impl<Message> Widget<Message, Theme, iced::Renderer> for ModalBase<'_, Message> {
+    fn tag(&self) -> tree::Tag {
+        self.content.as_widget().tag()
+    }
+
+    fn state(&self) -> tree::State {
+        self.content.as_widget().state()
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        self.content.as_widget().children()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        self.content.as_widget().diff(tree);
+    }
+
+    fn size(&self) -> Size<Length> {
+        self.content.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.content.as_widget_mut().layout(tree, renderer, limits)
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut iced::Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.content
+            .as_widget()
+            .draw(tree, renderer, theme, style, layout, cursor, viewport);
     }
 }
 
@@ -338,9 +391,7 @@ mod tests {
     }
 
     fn base_interaction(tree: &mut Tree) -> &mut Interaction {
-        tree.children[0].children[0]
-            .state
-            .downcast_mut::<Interaction>()
+        tree.children[0].state.downcast_mut::<Interaction>()
     }
 
     #[test]

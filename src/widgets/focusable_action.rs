@@ -10,6 +10,8 @@ use iced::{
     window,
 };
 
+use super::focus::event_cursor;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ActionState {
     pub(crate) enabled: bool,
@@ -473,18 +475,6 @@ fn event_origin(event: &Event) -> Option<PressOrigin> {
             },
         ) => Some(PressOrigin::Key(*named)),
         _ => None,
-    }
-}
-
-fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
-    match event {
-        Event::Touch(
-            touch::Event::FingerPressed { position, .. }
-            | touch::Event::FingerMoved { position, .. }
-            | touch::Event::FingerLifted { position, .. }
-            | touch::Event::FingerLost { position, .. },
-        ) => mouse::Cursor::Available(*position),
-        _ => cursor,
     }
 }
 

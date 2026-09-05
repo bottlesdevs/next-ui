@@ -18,7 +18,7 @@ use crate::{icons::Icon, theme};
 
 use super::{
     button::{Button, ButtonKind},
-    control::focus_first_descendant,
+    focus::focus_first_descendant,
     focusable_action::Interaction,
     spacing,
     text::TextExt as _,
