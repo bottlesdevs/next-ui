@@ -7,7 +7,7 @@ The reusable Bottles Next UI toolkit and its Iced desktop application.
 `next-ui` is one Cargo package with two Rust targets:
 
 - library crate `next_ui`: the complete toolkit;
-- binary crate `next-ui`: the application, enabled by the `application` feature.
+- binary crate `next-ui`: the application.
 
 Application state, Classic/Next workspaces, onboarding, and operation
 orchestration are private binary modules. Toolkit users depend only on:
@@ -62,13 +62,11 @@ UI only selects the experience/step and renders coordinator state.
 
 ## Features
 
-- Default: `application` and `fvs`.
-- `application`: enables app-only dependencies and the `next-ui` binary.
-- `fvs`: enables `application` and `bottles-core/fvs`.
+- Default: `fvs`.
+- `fvs`: enables `bottles-core/fvs`.
 - `debug`: enables Iced hot reloading.
 
-The toolkit builds without app/core dependencies using
-`--no-default-features`.
+`--no-default-features` builds the complete package without FVS support.
 
 ## Accessibility
 
