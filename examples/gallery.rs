@@ -434,17 +434,19 @@ impl Gallery {
         ]
         .spacing(18);
 
-        let header = chrome::header(Message::Window(chrome::Action::Drag), true).middle(
-            iced::widget::container(
-                Search::new(
-                    "Search for software and games…",
-                    &self.search,
-                    Message::SearchChanged,
+        let header = chrome::header(Message::Window(chrome::Action::Drag), true, |header| {
+            header.middle(
+                iced::widget::container(
+                    Search::new(
+                        "Search for software and games…",
+                        &self.search,
+                        Message::SearchChanged,
+                    )
+                    .state(self.search_state()),
                 )
-                .state(self.search_state()),
+                .width(370),
             )
-            .width(370),
-        );
+        });
 
         let gallery = scrollable(
             container(

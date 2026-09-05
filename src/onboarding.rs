@@ -316,7 +316,7 @@ pub(crate) fn shell<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
     on_drag: Message,
 ) -> Element<'a, Message> {
-    let header = chrome::header(on_drag, true).transparent(true);
+    let header = chrome::header(on_drag, true, |header| header.transparent(true));
     let panel = container(
         column![
             header,

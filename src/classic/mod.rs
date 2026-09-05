@@ -572,15 +572,16 @@ impl State {
             Some(self.primary_tab()),
             Action::PrimaryTabSelected,
         );
-        let header = context
-            .header(Action::DragWindow)
-            .start(header_button("Add bottle", Icon::Plus, Action::AddBottle))
-            .middle(tabs)
-            .end(
-                self.profiles
-                    .view_switcher(&self.read_model.profiles)
-                    .map(Action::Profiles),
-            );
+        let header = context.header(Action::DragWindow, |header| {
+            header
+                .start(header_button("Add bottle", Icon::Plus, Action::AddBottle))
+                .middle(tabs)
+                .end(
+                    self.profiles
+                        .view_switcher(&self.read_model.profiles)
+                        .map(Action::Profiles),
+                )
+        });
         let content: Element<'_, Action> = match self.primary_tab() {
             PrimaryTab::Bottles => self.bottles.rows_view(
                 &self.read_model.bottle_states,
@@ -600,21 +601,22 @@ impl State {
     }
 
     fn profile_settings_page(&self, context: PaneContext) -> Element<'_, Action> {
-        let header = context
-            .header(Action::DragWindow)
-            .start(header_button("Cancel", Icon::Arrow, Action::Back))
-            .middle(
-                container(
-                    Title::new("Profile Settings")
-                        .subtitle("Manage your profiles and linked accounts."),
+        let header = context.header(Action::DragWindow, |header| {
+            header
+                .start(header_button("Cancel", Icon::Arrow, Action::Back))
+                .middle(
+                    container(
+                        Title::new("Profile Settings")
+                            .subtitle("Manage your profiles and linked accounts."),
+                    )
+                    .padding(iced::padding::bottom(12)),
                 )
-                .padding(iced::padding::bottom(12)),
-            )
-            .end(header_button(
-                "New profile",
-                Icon::Plus,
-                Action::Profiles(profiles::Message::OpenCreate),
-            ));
+                .end(header_button(
+                    "New profile",
+                    Icon::Plus,
+                    Action::Profiles(profiles::Message::OpenCreate),
+                ))
+        });
 
         let content: Element<'_, Action> = {
             let active = self.read_model.profiles.selected();
@@ -682,28 +684,29 @@ impl State {
     }
 
     fn new_bottle_page(&self, context: PaneContext) -> Element<'_, Action> {
-        let header = context
-            .header(Action::DragWindow)
-            .start(header_button(
-                "Cancel bottle creation",
-                Icon::Arrow,
-                Action::CancelBottle,
-            ))
-            .middle(
-                container(Title::new("New Bottle").subtitle("Creating a new bottle."))
-                    .padding(iced::padding::bottom(12)),
-            )
-            .end(
-                header_button(
-                    "Create bottle",
-                    Icon::Checkmark,
-                    Action::Bottles(bottles::Message::CreateBottle),
+        let header = context.header(Action::DragWindow, |header| {
+            header
+                .start(header_button(
+                    "Cancel bottle creation",
+                    Icon::Arrow,
+                    Action::CancelBottle,
+                ))
+                .middle(
+                    container(Title::new("New Bottle").subtitle("Creating a new bottle."))
+                        .padding(iced::padding::bottom(12)),
                 )
-                .on_press_maybe(
-                    (!self.bottles.is_creating())
-                        .then_some(Action::Bottles(bottles::Message::CreateBottle)),
-                ),
-            );
+                .end(
+                    header_button(
+                        "Create bottle",
+                        Icon::Checkmark,
+                        Action::Bottles(bottles::Message::CreateBottle),
+                    )
+                    .on_press_maybe(
+                        (!self.bottles.is_creating())
+                            .then_some(Action::Bottles(bottles::Message::CreateBottle)),
+                    ),
+                )
+        });
         let content = self.bottles.creation_view().map(Action::Bottles);
 
         column![header, scroll_panel(content)]
@@ -732,30 +735,30 @@ impl State {
             }),
             Action::DetailTabSelected,
         );
-        let mut header = context.header(Action::DragWindow);
+        let header = context.header(Action::DragWindow, |mut header| {
+            if context.is_standalone() {
+                header = header.start(
+                    Button::icon_only("Back to bottles", Icon::Arrow)
+                        .diameter(32.0)
+                        .icon_size(16.0)
+                        .kind(ButtonKind::Transparent)
+                        .on_press(Action::Back),
+                );
+            }
 
-        if context.is_standalone() {
-            header = header.start(
-                Button::icon_only("Back to bottles", Icon::Arrow)
-                    .diameter(32.0)
-                    .icon_size(16.0)
-                    .kind(ButtonKind::Transparent)
-                    .on_press(Action::Back),
-            );
-        }
-
-        let header = header
-            .start(header_button(
-                "More actions",
-                Icon::EllipsisVertical,
-                Action::OpenMenu,
-            ))
-            .start(header_button(
-                "Toggle power",
-                Icon::Power,
-                Action::TogglePower,
-            ))
-            .middle(tabs);
+            header
+                .start(header_button(
+                    "More actions",
+                    Icon::EllipsisVertical,
+                    Action::OpenMenu,
+                ))
+                .start(header_button(
+                    "Toggle power",
+                    Icon::Power,
+                    Action::TogglePower,
+                ))
+                .middle(tabs)
+        });
         let settings_ctx = settings::Context {
             #[cfg(target_os = "linux")]
             bottle: self.selected_bottle_handle(),

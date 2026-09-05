@@ -993,6 +993,7 @@ fn root_body<'a>(content: impl Into<Element<'a, AppMessage>>) -> Element<'a, App
         chrome::header(
             AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
             true,
+            |header| header,
         ),
         center(content).width(Fill).height(Fill),
     ]

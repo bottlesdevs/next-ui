@@ -119,25 +119,28 @@ pub(crate) fn window_frame<'a, Message: Clone + 'a>(
     layers.push(close).into()
 }
 
-pub(crate) fn header<'a, Message: 'a>(
+pub(crate) fn header<'a, Message: Clone + 'a>(
     on_drag: Message,
     owns_window_control: bool,
-) -> HeaderBar<'a, Message> {
+    build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,
+) -> Element<'a, Message> {
     let header = HeaderBar::new(on_drag);
 
-    if !owns_window_control {
-        return header;
-    }
-
-    let spacer = Space::new()
-        .width(WINDOW_CONTROL_SIZE)
-        .height(WINDOW_CONTROL_SIZE);
-
-    if WINDOW_CONTROL_AT_START {
-        header.start(spacer)
+    let header = if !owns_window_control {
+        build(header)
     } else {
-        header.end(spacer)
-    }
+        let spacer = Space::new()
+            .width(WINDOW_CONTROL_SIZE)
+            .height(WINDOW_CONTROL_SIZE);
+
+        if WINDOW_CONTROL_AT_START {
+            build(header.start(spacer))
+        } else {
+            build(header).end(spacer)
+        }
+    };
+
+    header.into()
 }
 
 fn resize_edge<'a, Message: Clone + 'a>(

@@ -44,8 +44,12 @@ impl PaneContext {
         self.standalone
     }
 
-    pub(super) fn header<'a, Message: 'a>(self, on_drag: Message) -> HeaderBar<'a, Message> {
-        chrome::header(on_drag, self.owns_window_control)
+    pub(super) fn header<'a, Message: Clone + 'a>(
+        self,
+        on_drag: Message,
+        build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,
+    ) -> Element<'a, Message> {
+        chrome::header(on_drag, self.owns_window_control, build)
     }
 }
 
