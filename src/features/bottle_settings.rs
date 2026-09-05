@@ -12,16 +12,11 @@ pub enum Message {
     #[cfg(target_os = "linux")]
     ToggleMangoHud(bool),
     #[cfg(target_os = "linux")]
-    WrapperUpdated {
-        generation: u64,
-        result: Result<(), Arc<CoreError>>,
-    },
+    WrapperUpdated(Result<(), Arc<CoreError>>),
 }
 
 #[derive(Default)]
 pub struct State {
-    #[cfg(target_os = "linux")]
-    generation: u64,
     #[cfg(target_os = "linux")]
     pending: bool,
     #[cfg(target_os = "linux")]
@@ -42,7 +37,7 @@ impl State {
                 {
                     let mut config = state.wrappers().gamescope.clone();
                     config.enabled = enabled;
-                    let generation = self.next_generation();
+                    self.start_update();
 
                     return Task::perform(
                         async move {
@@ -50,7 +45,7 @@ impl State {
                             edit.set_gamescope(config);
                             edit.commit().await.map_err(Arc::new)
                         },
-                        move |result| Message::WrapperUpdated { generation, result },
+                        Message::WrapperUpdated,
                     );
                 }
             }
@@ -58,22 +53,21 @@ impl State {
                 if !self.pending
                     && let Some((bottle, _)) = selected
                 {
-                    let generation = self.next_generation();
+                    self.start_update();
                     return Task::perform(
                         async move {
                             let mut edit = bottle.edit();
                             edit.set_mangohud(MangoHudConfig { enabled });
                             edit.commit().await.map_err(Arc::new)
                         },
-                        move |result| Message::WrapperUpdated { generation, result },
+                        Message::WrapperUpdated,
                     );
                 }
             }
-            Message::WrapperUpdated { generation, result } if generation == self.generation => {
+            Message::WrapperUpdated(result) => {
                 self.last_error = result.err().map(|error| error.to_string());
                 self.pending = false;
             }
-            Message::WrapperUpdated { .. } => {}
         }
 
         Task::none()
@@ -105,10 +99,8 @@ impl State {
     }
 
     #[cfg(target_os = "linux")]
-    fn next_generation(&mut self) -> u64 {
-        self.generation = self.generation.wrapping_add(1);
+    fn start_update(&mut self) {
         self.pending = true;
         self.last_error = None;
-        self.generation
     }
 }
