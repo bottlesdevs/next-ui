@@ -85,7 +85,7 @@ struct Session {
     domain: DomainSnapshots,
     screen: SessionScreen,
     lifecycle: SessionLifecycle,
-    notice: Option<AppError>,
+    overlay: Option<GlobalOverlay>,
 }
 
 enum SessionScreen {
@@ -93,8 +93,12 @@ enum SessionScreen {
     Running {
         generation: u64,
         workspace: Workspace,
-        confirmation: Option<Experience>,
     },
+}
+
+enum GlobalOverlay {
+    ConfirmExperienceSwitch(Experience),
+    Notice(AppError),
 }
 
 enum SessionLifecycle {
@@ -320,18 +324,14 @@ impl App {
             }
             AppAction::ConfirmExperienceSwitch => self.confirm_experience_switch(),
             AppAction::CancelExperienceSwitch => {
-                if let Phase::Session(Session {
-                    screen: SessionScreen::Running { confirmation, .. },
-                    ..
-                }) = &mut self.phase
-                {
-                    *confirmation = None;
+                if let Phase::Session(session) = &mut self.phase {
+                    session.overlay = None;
                 }
                 Task::none()
             }
             AppAction::DismissNotice => {
                 if let Phase::Session(session) = &mut self.phase {
-                    session.notice = None;
+                    session.overlay = None;
                 }
                 Task::none()
             }
@@ -454,7 +454,7 @@ impl App {
             Phase::Session(session) => match &session.lifecycle {
                 SessionLifecycle::Active => match &session.screen {
                     SessionScreen::Onboarding(state) => {
-                        if let Some(error) = &session.notice {
+                        if let Some(GlobalOverlay::Notice(error)) = &session.overlay {
                             onboarding_notice_view("Setup could not be saved", error.to_string())
                         } else {
                             state.view().map(onboarding_action_message)
@@ -496,32 +496,27 @@ impl App {
             chrome::window_frame(body, |action| AppMessage::Action(AppAction::Window(action)));
         let dialog = match &self.phase {
             Phase::Session(Session {
-                screen:
-                    SessionScreen::Running {
-                        workspace,
-                        confirmation,
-                        ..
-                    },
+                screen: SessionScreen::Running { workspace, .. },
                 lifecycle: SessionLifecycle::Active,
-                notice,
+                overlay,
                 ..
-            }) => {
-                if let Some(target) = confirmation {
+            }) => match overlay {
+                Some(GlobalOverlay::ConfirmExperienceSwitch(target)) => {
                     Some(confirmation_dialog(*target))
-                } else if let Some(error) = notice {
-                    Some(notice_dialog(
-                        "The experience was not changed",
-                        error.to_string(),
-                    ))
-                } else if let Workspace::Classic(state) = workspace {
-                    state.dialog().map(|dialog| {
-                        dialog
-                            .map(|action| AppMessage::Action(AppAction::Classic(Box::new(action))))
-                    })
-                } else {
-                    None
                 }
-            }
+                Some(GlobalOverlay::Notice(error)) => Some(notice_dialog(
+                    "The experience was not changed",
+                    error.to_string(),
+                )),
+                None => match workspace {
+                    Workspace::Classic(state) => state.dialog().map(|dialog| {
+                        dialog.map(|message| {
+                            AppMessage::Action(AppAction::Classic(Box::new(message)))
+                        })
+                    }),
+                    Workspace::Next(_) => None,
+                },
+            },
             _ => None,
         };
 
@@ -563,17 +558,14 @@ impl App {
         let Phase::Session(session) = &mut self.phase else {
             return Task::none();
         };
-        let SessionScreen::Running { confirmation, .. } = &mut session.screen else {
+        if !matches!(session.screen, SessionScreen::Running { .. }) {
             return Task::none();
-        };
-        if session.config.experience == Some(experience)
-            || confirmation.is_some()
-            || session.notice.is_some()
-        {
+        }
+        if session.config.experience == Some(experience) || session.overlay.is_some() {
             return Task::none();
         }
 
-        *confirmation = Some(experience);
+        session.overlay = Some(GlobalOverlay::ConfirmExperienceSwitch(experience));
         Task::none()
     }
 
@@ -581,12 +573,14 @@ impl App {
         let Phase::Session(session) = &mut self.phase else {
             return Task::none();
         };
-        let SessionScreen::Running { confirmation, .. } = &mut session.screen else {
+        if !matches!(session.screen, SessionScreen::Running { .. }) {
             return Task::none();
+        }
+        let target = match session.overlay {
+            Some(GlobalOverlay::ConfirmExperienceSwitch(target)) => target,
+            _ => return Task::none(),
         };
-        let Some(target) = confirmation.take() else {
-            return Task::none();
-        };
+        session.overlay = None;
 
         self.begin_draining(DrainIntent::Switch(target))
     }
@@ -664,7 +658,7 @@ impl App {
                 shutdown_task(core)
             }
             Err(error) => {
-                session.notice = Some(error);
+                session.overlay = Some(GlobalOverlay::Notice(error));
                 resume_session(session)
             }
         }
@@ -721,7 +715,7 @@ impl App {
         match (result, resume) {
             (Ok(()), _) => iced::exit(),
             (Err(error), ShutdownResume::Existing) => {
-                session.notice = Some(error);
+                session.overlay = Some(GlobalOverlay::Notice(error));
                 resume_session(session)
             }
             (Err(error), ShutdownResume::Reopen(config)) => {
@@ -744,7 +738,7 @@ impl App {
                     ))),
                     core,
                     lifecycle: SessionLifecycle::Active,
-                    notice,
+                    overlay: notice.map(GlobalOverlay::Notice),
                 });
                 Task::none()
             }
@@ -785,10 +779,9 @@ impl App {
             screen: SessionScreen::Running {
                 generation,
                 workspace,
-                confirmation: None,
             },
             lifecycle: SessionLifecycle::Active,
-            notice,
+            overlay: notice.map(GlobalOverlay::Notice),
         });
         task
     }

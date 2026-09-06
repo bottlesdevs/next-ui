@@ -57,20 +57,24 @@ pub enum Route {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PanelKind {
+enum OverlayKind {
     NewBottle,
     Profiles,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PanelState {
-    kind: PanelKind,
+struct Overlay {
+    kind: OverlayKind,
     open: bool,
 }
 
-impl PanelState {
-    fn open(kind: PanelKind) -> Self {
+impl Overlay {
+    fn open(kind: OverlayKind) -> Self {
         Self { kind, open: true }
+    }
+
+    fn is_open(self, kind: OverlayKind) -> bool {
+        self.open && self.kind == kind
     }
 
     fn close(&mut self) {
@@ -80,7 +84,7 @@ impl PanelState {
 
 pub struct State {
     route: Route,
-    panel: Option<PanelState>,
+    overlay: Option<Overlay>,
     bottles: bottles::State,
     #[cfg(feature = "fvs")]
     snapshots: snapshots::State,
@@ -119,7 +123,7 @@ impl State {
 
         let state = Self {
             route: Route::Bottles,
-            panel: None,
+            overlay: None,
             bottles: bottles::State::new(bottle_manager, core.addons()),
             #[cfg(feature = "fvs")]
             snapshots: snapshots::State::default(),
@@ -216,32 +220,26 @@ impl State {
             }
             Message::Back => {
                 self.profiles.dismiss_dialogs();
-                if self.panel_is_open(PanelKind::Profiles) {
-                    self.close_panel();
-                } else {
+                if !self.close_overlay(OverlayKind::Profiles) {
                     self.leave_bottle_route();
                     self.route = Route::Bottles;
                 }
             }
             Message::AddBottle => {
                 self.profiles.dismiss_dialogs();
-                self.panel = Some(PanelState::open(PanelKind::NewBottle));
+                self.overlay = Some(Overlay::open(OverlayKind::NewBottle));
                 self.bottles.reset_creation();
             }
             Message::CancelBottle => {
                 self.bottles.cancel_creation();
-                if self.panel_is_open(PanelKind::NewBottle) {
-                    self.close_panel();
-                }
+                self.close_overlay(OverlayKind::NewBottle);
             }
             Message::OpenMenu | Message::TogglePower | Message::DragWindow => {}
             Message::Bottles(message) => {
                 let (task, output) = self.bottles.update(message);
                 let task = task.map(Message::Bottles);
-                if matches!(output, Some(bottles::Output::Created))
-                    && self.panel_is_open(PanelKind::NewBottle)
-                {
-                    self.close_panel();
+                if matches!(output, Some(bottles::Output::Created)) {
+                    self.close_overlay(OverlayKind::NewBottle);
                 }
                 return task;
             }
@@ -253,11 +251,10 @@ impl State {
             Message::Profiles(message) => {
                 let (task, output) = self.profiles.update(message, domain.profiles().selected());
                 if matches!(output, Some(profiles::Output::ToggleSettings)) {
-                    if self.panel_is_open(PanelKind::Profiles) {
-                        self.close_panel();
+                    if self.close_overlay(OverlayKind::Profiles) {
                         self.profiles.dismiss_dialogs();
                     } else {
-                        self.panel = Some(PanelState::open(PanelKind::Profiles));
+                        self.overlay = Some(Overlay::open(OverlayKind::Profiles));
                     }
                 }
                 return task.map(Message::Profiles);
@@ -303,20 +300,21 @@ impl State {
             .map(Message::Settings)
     }
 
-    fn panel_is_open(&self, kind: PanelKind) -> bool {
-        self.panel
-            .is_some_and(|panel| panel.open && panel.kind == kind)
-    }
-
-    fn close_panel(&mut self) {
-        if let Some(panel) = &mut self.panel {
-            panel.close();
-        }
-    }
-
     fn leave_bottle_route(&mut self) {
         #[cfg(feature = "fvs")]
         self.snapshots.clear();
+    }
+
+    fn close_overlay(&mut self, kind: OverlayKind) -> bool {
+        let Some(overlay) = self
+            .overlay
+            .as_mut()
+            .filter(|overlay| overlay.is_open(kind))
+        else {
+            return false;
+        };
+        overlay.close();
+        true
     }
 
     fn selected_bottle<'a>(&self, domain: &'a DomainSnapshots) -> Option<&'a BottleSnapshot> {
@@ -327,16 +325,16 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, domain: &'a DomainSnapshots) -> Element<'a, Message> {
-        let panel = self.panel.unwrap_or(PanelState {
-            kind: PanelKind::NewBottle,
+        let overlay = self.overlay.unwrap_or(Overlay {
+            kind: OverlayKind::NewBottle,
             open: false,
         });
         let split = side_panel(
-            match panel.kind {
-                PanelKind::Profiles => Side::End,
-                PanelKind::NewBottle => Side::Start,
+            match overlay.kind {
+                OverlayKind::Profiles => Side::End,
+                OverlayKind::NewBottle => Side::Start,
             },
-            panel.open,
+            overlay.open,
             |base_context| {
                 navigation_split(
                     base_context,
@@ -345,12 +343,9 @@ impl State {
                     |context| self.detail_page(context, domain),
                 )
             },
-            move |context| {
-                if panel.kind == PanelKind::Profiles {
-                    self.profile_settings_page(context, domain)
-                } else {
-                    self.new_bottle_page(context)
-                }
+            move |context| match overlay.kind {
+                OverlayKind::Profiles => self.profile_settings_page(context, domain),
+                OverlayKind::NewBottle => self.new_bottle_page(context),
             },
         );
 
@@ -358,7 +353,10 @@ impl State {
     }
 
     pub(crate) fn dialog(&self) -> Option<Dialog<'_, Message>> {
-        if !self.panel_is_open(PanelKind::Profiles) {
+        if !self
+            .overlay
+            .is_some_and(|overlay| overlay.is_open(OverlayKind::Profiles))
+        {
             return None;
         }
 
