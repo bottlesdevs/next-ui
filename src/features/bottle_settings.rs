@@ -1,16 +1,20 @@
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
 
-use bottles_core::{Bottle, BottleState};
 #[cfg(target_os = "linux")]
 use bottles_core::{MangoHudConfig, error::Error as CoreError};
 use iced::Task;
+#[cfg(target_os = "linux")]
+use uuid::Uuid;
+
+use crate::domain::DomainSnapshots;
 
 #[derive(Clone)]
 pub enum Message {
     #[cfg(target_os = "linux")]
-    ToggleGamescope(bool),
+    ToggleGamescope { bottle_id: Uuid, enabled: bool },
     #[cfg(target_os = "linux")]
-    ToggleMangoHud(bool),
+    ToggleMangoHud { bottle_id: Uuid, enabled: bool },
     #[cfg(target_os = "linux")]
     WrapperUpdated(Result<(), Arc<CoreError>>),
 }
@@ -25,17 +29,15 @@ pub struct State {
 
 impl State {
     #[cfg(target_os = "linux")]
-    pub fn update(
-        &mut self,
-        message: Message,
-        selected: Option<(Bottle, &BottleState)>,
-    ) -> Task<Message> {
+    pub fn update(&mut self, message: Message, domain: &DomainSnapshots) -> Task<Message> {
         match message {
-            Message::ToggleGamescope(enabled) => {
-                if !self.pending
-                    && let Some((bottle, state)) = selected
-                {
-                    let mut config = state.wrappers().gamescope.clone();
+            Message::ToggleGamescope { bottle_id, enabled } => {
+                if !self.pending {
+                    let Some(snapshot) = domain.bottle(bottle_id) else {
+                        return Task::none();
+                    };
+                    let bottle = snapshot.bottle.clone();
+                    let mut config = snapshot.state.wrappers().gamescope.clone();
                     config.enabled = enabled;
                     self.start_update();
 
@@ -49,10 +51,12 @@ impl State {
                     );
                 }
             }
-            Message::ToggleMangoHud(enabled) => {
-                if !self.pending
-                    && let Some((bottle, _)) = selected
-                {
+            Message::ToggleMangoHud { bottle_id, enabled } => {
+                if !self.pending {
+                    let Some(snapshot) = domain.bottle(bottle_id) else {
+                        return Task::none();
+                    };
+                    let bottle = snapshot.bottle.clone();
                     self.start_update();
                     return Task::perform(
                         async move {
@@ -65,8 +69,7 @@ impl State {
                 }
             }
             Message::WrapperUpdated(result) => {
-                self.last_error = result.err().map(|error| error.to_string());
-                self.pending = false;
+                self.finish_update(result);
             }
         }
 
@@ -74,11 +77,7 @@ impl State {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn update(
-        &mut self,
-        message: Message,
-        _selected: Option<(Bottle, &BottleState)>,
-    ) -> Task<Message> {
+    pub fn update(&mut self, message: Message, _domain: &DomainSnapshots) -> Task<Message> {
         match message {}
     }
 
@@ -102,5 +101,28 @@ impl State {
     fn start_update(&mut self) {
         self.pending = true;
         self.last_error = None;
+    }
+
+    #[cfg(target_os = "linux")]
+    fn finish_update(&mut self, result: Result<(), Arc<CoreError>>) {
+        self.last_error = result.err().map(|error| error.to_string());
+        self.pending = false;
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::State;
+
+    #[test]
+    fn completion_clears_pending_without_bottle_context() {
+        let mut state = State {
+            pending: true,
+            last_error: None,
+        };
+
+        state.finish_update(Ok(()));
+
+        assert!(!state.pending);
     }
 }

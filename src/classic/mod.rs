@@ -15,23 +15,19 @@ mod snapshots_view;
 use crate::{
     Icon,
     domain::{BottleSnapshot, DomainSnapshots},
-    features::{bottle_settings, bottles, library, profiles},
+    features::{self, bottles, profiles},
     theme,
     widget::{
         ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
         TextRow, Title,
     },
 };
-use bottles_core::Bottles;
 use iced::{
     Element, Fill, Task,
     widget::{column, container, keyed_column, scrollable},
 };
 use layout::{PaneContext, Side, navigation_split, side_panel};
 use uuid::Uuid;
-
-#[cfg(feature = "fvs")]
-use crate::features::snapshots;
 
 const CONTENT_MAX_WIDTH: f32 = 1150.0;
 
@@ -85,13 +81,6 @@ impl Overlay {
 pub struct State {
     route: Route,
     overlay: Option<Overlay>,
-    bottles: bottles::State,
-    #[cfg(feature = "fvs")]
-    snapshots: snapshots::State,
-    profiles: profiles::State,
-    library: library::State,
-    settings: bottle_settings::State,
-    effects_suspended: bool,
 }
 
 #[derive(Clone)]
@@ -102,45 +91,19 @@ pub enum Message {
     Back,
     AddBottle,
     CancelBottle,
+    ToggleProfileSettings,
     OpenMenu,
     TogglePower,
     DragWindow,
-    Bottles(bottles::Message),
-    Settings(bottle_settings::Message),
-    #[cfg(feature = "fvs")]
-    Snapshots(snapshots::Message),
-    Library(library::Message),
-    Profiles(profiles::Message),
+    Feature(features::Message),
 }
 
 impl State {
-    pub fn new(core: &Bottles, domain: &DomainSnapshots) -> (Self, Task<Message>) {
-        let bottle_manager = core.bottles().clone();
-        let profiles_manager = core.profiles().clone();
-        let profiles = profiles::State::new(profiles_manager, domain.profiles().selected());
-        let mut library = library::State::new(core.library().clone());
-        let library_boot = library.reload().map(Message::Library);
-
-        let state = Self {
+    pub fn new() -> Self {
+        Self {
             route: Route::Bottles,
             overlay: None,
-            bottles: bottles::State::new(bottle_manager, core.addons()),
-            #[cfg(feature = "fvs")]
-            snapshots: snapshots::State::default(),
-            profiles,
-            library,
-            settings: bottle_settings::State::default(),
-            effects_suspended: false,
-        };
-
-        (state, library_boot)
-    }
-
-    fn reload_library(&mut self) -> Task<Message> {
-        if self.effects_suspended {
-            return Task::none();
         }
-        self.library.reload().map(Message::Library)
     }
 
     fn primary_tab(&self) -> PrimaryTab {
@@ -150,49 +113,38 @@ impl State {
         }
     }
 
-    pub fn has_active_operations(&self) -> bool {
-        let active = self.bottles.has_active_operation()
-            || self.profiles.has_active_operation()
-            || self.settings.has_active_operation()
-            || self.library.has_active_operation();
-        #[cfg(feature = "fvs")]
-        let active = active || self.snapshots.has_active_operation();
-        active
-    }
-
-    pub fn cancel_active_operations(&mut self) {
-        self.effects_suspended = true;
-        self.profiles.dismiss_dialogs();
-        self.bottles.cancel_creation();
-        self.library.cancel_active_operations();
-        #[cfg(feature = "fvs")]
-        self.snapshots.cancel_active_operations();
-    }
-
-    pub fn resume_after_failed_switch(&mut self, _domain: &DomainSnapshots) -> Task<Message> {
-        self.effects_suspended = false;
-        let library = self.reload_library();
+    pub fn resume_after_failed_switch(
+        &mut self,
+        features: &mut features::State,
+        _domain: &DomainSnapshots,
+    ) -> Task<features::Message> {
+        let library = features.reload_library();
         #[cfg(feature = "fvs")]
         if let Some(snapshot) = self.selected_bottle(_domain) {
-            let snapshots = self
+            let snapshots = features
                 .snapshots
                 .load(snapshot.bottle.clone())
-                .map(Message::Snapshots);
+                .map(features::Message::Snapshots);
             return Task::batch([library, snapshots]);
         }
         library
     }
 
-    pub fn update(&mut self, message: Message, domain: &DomainSnapshots) -> Task<Message> {
+    pub fn update(
+        &mut self,
+        features: &mut features::State,
+        message: Message,
+        domain: &DomainSnapshots,
+    ) -> Task<features::Message> {
         match message {
             Message::PrimaryTabSelected(tab) => {
-                self.leave_bottle_route();
+                self.leave_bottle_route(features);
                 self.route = match tab {
                     PrimaryTab::Bottles => Route::Bottles,
                     PrimaryTab::Library => Route::Library,
                 };
                 if tab == PrimaryTab::Library {
-                    return self.reload_library();
+                    return features.reload_library();
                 }
             }
             Message::DetailTabSelected(tab) => {
@@ -209,100 +161,66 @@ impl State {
                     tab: DetailTab::Programs,
                 };
                 #[cfg(feature = "fvs")]
-                self.snapshots.clear();
+                features.snapshots.clear();
                 #[cfg(feature = "fvs")]
                 if let Some(snapshot) = self.selected_bottle(domain) {
-                    return self
+                    return features
                         .snapshots
                         .load(snapshot.bottle.clone())
-                        .map(Message::Snapshots);
+                        .map(features::Message::Snapshots);
                 }
             }
             Message::Back => {
-                self.profiles.dismiss_dialogs();
+                features.profiles.dismiss_dialogs();
                 if !self.close_overlay(OverlayKind::Profiles) {
-                    self.leave_bottle_route();
+                    self.leave_bottle_route(features);
                     self.route = Route::Bottles;
                 }
             }
             Message::AddBottle => {
-                self.profiles.dismiss_dialogs();
+                features.profiles.dismiss_dialogs();
                 self.overlay = Some(Overlay::open(OverlayKind::NewBottle));
-                self.bottles.reset_creation();
+                features.bottles.reset_creation();
             }
             Message::CancelBottle => {
-                self.bottles.cancel_creation();
+                features.bottles.cancel_creation();
                 self.close_overlay(OverlayKind::NewBottle);
             }
+            Message::ToggleProfileSettings => {
+                if self.close_overlay(OverlayKind::Profiles) {
+                    features.profiles.dismiss_dialogs();
+                } else {
+                    self.overlay = Some(Overlay::open(OverlayKind::Profiles));
+                }
+            }
             Message::OpenMenu | Message::TogglePower | Message::DragWindow => {}
-            Message::Bottles(message) => {
-                let (task, output) = self.bottles.update(message);
-                let task = task.map(Message::Bottles);
-                if matches!(output, Some(bottles::Output::Created)) {
-                    self.close_overlay(OverlayKind::NewBottle);
-                }
-                return task;
-            }
-            Message::Settings(message) => return self.update_settings(message, domain),
-            #[cfg(feature = "fvs")]
-            Message::Snapshots(message) => {
-                return self.snapshots.update(message).map(Message::Snapshots);
-            }
-            Message::Profiles(message) => {
-                let (task, output) = self.profiles.update(message, domain.profiles().selected());
-                if matches!(output, Some(profiles::Output::ToggleSettings)) {
-                    if self.close_overlay(OverlayKind::Profiles) {
-                        self.profiles.dismiss_dialogs();
-                    } else {
-                        self.overlay = Some(Overlay::open(OverlayKind::Profiles));
-                    }
-                }
-                return task.map(Message::Profiles);
-            }
-            Message::Library(message) => return self.library.update(message).map(Message::Library),
+            Message::Feature(_) => unreachable!("feature messages are handled by the app shell"),
         }
 
         Task::none()
     }
 
-    pub fn bottles_changed(&mut self, domain: &DomainSnapshots) -> Task<Message> {
+    pub fn bottles_changed(&mut self, features: &mut features::State, domain: &DomainSnapshots) {
         let selected_exists = match self.route {
             Route::Bottle { id, .. } => domain.bottle(id).is_some(),
             Route::Bottles | Route::Library => true,
         };
         if reconcile_route(&mut self.route, selected_exists) {
-            self.leave_bottle_route();
+            self.leave_bottle_route(features);
         }
-        self.reload_library()
     }
 
-    pub fn profiles_changed(
-        &mut self,
-        domain: &DomainSnapshots,
-        selected_changed: bool,
-    ) -> Task<Message> {
-        if selected_changed {
-            self.profiles.sync_selected(domain.profiles().selected());
+    pub fn handle_feature_output(&mut self, output: features::Output) {
+        match output {
+            features::Output::BottleCreated => {
+                self.close_overlay(OverlayKind::NewBottle);
+            }
         }
-        self.reload_library()
     }
 
-    fn update_settings(
-        &mut self,
-        message: bottle_settings::Message,
-        domain: &DomainSnapshots,
-    ) -> Task<Message> {
-        let selected = self
-            .selected_bottle(domain)
-            .map(|snapshot| (snapshot.bottle.clone(), snapshot.state.as_ref()));
-        self.settings
-            .update(message, selected)
-            .map(Message::Settings)
-    }
-
-    fn leave_bottle_route(&mut self) {
+    fn leave_bottle_route(&mut self, _features: &mut features::State) {
         #[cfg(feature = "fvs")]
-        self.snapshots.clear();
+        _features.snapshots.clear();
     }
 
     fn close_overlay(&mut self, kind: OverlayKind) -> bool {
@@ -324,7 +242,11 @@ impl State {
         domain.bottle(id)
     }
 
-    pub fn view<'a>(&'a self, domain: &'a DomainSnapshots) -> Element<'a, Message> {
+    pub fn view<'a>(
+        &'a self,
+        features: &'a features::State,
+        domain: &'a DomainSnapshots,
+    ) -> Element<'a, Message> {
         let overlay = self.overlay.unwrap_or(Overlay {
             kind: OverlayKind::NewBottle,
             open: false,
@@ -339,20 +261,23 @@ impl State {
                 navigation_split(
                     base_context,
                     matches!(self.route, Route::Bottle { .. }),
-                    |context| self.primary_page(context, domain),
-                    |context| self.detail_page(context, domain),
+                    |context| self.primary_page(context, features, domain),
+                    |context| self.detail_page(context, features, domain),
                 )
             },
             move |context| match overlay.kind {
-                OverlayKind::Profiles => self.profile_settings_page(context, domain),
-                OverlayKind::NewBottle => self.new_bottle_page(context),
+                OverlayKind::Profiles => self.profile_settings_page(context, features, domain),
+                OverlayKind::NewBottle => self.new_bottle_page(context, features),
             },
         );
 
         container(split).width(Fill).height(Fill).into()
     }
 
-    pub(crate) fn dialog(&self) -> Option<Dialog<'_, Message>> {
+    pub(crate) fn dialog<'a>(
+        &'a self,
+        features: &'a features::State,
+    ) -> Option<Dialog<'a, Message>> {
         if !self
             .overlay
             .is_some_and(|overlay| overlay.is_open(OverlayKind::Profiles))
@@ -360,16 +285,17 @@ impl State {
             return None;
         }
 
-        profiles_view::dialog(&self.profiles)
-            .map(|dialog| dialog.map(Message::Profiles))
+        profiles_view::dialog(&features.profiles)
+            .map(|dialog| dialog.map(profiles_message))
             .or_else(|| {
-                accounts_view::dialog(&self.profiles).map(|dialog| dialog.map(Message::Profiles))
+                accounts_view::dialog(&features.profiles).map(|dialog| dialog.map(profiles_message))
             })
     }
 
     fn primary_page<'a>(
         &'a self,
         context: PaneContext,
+        features: &'a features::State,
         domain: &'a DomainSnapshots,
     ) -> Element<'a, Message> {
         let tabs = Tabs::new(
@@ -384,7 +310,7 @@ impl State {
             header
                 .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
                 .middle(tabs)
-                .end(profiles_view::switcher(domain.profiles()).map(Message::Profiles))
+                .end(profiles_view::switcher(domain.profiles()))
         });
         let content: Element<'_, Message> = match self.primary_tab() {
             PrimaryTab::Bottles => bottles_view::rows(
@@ -395,7 +321,7 @@ impl State {
                 },
                 Message::BottleSelected,
             ),
-            PrimaryTab::Library => library_view::view(&self.library).map(Message::Library),
+            PrimaryTab::Library => library_view::view(&features.library).map(library_message),
         };
 
         column![header, scroll_panel(content)]
@@ -407,6 +333,7 @@ impl State {
     fn profile_settings_page<'a>(
         &'a self,
         context: PaneContext,
+        features: &'a features::State,
         domain: &'a DomainSnapshots,
     ) -> Element<'a, Message> {
         let header = context.header(Message::DragWindow, |header| {
@@ -422,13 +349,13 @@ impl State {
                 .end(header_button(
                     "New profile",
                     Icon::Plus,
-                    Message::Profiles(profiles::Message::OpenCreate),
+                    profiles_message(profiles::Message::OpenCreate),
                 ))
         });
 
         let content: Element<'_, Message> = {
             let active = domain.profiles().selected();
-            let links = accounts_view::links(&self.profiles, active).map(Message::Profiles);
+            let links = accounts_view::links(&features.profiles, active).map(profiles_message);
 
             column![
                 RowGroup::new()
@@ -446,26 +373,24 @@ impl State {
                 RowGroup::new()
                     .title("Profile")
                     .row(
-                        TextRow::new("Profile name", self.profiles.name_draft())
+                        TextRow::new("Profile name", features.profiles.name_draft())
                             .icon(Icon::Person)
-                            .on_input(|name| {
-                                Message::Profiles(profiles::Message::NameChanged(name))
-                            })
-                            .on_submit(Message::Profiles(profiles::Message::RenameSubmit,)),
+                            .on_input(|name| profiles_message(profiles::Message::NameChanged(name)))
+                            .on_submit(profiles_message(profiles::Message::RenameSubmit)),
                     )
                     .row(accounts_view::action_button_row(
                         Icon::Cross,
                         "Delete profile",
                         "Removes this profile and its linked accounts from this device",
                         "Delete",
-                        Message::Profiles(profiles::Message::DeleteProfile(active.id(),)),
+                        profiles_message(profiles::Message::DeleteProfile(active.id())),
                     )),
                 links,
             ]
             .spacing(18)
             .into()
         };
-        let content: Element<'_, Message> = if let Some(error) = self.profiles.last_error() {
+        let content: Element<'_, Message> = if let Some(error) = features.profiles.last_error() {
             column![
                 InfoCard::new(InfoCardKind::Error, "Could not update profile", error,).width(Fill),
                 content,
@@ -484,7 +409,11 @@ impl State {
         page
     }
 
-    fn new_bottle_page(&self, context: PaneContext) -> Element<'_, Message> {
+    fn new_bottle_page<'a>(
+        &'a self,
+        context: PaneContext,
+        features: &'a features::State,
+    ) -> Element<'a, Message> {
         let header = context.header(Message::DragWindow, |header| {
             header
                 .start(header_button(
@@ -500,15 +429,15 @@ impl State {
                     header_button(
                         "Create bottle",
                         Icon::Checkmark,
-                        Message::Bottles(bottles::Message::CreateBottle),
+                        bottles_message(bottles::Message::CreateBottle),
                     )
                     .on_press_maybe(
-                        (!self.bottles.is_creating())
-                            .then_some(Message::Bottles(bottles::Message::CreateBottle)),
+                        (!features.bottles.is_creating())
+                            .then_some(bottles_message(bottles::Message::CreateBottle)),
                     ),
                 )
         });
-        let content = bottles_view::creation(&self.bottles).map(Message::Bottles);
+        let content = bottles_view::creation(&features.bottles).map(bottles_message);
 
         column![header, scroll_panel(content)]
             .width(Fill)
@@ -519,6 +448,7 @@ impl State {
     fn detail_page<'a>(
         &'a self,
         context: PaneContext,
+        features: &'a features::State,
         domain: &'a DomainSnapshots,
     ) -> Element<'a, Message> {
         #[cfg(feature = "fvs")]
@@ -572,23 +502,28 @@ impl State {
             DetailTab::Programs => {
                 if let Some(snapshot) = self.selected_bottle(domain) {
                     bottles_view::programs(
-                        &self.bottles,
+                        &features.bottles,
                         snapshot.bottle.clone(),
                         snapshot.state.as_ref(),
                     )
-                    .map(Message::Bottles)
+                    .map(bottles_message)
                 } else {
                     column![].into()
                 }
             }
-            DetailTab::Settings => settings_view::view(
-                &self.settings,
-                self.selected_bottle(domain)
-                    .map(|snapshot| snapshot.state.as_ref()),
-            )
-            .map(Message::Settings),
+            DetailTab::Settings => {
+                if let Some(snapshot) = self.selected_bottle(domain) {
+                    let bottle_id = snapshot.state.id();
+                    settings_view::view(&features.settings, bottle_id, snapshot.state.as_ref())
+                        .map(settings_message)
+                } else {
+                    column![].into()
+                }
+            }
             #[cfg(feature = "fvs")]
-            DetailTab::Snapshots => snapshots_view::view(&self.snapshots),
+            DetailTab::Snapshots => {
+                snapshots_view::view(&features.snapshots).map(snapshots_message)
+            }
         };
 
         let mut body = column![scroll_content(content)].width(Fill).height(Fill);
@@ -596,11 +531,8 @@ impl State {
         if let Some(snapshot) = self.selected_bottle(domain) {
             let state = snapshot.state.as_ref();
             body = body.push(
-                keyed_column([(
-                    state.id(),
-                    bottles_view::status(state).map(Message::Bottles),
-                )])
-                .width(Fill),
+                keyed_column([(state.id(), bottles_view::status(state).map(bottles_message))])
+                    .width(Fill),
             );
         }
 
@@ -659,4 +591,25 @@ fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Messag
         .icon_size(16.0)
         .kind(ButtonKind::Transparent)
         .on_press(message)
+}
+
+fn bottles_message(message: bottles::Message) -> Message {
+    Message::Feature(features::Message::Bottles(message))
+}
+
+fn profiles_message(message: profiles::Message) -> Message {
+    Message::Feature(features::Message::Profiles(message))
+}
+
+fn library_message(message: features::library::Message) -> Message {
+    Message::Feature(features::Message::Library(message))
+}
+
+fn settings_message(message: features::bottle_settings::Message) -> Message {
+    Message::Feature(features::Message::Settings(message))
+}
+
+#[cfg(feature = "fvs")]
+fn snapshots_message(message: features::snapshots::Message) -> Message {
+    Message::Feature(features::Message::Snapshots(message))
 }

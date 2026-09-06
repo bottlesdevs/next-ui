@@ -10,7 +10,6 @@ pub use account_link::{LoginDialog, Message as AccountMessage, State as AccountL
 
 #[derive(Clone)]
 pub enum Message {
-    ToggleProfileSettings,
     ActivateProfile(Uuid),
     OpenCreate,
     CreateNameChanged(String),
@@ -22,10 +21,6 @@ pub enum Message {
     DeleteProfile(Uuid),
     ProfileDeleted(Result<(), Arc<CoreError>>),
     Account(AccountMessage),
-}
-
-pub enum Output {
-    ToggleSettings,
 }
 
 #[derive(Default)]
@@ -116,14 +111,8 @@ impl State {
         self.account_link.cancel_active_operation();
     }
 
-    pub fn update(
-        &mut self,
-        message: Message,
-        active_profile: &Profile,
-    ) -> (Task<Message>, Option<Output>) {
-        let mut output = None;
+    pub fn update(&mut self, message: Message, active_profile: &Profile) -> Task<Message> {
         match message {
-            Message::ToggleProfileSettings => output = Some(Output::ToggleSettings),
             Message::OpenCreate => {
                 if self.request_kind.is_none() && self.new_profile.is_none() {
                     self.account_link.cancel_active_operation();
@@ -140,21 +129,18 @@ impl State {
                 if self.request_kind.is_none() {
                     let profiles = self.profiles.clone();
                     self.begin_request(RequestKind::Select);
-                    return (
-                        Task::perform(
-                            async move { profiles.select(id).await.map_err(Arc::new) },
-                            Message::ProfileUpdated,
-                        ),
-                        None,
+                    return Task::perform(
+                        async move { profiles.select(id).await.map_err(Arc::new) },
+                        Message::ProfileUpdated,
                     );
                 }
             }
             Message::SubmitCreate => {
                 if self.request_kind.is_some() {
-                    return (Task::none(), None);
+                    return Task::none();
                 }
                 let Some(dialog) = &mut self.new_profile else {
-                    return (Task::none(), None);
+                    return Task::none();
                 };
 
                 let profiles = self.profiles.clone();
@@ -166,20 +152,17 @@ impl State {
                 };
 
                 self.begin_request(RequestKind::Create);
-                return (
-                    Task::perform(
-                        async move { profiles.create(name).await.map_err(Arc::new) },
-                        Message::ProfileUpdated,
-                    ),
-                    None,
+                return Task::perform(
+                    async move { profiles.create(name).await.map_err(Arc::new) },
+                    Message::ProfileUpdated,
                 );
             }
             Message::ProfileUpdated(result) => {
                 let Some(kind) = self.request_kind else {
-                    return (Task::none(), None);
+                    return Task::none();
                 };
                 if kind == RequestKind::Delete {
-                    return (Task::none(), None);
+                    return Task::none();
                 }
                 self.request_kind = None;
 
@@ -205,12 +188,9 @@ impl State {
                     let selected_id = self.selected_id;
                     let name = self.name_draft.clone();
                     self.begin_request(RequestKind::Rename);
-                    return (
-                        Task::perform(
-                            async move { profiles.rename(selected_id, name).await.map_err(Arc::new) },
-                            Message::ProfileUpdated,
-                        ),
-                        None,
+                    return Task::perform(
+                        async move { profiles.rename(selected_id, name).await.map_err(Arc::new) },
+                        Message::ProfileUpdated,
                     );
                 }
             }
@@ -218,12 +198,9 @@ impl State {
                 if self.request_kind.is_none() {
                     let profiles = self.profiles.clone();
                     self.begin_request(RequestKind::Delete);
-                    return (
-                        Task::perform(
-                            async move { profiles.delete(id).await.map_err(Arc::new) },
-                            Message::ProfileDeleted,
-                        ),
-                        None,
+                    return Task::perform(
+                        async move { profiles.delete(id).await.map_err(Arc::new) },
+                        Message::ProfileDeleted,
                     );
                 }
             }
@@ -236,16 +213,14 @@ impl State {
                 if matches!(message, AccountMessage::BeginLogin(_)) {
                     self.new_profile = None;
                 }
-                return (
-                    self.account_link
-                        .update(message, active_profile, &self.profiles)
-                        .map(Message::Account),
-                    None,
-                );
+                return self
+                    .account_link
+                    .update(message, active_profile, &self.profiles)
+                    .map(Message::Account);
             }
         }
 
-        (Task::none(), output)
+        Task::none()
     }
 
     fn begin_request(&mut self, kind: RequestKind) {

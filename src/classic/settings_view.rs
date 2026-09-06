@@ -3,6 +3,7 @@ use iced::{
     Element, Length,
     widget::{column, responsive},
 };
+use uuid::Uuid;
 
 #[cfg(target_os = "linux")]
 use crate::widget::{InfoCard, InfoCardKind};
@@ -14,10 +15,14 @@ use crate::{
 
 const TRACK_MIN_WIDTH: f32 = 300.0;
 
-pub fn view<'a>(state: &'a State, bottle_state: Option<&'a BottleState>) -> Element<'a, Message> {
-    let Some(bottle_state) = bottle_state else {
-        return column![].into();
-    };
+pub fn view<'a>(
+    state: &'a State,
+    bottle_id: Uuid,
+    bottle_state: &'a BottleState,
+) -> Element<'a, Message> {
+    #[cfg(not(target_os = "linux"))]
+    let _ = bottle_id;
+
     let content = column![
         responsive(move |size| {
             let columns = usize::from(size.width >= TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
@@ -78,7 +83,7 @@ pub fn view<'a>(state: &'a State, bottle_state: Option<&'a BottleState>) -> Elem
                 graphics.row(
                     SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                         .description("Use the SteamOS compositor")
-                        .on_toggle(Message::ToggleGamescope),
+                        .on_toggle(move |enabled| Message::ToggleGamescope { bottle_id, enabled }),
                 )
             };
 
@@ -96,7 +101,7 @@ pub fn view<'a>(state: &'a State, bottle_state: Option<&'a BottleState>) -> Elem
                 graphics.row(
                     SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                         .description("Show a performance overlay")
-                        .on_toggle(Message::ToggleMangoHud),
+                        .on_toggle(move |enabled| Message::ToggleMangoHud { bottle_id, enabled }),
                 )
             };
 

@@ -46,7 +46,7 @@ pub fn dialog(state: &State) -> Option<Dialog<'_, profiles::Message>> {
     Some(Dialog::new(content, profiles::Message::DismissCreate))
 }
 
-pub fn switcher(snapshot: &ProfilesConfig) -> Element<'_, profiles::Message> {
+pub fn switcher(snapshot: &ProfilesConfig) -> Element<'_, super::Message> {
     let selected = snapshot.selected();
     let trigger = Button::icon_only(selected.name(), Icon::Person)
         .diameter(32.0)
@@ -59,11 +59,13 @@ pub fn switcher(snapshot: &ProfilesConfig) -> Element<'_, profiles::Message> {
             PopoverItem::new(profile.name())
                 .icon(Icon::Person)
                 .selected(selected.id() == profile.id())
-                .on_select(profiles::Message::ActivateProfile(profile.id())),
+                .on_select(super::profiles_message(profiles::Message::ActivateProfile(
+                    profile.id(),
+                ))),
         );
     }
 
     switcher
-        .item(PopoverItem::new("Profiles").on_select(profiles::Message::ToggleProfileSettings))
+        .item(PopoverItem::new("Profiles").on_select(super::Message::ToggleProfileSettings))
         .into()
 }

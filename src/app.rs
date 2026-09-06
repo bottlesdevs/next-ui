@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     chrome, classic,
     domain::DomainSnapshots,
-    next, onboarding, theme,
+    features, next, onboarding, theme,
     widget::{Button, ButtonKind, Dialog, WindowModal},
 };
 
@@ -69,7 +69,7 @@ pub enum Experience {
 pub(crate) struct App {
     phase: Phase,
     theme: iced::Theme,
-    next_workspace_generation: u64,
+    next_run_generation: u64,
 }
 
 enum Phase {
@@ -92,7 +92,8 @@ enum SessionScreen {
     Onboarding(Box<onboarding::State>),
     Running {
         generation: u64,
-        workspace: Workspace,
+        features: Box<features::State>,
+        presentation: Presentation,
     },
 }
 
@@ -115,33 +116,19 @@ impl Session {
     fn has_active_operations(&self) -> bool {
         match &self.screen {
             SessionScreen::Onboarding(state) => state.has_active_operations(),
-            SessionScreen::Running {
-                workspace: Workspace::Classic(state),
-                ..
-            } => state.has_active_operations(),
-            SessionScreen::Running {
-                workspace: Workspace::Next(_),
-                ..
-            } => false,
+            SessionScreen::Running { features, .. } => features.has_active_operations(),
         }
     }
 
     fn cancel_active_operations(&mut self) {
         match &mut self.screen {
             SessionScreen::Onboarding(state) => state.cancel_active_operations(),
-            SessionScreen::Running {
-                workspace: Workspace::Classic(state),
-                ..
-            } => state.cancel_active_operations(),
-            SessionScreen::Running {
-                workspace: Workspace::Next(_),
-                ..
-            } => {}
+            SessionScreen::Running { features, .. } => features.cancel_active_operations(),
         }
     }
 }
 
-enum Workspace {
+enum Presentation {
     Classic(Box<classic::State>),
     Next(next::State),
 }
@@ -167,6 +154,7 @@ pub(crate) enum AppMessage {
 pub(crate) enum AppAction {
     Onboarding(onboarding::Action),
     Classic(Box<classic::Message>),
+    Feature(features::Message),
     Next(next::Action),
     ConfirmExperienceSwitch,
     CancelExperienceSwitch,
@@ -178,9 +166,9 @@ pub(crate) enum AppAction {
 pub(crate) enum AppEvent {
     Booted(AppResult<Boot>),
     Onboarding(onboarding::Event),
-    Classic {
+    Feature {
         generation: u64,
-        message: Box<classic::Message>,
+        message: features::Message,
     },
     BottlesChanged(Vec<Bottle>),
     ProfilesChanged(Arc<ProfilesConfig>),
@@ -212,7 +200,7 @@ impl App {
                     close_requested: false,
                 },
                 theme: theme::for_mode(ThemeMode::default()),
-                next_workspace_generation: 0,
+                next_run_generation: 0,
             },
             Task::batch([
                 Task::perform(boot(), |result| AppMessage::Event(AppEvent::Booted(result))),
@@ -292,7 +280,8 @@ impl App {
                 };
                 let SessionScreen::Running {
                     generation,
-                    workspace: Workspace::Classic(state),
+                    features,
+                    presentation: Presentation::Classic(state),
                     ..
                 } = &mut session.screen
                 else {
@@ -301,9 +290,10 @@ impl App {
                 let generation = *generation;
 
                 state
-                    .update(*action, &session.domain)
-                    .map(move |message| classic_event_message(generation, message))
+                    .update(features, *action, &session.domain)
+                    .map(move |message| feature_event_message(generation, message))
             }
+            AppAction::Feature(message) => self.update_feature(message),
             AppAction::Next(action) => {
                 let Phase::Session(session) = &self.phase else {
                     return Task::none();
@@ -311,7 +301,7 @@ impl App {
                 if !matches!(
                     session.screen,
                     SessionScreen::Running {
-                        workspace: Workspace::Next(_),
+                        presentation: Presentation::Next(_),
                         ..
                     }
                 ) {
@@ -358,7 +348,7 @@ impl App {
                 let task = state.update_event(event).map(onboarding_event_message);
                 Task::batch([task, self.advance_draining()])
             }
-            AppEvent::Classic {
+            AppEvent::Feature {
                 generation,
                 message,
             } => {
@@ -373,7 +363,6 @@ impl App {
                 }
                 let SessionScreen::Running {
                     generation: current_generation,
-                    workspace: Workspace::Classic(state),
                     ..
                 } = &mut session.screen
                 else {
@@ -382,9 +371,7 @@ impl App {
                 if *current_generation != generation {
                     return Task::none();
                 }
-                let task = state
-                    .update(*message, &session.domain)
-                    .map(move |message| classic_event_message(generation, message));
+                let task = self.update_feature(message);
                 Task::batch([task, self.advance_draining()])
             }
             AppEvent::BottlesChanged(bottles) => self.update_bottles(bottles),
@@ -398,6 +385,28 @@ impl App {
         }
     }
 
+    fn update_feature(&mut self, message: features::Message) -> Task<AppMessage> {
+        let Phase::Session(session) = &mut self.phase else {
+            return Task::none();
+        };
+        let SessionScreen::Running {
+            generation,
+            features,
+            presentation,
+        } = &mut session.screen
+        else {
+            return Task::none();
+        };
+        let generation = *generation;
+        let (task, output) = features.update(message, &session.domain);
+
+        if let (Presentation::Classic(state), Some(output)) = (presentation, output) {
+            state.handle_feature_output(output);
+        }
+
+        task.map(move |message| feature_event_message(generation, message))
+    }
+
     fn update_bottles(&mut self, bottles: Vec<Bottle>) -> Task<AppMessage> {
         let Phase::Session(session) = &mut self.phase else {
             return Task::none();
@@ -405,18 +414,26 @@ impl App {
         if !session.domain.replace_bottles(bottles) {
             return Task::none();
         }
+        let effects_allowed = matches!(session.lifecycle, SessionLifecycle::Active);
         let SessionScreen::Running {
             generation,
-            workspace: Workspace::Classic(state),
-            ..
+            features,
+            presentation,
         } = &mut session.screen
         else {
             return Task::none();
         };
         let generation = *generation;
-        state
-            .bottles_changed(&session.domain)
-            .map(move |message| classic_event_message(generation, message))
+        if let Presentation::Classic(state) = presentation {
+            state.bottles_changed(features, &session.domain);
+        }
+        if effects_allowed {
+            features
+                .reload_library()
+                .map(move |message| feature_event_message(generation, message))
+        } else {
+            Task::none()
+        }
     }
 
     fn update_profiles(&mut self, profiles: Arc<ProfilesConfig>) -> Task<AppMessage> {
@@ -426,18 +443,23 @@ impl App {
         let Some(selected_changed) = session.domain.replace_profiles(profiles) else {
             return Task::none();
         };
+        let effects_allowed = matches!(session.lifecycle, SessionLifecycle::Active);
         let SessionScreen::Running {
             generation,
-            workspace: Workspace::Classic(state),
+            features,
             ..
         } = &mut session.screen
         else {
             return Task::none();
         };
         let generation = *generation;
-        state
-            .profiles_changed(&session.domain, selected_changed)
-            .map(move |message| classic_event_message(generation, message))
+        if effects_allowed {
+            features
+                .profiles_changed(&session.domain, selected_changed)
+                .map(move |message| feature_event_message(generation, message))
+        } else {
+            Task::none()
+        }
     }
 
     pub(crate) fn view(&self) -> Element<'_, AppMessage> {
@@ -460,7 +482,7 @@ impl App {
                             state.view().map(onboarding_action_message)
                         }
                     }
-                    SessionScreen::Running { .. } => workspace_view(session),
+                    SessionScreen::Running { .. } => presentation_view(session),
                 },
                 SessionLifecycle::Draining(intent) => match intent {
                     DrainIntent::Switch(_) => status_view(
@@ -496,7 +518,12 @@ impl App {
             chrome::window_frame(body, |action| AppMessage::Action(AppAction::Window(action)));
         let dialog = match &self.phase {
             Phase::Session(Session {
-                screen: SessionScreen::Running { workspace, .. },
+                screen:
+                    SessionScreen::Running {
+                        features,
+                        presentation,
+                        ..
+                    },
                 lifecycle: SessionLifecycle::Active,
                 overlay,
                 ..
@@ -508,13 +535,13 @@ impl App {
                     "The experience was not changed",
                     error.to_string(),
                 )),
-                None => match workspace {
-                    Workspace::Classic(state) => state.dialog().map(|dialog| {
+                None => match presentation {
+                    Presentation::Classic(state) => state.dialog(features).map(|dialog| {
                         dialog.map(|message| {
                             AppMessage::Action(AppAction::Classic(Box::new(message)))
                         })
                     }),
-                    Workspace::Next(_) => None,
+                    Presentation::Next(_) => None,
                 },
             },
             _ => None,
@@ -650,7 +677,7 @@ impl App {
             }
             Ok(()) => {
                 let core = session.core.clone();
-                self.open_workspace(core, candidate, None)
+                self.open_experience(core, candidate, None)
             }
             Err(_) if close_requested => {
                 let core = session.core.clone();
@@ -720,7 +747,7 @@ impl App {
             }
             (Err(error), ShutdownResume::Reopen(config)) => {
                 let core = session.core.clone();
-                self.open_workspace(core, config, Some(error))
+                self.open_experience(core, config, Some(error))
             }
         }
     }
@@ -742,34 +769,29 @@ impl App {
                 });
                 Task::none()
             }
-            Some(_) => self.open_workspace(core, config, notice),
+            Some(_) => self.open_experience(core, config, notice),
         }
     }
 
-    fn open_workspace(
+    fn open_experience(
         &mut self,
         core: Arc<Bottles>,
         config: AppConfig,
         notice: Option<AppError>,
     ) -> Task<AppMessage> {
         let Some(experience) = config.experience else {
-            unreachable!("a workspace requires a selected experience")
+            unreachable!("a presentation requires a selected experience")
         };
-        let generation = self.next_workspace_generation;
-        self.next_workspace_generation = self.next_workspace_generation.wrapping_add(1);
+        let generation = self.next_run_generation;
+        self.next_run_generation = self.next_run_generation.wrapping_add(1);
         let domain = match &self.phase {
             Phase::Session(session) if Arc::ptr_eq(&session.core, &core) => session.domain.clone(),
             _ => DomainSnapshots::new(&core),
         };
-        let (workspace, task) = match experience {
-            Experience::Classic => {
-                let (state, task) = classic::State::new(core.as_ref(), &domain);
-                (
-                    Workspace::Classic(Box::new(state)),
-                    task.map(move |message| classic_event_message(generation, message)),
-                )
-            }
-            Experience::Next => (Workspace::Next(next::State::new()), Task::none()),
+        let features = features::State::new(core.as_ref(), &domain);
+        let presentation = match experience {
+            Experience::Classic => Presentation::Classic(Box::new(classic::State::new())),
+            Experience::Next => Presentation::Next(next::State::new()),
         };
 
         self.phase = Phase::Session(Session {
@@ -778,28 +800,37 @@ impl App {
             domain,
             screen: SessionScreen::Running {
                 generation,
-                workspace,
+                features: Box::new(features),
+                presentation,
             },
             lifecycle: SessionLifecycle::Active,
             overlay: notice.map(GlobalOverlay::Notice),
         });
-        task
+        Task::none()
     }
 }
 
 fn resume_session(session: &mut Session) -> Task<AppMessage> {
     let SessionScreen::Running {
         generation,
-        workspace: Workspace::Classic(state),
+        features,
+        presentation,
         ..
     } = &mut session.screen
     else {
         return Task::none();
     };
     let generation = *generation;
-    state
-        .resume_after_failed_switch(&session.domain)
-        .map(move |message| classic_event_message(generation, message))
+    features
+        .profiles
+        .sync_selected(session.domain.profiles().selected());
+
+    match presentation {
+        Presentation::Classic(state) => state
+            .resume_after_failed_switch(features, &session.domain)
+            .map(move |message| feature_event_message(generation, message)),
+        Presentation::Next(_) => Task::none(),
+    }
 }
 
 fn shutdown_task(core: Arc<Bottles>) -> Task<AppMessage> {
@@ -838,14 +869,15 @@ fn onboarding_action_message(action: onboarding::Action) -> AppMessage {
 fn classic_action_message(message: classic::Message) -> AppMessage {
     match message {
         classic::Message::DragWindow => AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
+        classic::Message::Feature(message) => AppMessage::Action(AppAction::Feature(message)),
         message => AppMessage::Action(AppAction::Classic(Box::new(message))),
     }
 }
 
-fn classic_event_message(generation: u64, message: classic::Message) -> AppMessage {
-    AppMessage::Event(AppEvent::Classic {
+fn feature_event_message(generation: u64, message: features::Message) -> AppMessage {
+    AppMessage::Event(AppEvent::Feature {
         generation,
-        message: Box::new(message),
+        message,
     })
 }
 
@@ -961,13 +993,20 @@ fn onboarding_notice_view<'a>(
     )
 }
 
-fn workspace_view(session: &Session) -> Element<'_, AppMessage> {
-    let SessionScreen::Running { workspace, .. } = &session.screen else {
-        unreachable!("only running sessions render a workspace")
+fn presentation_view(session: &Session) -> Element<'_, AppMessage> {
+    let SessionScreen::Running {
+        features,
+        presentation,
+        ..
+    } = &session.screen
+    else {
+        unreachable!("only running sessions render a presentation")
     };
-    match workspace {
-        Workspace::Classic(state) => state.view(&session.domain).map(classic_action_message),
-        Workspace::Next(state) => root_body(
+    match presentation {
+        Presentation::Classic(state) => state
+            .view(features, &session.domain)
+            .map(classic_action_message),
+        Presentation::Next(state) => root_body(
             state
                 .view()
                 .map(|action| AppMessage::Action(AppAction::Next(action))),
