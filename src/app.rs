@@ -162,7 +162,7 @@ pub(crate) enum AppMessage {
 #[derive(Clone)]
 pub(crate) enum AppAction {
     Onboarding(onboarding::Action),
-    Classic(Box<classic::Action>),
+    Classic(Box<classic::Message>),
     Next(next::Action),
     ConfirmExperienceSwitch,
     CancelExperienceSwitch,
@@ -176,7 +176,7 @@ pub(crate) enum AppEvent {
     Onboarding(onboarding::Event),
     Classic {
         generation: u64,
-        event: Box<classic::Event>,
+        message: Box<classic::Message>,
     },
     BottlesChanged(Vec<Bottle>),
     ProfilesChanged(Arc<ProfilesConfig>),
@@ -297,8 +297,8 @@ impl App {
                 let generation = *generation;
 
                 state
-                    .update_action(*action, &session.domain)
-                    .map(move |event| classic_event_message(generation, event))
+                    .update(*action, &session.domain)
+                    .map(move |message| classic_event_message(generation, message))
             }
             AppAction::Next(action) => {
                 let Phase::Session(session) = &self.phase else {
@@ -358,7 +358,10 @@ impl App {
                 let task = state.update_event(event).map(onboarding_event_message);
                 Task::batch([task, self.advance_draining()])
             }
-            AppEvent::Classic { generation, event } => {
+            AppEvent::Classic {
+                generation,
+                message,
+            } => {
                 let Phase::Session(session) = &mut self.phase else {
                     return Task::none();
                 };
@@ -380,8 +383,8 @@ impl App {
                     return Task::none();
                 }
                 let task = state
-                    .update_event(*event, &session.domain)
-                    .map(move |event| classic_event_message(generation, event));
+                    .update(*message, &session.domain)
+                    .map(move |message| classic_event_message(generation, message));
                 Task::batch([task, self.advance_draining()])
             }
             AppEvent::BottlesChanged(bottles) => self.update_bottles(bottles),
@@ -413,7 +416,7 @@ impl App {
         let generation = *generation;
         state
             .bottles_changed(&session.domain)
-            .map(move |event| classic_event_message(generation, event))
+            .map(move |message| classic_event_message(generation, message))
     }
 
     fn update_profiles(&mut self, profiles: Arc<ProfilesConfig>) -> Task<AppMessage> {
@@ -434,7 +437,7 @@ impl App {
         let generation = *generation;
         state
             .profiles_changed(&session.domain, selected_changed)
-            .map(move |event| classic_event_message(generation, event))
+            .map(move |message| classic_event_message(generation, message))
     }
 
     pub(crate) fn view(&self) -> Element<'_, AppMessage> {
@@ -769,7 +772,7 @@ impl App {
                 let (state, task) = classic::State::new(core.as_ref(), &domain);
                 (
                     Workspace::Classic(Box::new(state)),
-                    task.map(move |event| classic_event_message(generation, event)),
+                    task.map(move |message| classic_event_message(generation, message)),
                 )
             }
             Experience::Next => (Workspace::Next(next::State::new()), Task::none()),
@@ -803,7 +806,7 @@ fn resume_session(session: &mut Session) -> Task<AppMessage> {
     let generation = *generation;
     state
         .resume_after_failed_switch(&session.domain)
-        .map(move |event| classic_event_message(generation, event))
+        .map(move |message| classic_event_message(generation, message))
 }
 
 fn shutdown_task(core: Arc<Bottles>) -> Task<AppMessage> {
@@ -839,17 +842,17 @@ fn onboarding_action_message(action: onboarding::Action) -> AppMessage {
     }
 }
 
-fn classic_action_message(action: classic::Action) -> AppMessage {
-    match action {
-        classic::Action::DragWindow => AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
-        action => AppMessage::Action(AppAction::Classic(Box::new(action))),
+fn classic_action_message(message: classic::Message) -> AppMessage {
+    match message {
+        classic::Message::DragWindow => AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
+        message => AppMessage::Action(AppAction::Classic(Box::new(message))),
     }
 }
 
-fn classic_event_message(generation: u64, event: classic::Event) -> AppMessage {
+fn classic_event_message(generation: u64, message: classic::Message) -> AppMessage {
     AppMessage::Event(AppEvent::Classic {
         generation,
-        event: Box::new(event),
+        message: Box::new(message),
     })
 }
 
