@@ -153,9 +153,18 @@ pub(crate) enum AppMessage {
 #[derive(Clone)]
 pub(crate) enum AppAction {
     Onboarding(onboarding::Action),
-    Classic(Box<classic::Message>),
-    Feature(features::Message),
-    Next(next::Action),
+    Classic {
+        generation: u64,
+        message: Box<classic::Message>,
+    },
+    Feature {
+        generation: u64,
+        message: features::Message,
+    },
+    Next {
+        generation: u64,
+        action: next::Action,
+    },
     ConfirmExperienceSwitch,
     CancelExperienceSwitch,
     DismissNotice,
@@ -274,12 +283,15 @@ impl App {
                 };
                 state.update_action(action).map(onboarding_event_message)
             }
-            AppAction::Classic(action) => {
+            AppAction::Classic {
+                generation,
+                message,
+            } => {
                 let Phase::Session(session) = &mut self.phase else {
                     return Task::none();
                 };
                 let SessionScreen::Running {
-                    generation,
+                    generation: current_generation,
                     features,
                     presentation: Presentation::Classic(state),
                     ..
@@ -287,26 +299,53 @@ impl App {
                 else {
                     return Task::none();
                 };
-                let generation = *generation;
+                let Some(message) = current_run_action(generation, *current_generation, message)
+                else {
+                    return Task::none();
+                };
+                let generation = *current_generation;
 
                 state
-                    .update(features, *action, &session.domain)
+                    .update(features, *message, &session.domain)
                     .map(move |message| feature_event_message(generation, message))
             }
-            AppAction::Feature(message) => self.update_feature(message),
-            AppAction::Next(action) => {
+            AppAction::Feature {
+                generation,
+                message,
+            } => {
                 let Phase::Session(session) = &self.phase else {
                     return Task::none();
                 };
-                if !matches!(
-                    session.screen,
-                    SessionScreen::Running {
-                        presentation: Presentation::Next(_),
-                        ..
-                    }
-                ) {
+                let SessionScreen::Running {
+                    generation: current_generation,
+                    ..
+                } = &session.screen
+                else {
                     return Task::none();
-                }
+                };
+                let Some(message) = current_run_action(generation, *current_generation, message)
+                else {
+                    return Task::none();
+                };
+
+                self.update_feature(message)
+            }
+            AppAction::Next { generation, action } => {
+                let Phase::Session(session) = &self.phase else {
+                    return Task::none();
+                };
+                let SessionScreen::Running {
+                    generation: current_generation,
+                    presentation: Presentation::Next(_),
+                    ..
+                } = &session.screen
+                else {
+                    return Task::none();
+                };
+                let Some(action) = current_run_action(generation, *current_generation, action)
+                else {
+                    return Task::none();
+                };
 
                 match action {
                     next::Action::UseClassic => self.request_experience(Experience::Classic),
@@ -520,9 +559,9 @@ impl App {
             Phase::Session(Session {
                 screen:
                     SessionScreen::Running {
+                        generation,
                         features,
                         presentation,
-                        ..
                     },
                 lifecycle: SessionLifecycle::Active,
                 overlay,
@@ -536,11 +575,12 @@ impl App {
                     error.to_string(),
                 )),
                 None => match presentation {
-                    Presentation::Classic(state) => state.dialog(features).map(|dialog| {
-                        dialog.map(|message| {
-                            AppMessage::Action(AppAction::Classic(Box::new(message)))
+                    Presentation::Classic(state) => {
+                        let generation = *generation;
+                        state.dialog(features).map(move |dialog| {
+                            dialog.map(move |message| classic_action_message(generation, message))
                         })
-                    }),
+                    }
                     Presentation::Next(_) => None,
                 },
             },
@@ -866,12 +906,22 @@ fn onboarding_action_message(action: onboarding::Action) -> AppMessage {
     }
 }
 
-fn classic_action_message(message: classic::Message) -> AppMessage {
+fn classic_action_message(generation: u64, message: classic::Message) -> AppMessage {
     match message {
         classic::Message::DragWindow => AppMessage::Action(AppAction::Window(chrome::Action::Drag)),
-        classic::Message::Feature(message) => AppMessage::Action(AppAction::Feature(message)),
-        message => AppMessage::Action(AppAction::Classic(Box::new(message))),
+        classic::Message::Feature(message) => AppMessage::Action(AppAction::Feature {
+            generation,
+            message,
+        }),
+        message => AppMessage::Action(AppAction::Classic {
+            generation,
+            message: Box::new(message),
+        }),
     }
+}
+
+fn current_run_action<T>(generation: u64, current_generation: u64, action: T) -> Option<T> {
+    (generation == current_generation).then_some(action)
 }
 
 fn feature_event_message(generation: u64, message: features::Message) -> AppMessage {
@@ -995,21 +1045,22 @@ fn onboarding_notice_view<'a>(
 
 fn presentation_view(session: &Session) -> Element<'_, AppMessage> {
     let SessionScreen::Running {
+        generation,
         features,
         presentation,
-        ..
     } = &session.screen
     else {
         unreachable!("only running sessions render a presentation")
     };
+    let generation = *generation;
     match presentation {
         Presentation::Classic(state) => state
             .view(features, &session.domain)
-            .map(classic_action_message),
+            .map(move |message| classic_action_message(generation, message)),
         Presentation::Next(state) => root_body(
             state
                 .view()
-                .map(|action| AppMessage::Action(AppAction::Next(action))),
+                .map(move |action| AppMessage::Action(AppAction::Next { generation, action })),
         ),
     }
 }
@@ -1099,6 +1150,27 @@ mod tests {
             config.dependency_catalog.as_ref().map(|url| url.as_str()),
             Some(DEPENDENCY_CATALOG_URL)
         );
+    }
+
+    #[test]
+    fn classic_feature_messages_bypass_presentation_update() {
+        let message = classic_action_message(
+            7,
+            classic::Message::Feature(features::Message::Library(
+                features::library::Message::QueryChanged(String::new()),
+            )),
+        );
+
+        assert!(matches!(
+            message,
+            AppMessage::Action(AppAction::Feature { generation: 7, .. })
+        ));
+    }
+
+    #[test]
+    fn stale_run_actions_are_rejected() {
+        assert_eq!(current_run_action(7, 7, "current"), Some("current"));
+        assert_eq!(current_run_action(6, 7, "stale"), None);
     }
 
     #[test]
