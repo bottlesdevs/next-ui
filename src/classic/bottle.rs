@@ -25,57 +25,53 @@ pub(super) fn rows<'a>(
     jobs: &'a Jobs,
     selected: Option<Uuid>,
 ) -> Element<'a, Message> {
-    responsive(move |size| {
-        let bottles = store.bottles.iter().map(|bottle| {
-            ActionRow::new(bottle.name(), Message::Select(bottle.id()))
-                .description(bottle.config().runner.name())
-                .icon(Icon::Bottles)
-                .selected(selected == Some(bottle.id()))
-                .into()
-        });
-        let creating = jobs.map.values().filter_map(|job| {
-            let Kind::CreateBottle(name) = &job.kind else {
-                return None;
-            };
-            Some(
-                ActionRow::progress(
-                    name,
-                    job.progress
-                        .as_ref()
-                        .and_then(bottles_core::Progress::fraction)
-                        .unwrap_or(0.0),
-                )
-                .description(
-                    job.progress
-                        .as_ref()
-                        .map_or_else(|| "Preparing".into(), |progress| progress.stage.to_string()),
-                )
-                .icon(Icon::Bottles)
-                .into(),
+    let bottles = store.bottles.iter().map(|bottle| {
+        ActionRow::new(bottle.name(), Message::Select(bottle.id()))
+            .description(bottle.config().runner.name())
+            .icon(Icon::Bottles)
+            .selected(selected == Some(bottle.id()))
+            .into()
+    });
+    let creating = jobs.map.values().filter_map(|job| {
+        let Kind::CreateBottle(name) = &job.kind else {
+            return None;
+        };
+        Some(
+            ActionRow::progress(
+                name,
+                job.progress
+                    .as_ref()
+                    .and_then(bottles_core::Progress::fraction)
+                    .unwrap_or(0.0),
             )
-        });
-        if store.bottles.is_empty()
-            && !jobs
-                .map
-                .values()
-                .any(|job| matches!(job.kind, Kind::CreateBottle(_)))
-        {
-            return text("No bottles yet. Add a bottle to get started.").into();
-        }
-        container(
-            container(
-                Grid::with_children(bottles.chain(creating))
-                    .columns(usize::from(size.width >= 600.0 + spacing::SM) + 1)
-                    .spacing(spacing::SM)
-                    .height(Length::Shrink),
+            .description(
+                job.progress
+                    .as_ref()
+                    .map_or_else(|| "Preparing".into(), |progress| progress.stage.to_string()),
             )
-            .width(Fill)
-            .max_width(720),
+            .icon(Icon::Bottles)
+            .into(),
         )
-        .center_x(Fill)
-        .into()
-    })
-    .height(Length::Shrink)
+    });
+    if store.bottles.is_empty()
+        && !jobs
+            .map
+            .values()
+            .any(|job| matches!(job.kind, Kind::CreateBottle(_)))
+    {
+        return text("No bottles yet. Add a bottle to get started.").into();
+    }
+    container(
+        container(
+            Grid::with_children(bottles.chain(creating))
+                .fluid(600.0 + spacing::SM)
+                .spacing(spacing::SM)
+                .height(Length::Shrink),
+        )
+        .width(Fill)
+        .max_width(720),
+    )
+    .center_x(Fill)
     .into()
 }
 

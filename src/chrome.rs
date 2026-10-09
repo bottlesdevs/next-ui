@@ -19,7 +19,7 @@ use next_ui::{
 const RESIZE_EDGE: f32 = 6.0;
 const RESIZE_CORNER: f32 = 12.0;
 const PANEL_INSET: [f32; 2] = [6.0, 8.0];
-const WINDOW_CONTROL_INSET: [f32; 2] = [22.0, 20.0];
+const WINDOW_CONTROL_INSET: [f32; 2] = [20.0, 20.0];
 const WINDOW_CONTROL_SIZE: f32 = 32.0;
 
 pub(crate) const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");

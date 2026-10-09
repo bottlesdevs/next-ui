@@ -62,37 +62,38 @@ where
             selected,
             on_select,
         } = tabs;
-        let children: Vec<Element<'a, Message>> =
-            tabs.into_iter()
-                .map(|tab| {
-                    let selected = selected.as_ref() == Some(&tab.value);
-                    let message = tab.enabled.then(|| on_select(tab.value));
+        let children: Vec<Element<'a, Message>> = tabs
+            .into_iter()
+            .map(|tab| {
+                let selected = selected.as_ref() == Some(&tab.value);
+                let message = tab.enabled.then(|| on_select(tab.value));
 
-                    let indicator = container(Space::new().height(3)).width(Fill).style(
-                        move |theme: &Theme| {
-                            container::Style::default().background(Background::Color(if selected {
-                                theme::colors(theme).accent
-                            } else {
-                                iced::Color::TRANSPARENT
-                            }))
-                        },
-                    );
+                let indicator_height = 3f32;
+                let indicator = container(Space::new().height(indicator_height))
+                    .width(Fill)
+                    .style(move |theme: &Theme| {
+                        container::Style::default().background(Background::Color(if selected {
+                            theme::colors(theme).accent
+                        } else {
+                            iced::Color::TRANSPARENT
+                        }))
+                    });
 
-                    FocusableAction::new(
-                        column![
-                            text(tab.label).label(),
-                            Space::new().height(spacing::SM),
-                            indicator
-                        ]
-                        .align_x(Alignment::Center),
-                    )
-                    .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
-                    .selected(selected)
-                    .on_press_maybe(message)
-                    .style(tab_style)
-                    .into()
-                })
-                .collect();
+                FocusableAction::new(
+                    column![
+                        text(tab.label).label(),
+                        Space::new().height(spacing::LG - indicator_height),
+                        indicator
+                    ]
+                    .align_x(Alignment::Center),
+                )
+                .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
+                .selected(selected)
+                .on_press_maybe(message)
+                .style(tab_style)
+                .into()
+            })
+            .collect();
 
         let content: Element<'a, Message> =
             container(Row::with_children(children).spacing(spacing::LG))
