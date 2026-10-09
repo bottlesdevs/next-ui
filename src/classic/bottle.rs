@@ -149,7 +149,7 @@ pub(super) fn programs<'a>(bottle: &'a BottleState, jobs: &'a Jobs) -> Element<'
     });
     Grid::with_children(std::iter::once(new_program().into()).chain(cards))
         .fluid(400.0)
-        .spacing(spacing::MD)
+        .spacing(spacing::SM)
         .height(Length::Shrink)
         .into()
 }

@@ -15,6 +15,7 @@ use crate::{
     theme,
     widget::{
         ActionRow, Button, ButtonKind, InfoCard, InfoCardKind, InfoRow, RowGroup, TextExt as _,
+        spacing,
     },
 };
 
@@ -124,7 +125,7 @@ impl State {
     }
 
     fn welcome_view(&self) -> Element<'_, Message> {
-        let mut choices = column![].spacing(8).width(Length::FillPortion(1));
+        let mut choices = column![].spacing(spacing::SM).width(Length::FillPortion(1));
         for experience in [Experience::Next, Experience::Classic] {
             choices = choices.push(
                 ActionRow::new(
@@ -159,7 +160,7 @@ impl State {
                 .width(Fill)
                 .height(Fill)
             ]
-            .spacing(8)
+            .spacing(spacing::SM)
             .width(Fill),
             next_button("Apply Experience").on_press(Message::ApplyExperience),
         ]

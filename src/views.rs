@@ -21,7 +21,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let query = query.to_lowercase();
     let mut cards = Vec::new();
-    let mut notices = column![].spacing(spacing::MD);
+    let mut notices = column![].spacing(spacing::SM);
     let mut providers = ctx.store.library.iter().collect::<Vec<_>>();
     providers.sort_by_key(|(provider, _)| *provider);
     for (provider, state) in providers {
@@ -91,7 +91,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
             .push(
                 Grid::with_children(cards)
                     .fluid(400.0)
-                    .spacing(spacing::MD)
+                    .spacing(spacing::SM)
                     .height(Length::Shrink),
             )
             .into()

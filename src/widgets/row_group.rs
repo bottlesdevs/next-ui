@@ -329,11 +329,11 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
                     self.children[index]
                         .as_widget_mut()
                         .layout(&mut tree.children[index], renderer, &header_limits)
-                        .move_to(Point::new(column as f32 * (cell_width + spacing::MD), top)),
+                        .move_to(Point::new(column as f32 * (cell_width + spacing::SM), top)),
                 );
             }
 
-            let body_top = top + header_height + spacing::MD;
+            let body_top = top + header_height + spacing::SM;
             let mut body_height: f32 = 0.0;
             let mut line_open = false;
 
@@ -356,7 +356,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
                         &content_limits,
                     )
                     .move_to(Point::new(
-                        expansion.footprint.start as f32 * (cell_width + spacing::MD),
+                        expansion.footprint.start as f32 * (cell_width + spacing::SM),
                         body_top,
                     ));
                 body_height = body_height.max(node.size().height);
@@ -364,7 +364,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
             }
 
             top += if line_open {
-                header_height + spacing::MD + body_height
+                header_height + spacing::SM + body_height
             } else {
                 header_height
             };
@@ -686,7 +686,7 @@ fn disclosure_bounds(header: Rectangle) -> Rectangle {
 }
 
 fn cell_width(width: f32, columns: usize) -> f32 {
-    (width - spacing::MD * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
+    (width - spacing::SM * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
 }
 
 fn fill_concave_corner(
@@ -746,7 +746,7 @@ fn footprint(header: usize, requested_span: usize, columns: usize) -> Footprint 
 
 fn footprint_width(footprint: Footprint, cell_width: f32) -> f32 {
     let span = footprint.span();
-    span as f32 * cell_width + span.saturating_sub(1) as f32 * spacing::MD
+    span as f32 * cell_width + span.saturating_sub(1) as f32 * spacing::SM
 }
 
 fn visual_order(header_count: usize, columns: usize, expansions: &[Expansion]) -> Vec<usize> {

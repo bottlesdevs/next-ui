@@ -144,7 +144,7 @@ impl State {
         } else {
             iced::widget::Grid::with_children(cards)
                 .fluid(400.0)
-                .spacing(spacing::MD)
+                .spacing(spacing::SM)
                 .height(iced::Length::Shrink)
                 .into()
         };
