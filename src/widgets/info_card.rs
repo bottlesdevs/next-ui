@@ -77,7 +77,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
     }
 }
 
-fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
+pub(super) fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
     let icon = match kind {
         Kind::Hint => Icon::Wand,
         Kind::Info => Icon::Info,
@@ -94,7 +94,7 @@ fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
         })
 }
 
-fn colors(theme: &Theme, kind: Kind) -> Pair {
+pub(super) fn colors(theme: &Theme, kind: Kind) -> Pair {
     let colors = theme::colors(theme);
 
     match kind {

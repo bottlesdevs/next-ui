@@ -1,615 +1,354 @@
-//! The complete Classic experience: routes, dialogs, read models, and workflows.
-//!
-//! A future Next experience is a sibling of this module and cannot access these
-//! private workflow modules.
+//! Classic view state. Snapshots and operations belong to the application context.
 
-mod accounts_view;
-mod bottles_view;
-mod layout;
-mod library_view;
-mod profiles_view;
-mod settings_view;
-#[cfg(feature = "fvs")]
-mod snapshots_view;
+mod bottle;
 
-use crate::{
-    Icon,
-    domain::{BottleSnapshot, DomainSnapshots},
-    features::{self, bottles, profiles},
-    theme,
-    widget::{
-        ActionRow, Button, ButtonKind, Dialog, InfoCard, InfoCardKind, RowGroup, Tab, Tabs,
-        TextRow, Title,
-    },
-};
+use bottles_core::{BottleState, Operation, PrefixBackend};
 use iced::{
     Element, Fill, Task,
-    widget::{column, container, keyed_column, scrollable},
+    widget::{column, container},
 };
-use layout::{PaneContext, Side, navigation_split, side_panel};
+use next_ui::{
+    Icon,
+    widget::{Button, ButtonKind, Popover, PopoverItem, Tab, Tabs, Title},
+};
 use uuid::Uuid;
 
-const CONTENT_MAX_WIDTH: f32 = 1150.0;
+use crate::{
+    app, chrome,
+    context::Context,
+    jobs::Kind,
+    layout::{PaneContext, Side, navigation_split, side_panel},
+    theme, views,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrimaryTab {
+pub enum TabKind {
     Bottles,
     Library,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DetailTab {
+pub enum Detail {
     Programs,
     Settings,
     #[cfg(feature = "fvs")]
     Snapshots,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Route {
-    Bottles,
-    Bottle { id: Uuid, tab: DetailTab },
-    Library,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OverlayKind {
-    NewBottle,
-    Profiles,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Overlay {
-    kind: OverlayKind,
-    open: bool,
-}
-
-impl Overlay {
-    fn open(kind: OverlayKind) -> Self {
-        Self { kind, open: true }
-    }
-
-    fn is_open(self, kind: OverlayKind) -> bool {
-        self.open && self.kind == kind
-    }
-
-    fn close(&mut self) {
-        self.open = false;
-    }
+struct Draft {
+    name: String,
+    runner: Option<Uuid>,
 }
 
 pub struct State {
-    route: Route,
-    overlay: Option<Overlay>,
+    tab: TabKind,
+    selected: Option<Uuid>,
+    detail_tab: Detail,
+    draft: Option<Draft>,
+    rename: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Message {
-    PrimaryTabSelected(PrimaryTab),
-    DetailTabSelected(DetailTab),
-    BottleSelected(Uuid),
+    Tab(TabKind),
+    Select(Uuid),
+    Detail(Detail),
     Back,
-    AddBottle,
-    CancelBottle,
-    ToggleProfileSettings,
-    OpenMenu,
-    TogglePower,
-    DragWindow,
-    Feature(features::Message),
+    New,
+    Cancel,
+    Name(String),
+    Runner(Uuid),
+    Create,
+    Rename(String),
+    SaveName,
+    LaunchProgram { bottle: Uuid, program: Uuid },
+    LaunchLibrary(String, String),
+    Stop(Uuid),
+    Delete(Uuid),
+    ToggleGamescope(Uuid, bool),
+    ToggleMangoHud(Uuid, bool),
+    NewProgram,
+    Window(chrome::Action),
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            route: Route::Bottles,
-            overlay: None,
+            tab: TabKind::Bottles,
+            selected: None,
+            detail_tab: Detail::Programs,
+            draft: None,
+            rename: None,
         }
     }
 
-    fn primary_tab(&self) -> PrimaryTab {
-        match self.route {
-            Route::Library => PrimaryTab::Library,
-            _ => PrimaryTab::Bottles,
-        }
-    }
-
-    pub fn resume_after_failed_switch(
-        &mut self,
-        features: &mut features::State,
-        _domain: &DomainSnapshots,
-    ) -> Task<features::Message> {
-        let library = features.reload_library();
-        #[cfg(feature = "fvs")]
-        if let Some(snapshot) = self.selected_bottle(_domain) {
-            let snapshots = features
-                .snapshots
-                .load(snapshot.bottle.clone())
-                .map(features::Message::Snapshots);
-            return Task::batch([library, snapshots]);
-        }
-        library
-    }
-
-    pub fn update(
-        &mut self,
-        features: &mut features::State,
-        message: Message,
-        domain: &DomainSnapshots,
-    ) -> Task<features::Message> {
+    pub fn update(&mut self, ctx: &mut Context, message: Message) -> Task<app::Message> {
         match message {
-            Message::PrimaryTabSelected(tab) => {
-                self.leave_bottle_route(features);
-                self.route = match tab {
-                    PrimaryTab::Bottles => Route::Bottles,
-                    PrimaryTab::Library => Route::Library,
-                };
-                if tab == PrimaryTab::Library {
-                    return features.reload_library();
-                }
+            Message::Tab(tab) => self.tab = tab,
+            Message::Select(id) => {
+                self.selected = Some(id);
+                self.detail_tab = Detail::Programs;
+                self.rename = None;
             }
-            Message::DetailTabSelected(tab) => {
-                if let Route::Bottle { id, .. } = self.route {
-                    self.route = Route::Bottle { id, tab };
-                }
-            }
-            Message::BottleSelected(id) => {
-                if domain.bottle(id).is_none() {
-                    return Task::none();
-                }
-                self.route = Route::Bottle {
-                    id,
-                    tab: DetailTab::Programs,
-                };
-                #[cfg(feature = "fvs")]
-                features.snapshots.clear();
-                #[cfg(feature = "fvs")]
-                if let Some(snapshot) = self.selected_bottle(domain) {
-                    return features
-                        .snapshots
-                        .load(snapshot.bottle.clone())
-                        .map(features::Message::Snapshots);
-                }
-            }
+            Message::Detail(detail) => self.detail_tab = detail,
             Message::Back => {
-                features.profiles.dismiss_dialogs();
-                if !self.close_overlay(OverlayKind::Profiles) {
-                    self.leave_bottle_route(features);
-                    self.route = Route::Bottles;
+                self.selected = None;
+                self.rename = None;
+            }
+            Message::New => {
+                self.tab = TabKind::Bottles;
+                self.draft = Some(Draft {
+                    name: "Gaming paradise".into(),
+                    runner: ctx.store.addons.runners().first().map(|runner| runner.id()),
+                });
+            }
+            Message::Cancel => self.draft = None,
+            Message::Name(name) => {
+                if let Some(draft) = &mut self.draft {
+                    draft.name = name;
                 }
             }
-            Message::AddBottle => {
-                features.profiles.dismiss_dialogs();
-                self.overlay = Some(Overlay::open(OverlayKind::NewBottle));
-                features.bottles.reset_creation();
-            }
-            Message::CancelBottle => {
-                features.bottles.cancel_creation();
-                self.close_overlay(OverlayKind::NewBottle);
-            }
-            Message::ToggleProfileSettings => {
-                if self.close_overlay(OverlayKind::Profiles) {
-                    features.profiles.dismiss_dialogs();
-                } else {
-                    self.overlay = Some(Overlay::open(OverlayKind::Profiles));
+            Message::Runner(runner) => {
+                if let Some(draft) = &mut self.draft {
+                    draft.runner = Some(runner);
                 }
             }
-            Message::OpenMenu | Message::TogglePower | Message::DragWindow => {}
-            Message::Feature(_) => unreachable!("feature messages are handled by the app shell"),
+            Message::Create => {
+                let Some(draft) = &self.draft else {
+                    return Task::none();
+                };
+                let runner = ctx
+                    .store
+                    .addons
+                    .runners()
+                    .into_iter()
+                    .find(|runner| Some(runner.id()) == draft.runner);
+                let Some(runner) = runner else {
+                    return Task::none();
+                };
+                let Some(winebridge) = ctx.store.addons.winebridges().into_iter().next() else {
+                    return Task::none();
+                };
+                let name = draft.name.clone();
+                let operation = ctx.core.bottles().create(
+                    name.clone(),
+                    PrefixBackend::Standard,
+                    runner.as_ref().clone(),
+                    winebridge.as_ref().clone(),
+                    ctx.store
+                        .addons
+                        .umus()
+                        .first()
+                        .map(|umu| umu.as_ref().clone()),
+                );
+                self.draft = None;
+                return ctx.jobs.start(Kind::CreateBottle(name), operation);
+            }
+            Message::Rename(name) => self.rename = Some(name),
+            Message::SaveName => {
+                let (Some(id), Some(name)) = (self.selected, self.rename.take()) else {
+                    return Task::none();
+                };
+                match ctx.core.bottles().open(id) {
+                    Ok(bottle) => {
+                        return ctx.jobs.start(
+                            Kind::Edit(id),
+                            bottle.edit(move |edit| {
+                                edit.rename(name);
+                                Ok(())
+                            }),
+                        );
+                    }
+                    Err(error) => ctx.notifications.error(error.to_string()),
+                }
+            }
+            Message::LaunchProgram {
+                bottle: id,
+                program,
+            } => return ctx.launch_entry("bottles".into(), format!("{id}/{program}")),
+            Message::LaunchLibrary(provider, entry) => return ctx.launch_entry(provider, entry),
+            Message::Stop(id) => match ctx.core.bottles().open(id) {
+                Ok(bottle) => {
+                    return ctx.jobs.start(
+                        Kind::Stop(id),
+                        Operation::new(move |_, _| async move { bottle.stop().await }),
+                    );
+                }
+                Err(error) => ctx.notifications.error(error.to_string()),
+            },
+            Message::Delete(id) => {
+                return ctx
+                    .jobs
+                    .start(Kind::Delete(id), ctx.core.bottles().delete(id));
+            }
+            Message::ToggleGamescope(id, enabled) | Message::ToggleMangoHud(id, enabled) => {
+                let gamescope = matches!(message, Message::ToggleGamescope(..));
+                match ctx.core.bottles().open(id) {
+                    Ok(bottle) => {
+                        return ctx.jobs.start(
+                            Kind::Edit(id),
+                            bottle.edit(move |edit| {
+                                if gamescope {
+                                    edit.wrappers().gamescope.enabled = enabled;
+                                } else {
+                                    edit.wrappers().mangohud.enabled = enabled;
+                                }
+                                Ok(())
+                            }),
+                        );
+                    }
+                    Err(error) => ctx.notifications.error(error.to_string()),
+                }
+            }
+            Message::NewProgram => ctx
+                .notifications
+                .info("Program installation is not available yet"),
+            Message::Window(action) => return Task::done(app::Message::Window(action)),
         }
-
         Task::none()
     }
 
-    pub fn bottles_changed(&mut self, features: &mut features::State, domain: &DomainSnapshots) {
-        let selected_exists = match self.route {
-            Route::Bottle { id, .. } => domain.bottle(id).is_some(),
-            Route::Bottles | Route::Library => true,
-        };
-        if reconcile_route(&mut self.route, selected_exists) {
-            self.leave_bottle_route(features);
-        }
+    fn selected<'a>(&self, ctx: &'a Context) -> Option<&'a BottleState> {
+        ctx.store
+            .bottles
+            .iter()
+            .find(|bottle| Some(bottle.id()) == self.selected)
+            .map(AsRef::as_ref)
     }
 
-    pub fn handle_feature_output(&mut self, output: features::Output) {
-        match output {
-            features::Output::BottleCreated => {
-                self.close_overlay(OverlayKind::NewBottle);
-            }
-        }
-    }
-
-    fn leave_bottle_route(&mut self, _features: &mut features::State) {
-        #[cfg(feature = "fvs")]
-        _features.snapshots.clear();
-    }
-
-    fn close_overlay(&mut self, kind: OverlayKind) -> bool {
-        let Some(overlay) = self
-            .overlay
-            .as_mut()
-            .filter(|overlay| overlay.is_open(kind))
-        else {
-            return false;
-        };
-        overlay.close();
-        true
-    }
-
-    fn selected_bottle<'a>(&self, domain: &'a DomainSnapshots) -> Option<&'a BottleSnapshot> {
-        let Route::Bottle { id, .. } = self.route else {
-            return None;
-        };
-        domain.bottle(id)
-    }
-
-    pub fn view<'a>(
-        &'a self,
-        features: &'a features::State,
-        domain: &'a DomainSnapshots,
-    ) -> Element<'a, Message> {
-        let overlay = self.overlay.unwrap_or(Overlay {
-            kind: OverlayKind::NewBottle,
-            open: false,
-        });
-        let split = side_panel(
-            match overlay.kind {
-                OverlayKind::Profiles => Side::End,
-                OverlayKind::NewBottle => Side::Start,
-            },
-            overlay.open,
-            |base_context| {
+    pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
+        side_panel(
+            Side::Start,
+            self.draft.is_some(),
+            move |pane| {
                 navigation_split(
-                    base_context,
-                    matches!(self.route, Route::Bottle { .. }),
-                    |context| self.primary_page(context, features, domain),
-                    |context| self.detail_page(context, features, domain),
+                    pane,
+                    self.tab == TabKind::Bottles && self.selected(ctx).is_some(),
+                    move |pane| self.primary_page(ctx, pane),
+                    move |pane| self.detail_page(ctx, pane),
                 )
             },
-            move |context| match overlay.kind {
-                OverlayKind::Profiles => self.profile_settings_page(context, features, domain),
-                OverlayKind::NewBottle => self.new_bottle_page(context, features),
-            },
-        );
-
-        container(split).width(Fill).height(Fill).into()
+            move |pane| self.creation_page(ctx, pane),
+        )
     }
 
-    pub(crate) fn dialog<'a>(
-        &'a self,
-        features: &'a features::State,
-    ) -> Option<Dialog<'a, Message>> {
-        if !self
-            .overlay
-            .is_some_and(|overlay| overlay.is_open(OverlayKind::Profiles))
-        {
-            return None;
-        }
-
-        profiles_view::dialog(&features.profiles)
-            .map(|dialog| dialog.map(profiles_message))
-            .or_else(|| {
-                accounts_view::dialog(&features.profiles).map(|dialog| dialog.map(profiles_message))
-            })
-    }
-
-    fn primary_page<'a>(
-        &'a self,
-        context: PaneContext,
-        features: &'a features::State,
-        domain: &'a DomainSnapshots,
-    ) -> Element<'a, Message> {
+    fn primary_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
         let tabs = Tabs::new(
             [
-                Tab::new(PrimaryTab::Bottles, "Bottles"),
-                Tab::new(PrimaryTab::Library, "Library"),
+                Tab::new(TabKind::Bottles, "Bottles"),
+                Tab::new(TabKind::Library, "Library"),
             ],
-            Some(self.primary_tab()),
-            Message::PrimaryTabSelected,
+            Some(self.tab),
+            Message::Tab,
         );
-        let header = context.header(Message::DragWindow, |header| {
+        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
-                .start(header_button("Add bottle", Icon::Plus, Message::AddBottle))
+                .start(views::header_button("Add bottle", Icon::Plus, Message::New))
                 .middle(tabs)
-                .end(profiles_view::switcher(domain.profiles()))
         });
-        let content: Element<'_, Message> = match self.primary_tab() {
-            PrimaryTab::Bottles => bottles_view::rows(
-                domain.bottles(),
-                match self.route {
-                    Route::Bottle { id, .. } => Some(id),
-                    _ => None,
-                },
-                Message::BottleSelected,
+        let body = match self.tab {
+            TabKind::Bottles => bottle::rows(
+                &ctx.store,
+                &ctx.jobs,
+                self.selected(ctx).map(BottleState::id),
             ),
-            PrimaryTab::Library => library_view::view(&features.library).map(library_message),
+            TabKind::Library => views::library_grid(ctx, "", Message::LaunchLibrary),
         };
-
-        column![header, scroll_panel(content)]
-            .width(Fill)
-            .height(Fill)
-            .into()
+        views::page(header, body, 1150.0)
     }
 
-    fn profile_settings_page<'a>(
-        &'a self,
-        context: PaneContext,
-        features: &'a features::State,
-        domain: &'a DomainSnapshots,
-    ) -> Element<'a, Message> {
-        let header = context.header(Message::DragWindow, |header| {
-            header
-                .start(header_button("Cancel", Icon::Arrow, Message::Back))
-                .middle(
-                    container(
-                        Title::new("Profile Settings")
-                            .subtitle("Manage your profiles and linked accounts."),
-                    )
-                    .padding(iced::padding::bottom(12)),
-                )
-                .end(header_button(
-                    "New profile",
-                    Icon::Plus,
-                    profiles_message(profiles::Message::OpenCreate),
-                ))
-        });
-
-        let content: Element<'_, Message> = {
-            let active = domain.profiles().selected();
-            let links = accounts_view::links(&features.profiles, active).map(profiles_message);
-
-            column![
-                RowGroup::new()
-                    .title("Experience")
-                    .row(
-                        ActionRow::new("Classic", None)
-                            .description("Current experience")
-                            .icon(Icon::Checkmark),
-                    )
-                    .row(
-                        ActionRow::new("Next", None)
-                            .description("Not available yet")
-                            .icon(Icon::Wand),
-                    ),
-                RowGroup::new()
-                    .title("Profile")
-                    .row(
-                        TextRow::new("Profile name", features.profiles.name_draft())
-                            .icon(Icon::Person)
-                            .on_input(|name| profiles_message(profiles::Message::NameChanged(name)))
-                            .on_submit(profiles_message(profiles::Message::RenameSubmit)),
-                    )
-                    .row(accounts_view::action_button_row(
-                        Icon::Cross,
-                        "Delete profile",
-                        "Removes this profile and its linked accounts from this device",
-                        "Delete",
-                        profiles_message(profiles::Message::DeleteProfile(active.id())),
-                    )),
-                links,
-            ]
-            .spacing(18)
-            .into()
+    fn creation_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
+        let Some(draft) = &self.draft else {
+            return column![].into();
         };
-        let content: Element<'_, Message> = if let Some(error) = features.profiles.last_error() {
-            column![
-                InfoCard::new(InfoCardKind::Error, "Could not update profile", error,).width(Fill),
-                content,
-            ]
-            .spacing(18)
-            .into()
-        } else {
-            content
-        };
-
-        let page: Element<'_, Message> = column![header, scroll_panel(content)]
-            .width(Fill)
-            .height(Fill)
-            .into();
-
-        page
-    }
-
-    fn new_bottle_page<'a>(
-        &'a self,
-        context: PaneContext,
-        features: &'a features::State,
-    ) -> Element<'a, Message> {
-        let header = context.header(Message::DragWindow, |header| {
+        let can_create = !draft.name.trim().is_empty()
+            && ctx
+                .store
+                .addons
+                .runners()
+                .iter()
+                .any(|runner| Some(runner.id()) == draft.runner)
+            && !ctx.store.addons.winebridges().is_empty();
+        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
-                .start(header_button(
-                    "Cancel bottle creation",
+                .start(views::header_button(
+                    "Cancel creation",
                     Icon::Arrow,
-                    Message::CancelBottle,
+                    Message::Cancel,
                 ))
-                .middle(
-                    container(Title::new("New Bottle").subtitle("Creating a new bottle."))
-                        .padding(iced::padding::bottom(12)),
-                )
+                .middle(Title::new("New Bottle"))
                 .end(
-                    header_button(
-                        "Create bottle",
-                        Icon::Checkmark,
-                        bottles_message(bottles::Message::CreateBottle),
-                    )
-                    .on_press_maybe(
-                        (!features.bottles.is_creating())
-                            .then_some(bottles_message(bottles::Message::CreateBottle)),
-                    ),
+                    views::header_button("Create bottle", Icon::Checkmark, Message::Create)
+                        .on_press_maybe(can_create.then_some(Message::Create)),
                 )
         });
-        let content = bottles_view::creation(&features.bottles).map(bottles_message);
-
-        column![header, scroll_panel(content)]
-            .width(Fill)
-            .height(Fill)
-            .into()
+        views::page(
+            header,
+            bottle::creation(draft, &ctx.store, can_create),
+            1150.0,
+        )
     }
 
-    fn detail_page<'a>(
-        &'a self,
-        context: PaneContext,
-        features: &'a features::State,
-        domain: &'a DomainSnapshots,
-    ) -> Element<'a, Message> {
+    fn detail_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
+        let Some(bottle) = self.selected(ctx) else {
+            return column![].into();
+        };
+        let id = bottle.id();
+        let busy = bottle::busy(&ctx.jobs, id);
+        let tabs = [
+            Tab::new(Detail::Programs, "Programs"),
+            Tab::new(Detail::Settings, "Settings"),
+        ];
         #[cfg(feature = "fvs")]
-        let detail_tabs = [
-            Tab::new(DetailTab::Programs, "Programs"),
-            Tab::new(DetailTab::Settings, "Settings"),
-            Tab::new(DetailTab::Snapshots, "Snapshots"),
-        ];
-        #[cfg(not(feature = "fvs"))]
-        let detail_tabs = [
-            Tab::new(DetailTab::Programs, "Programs"),
-            Tab::new(DetailTab::Settings, "Settings"),
-        ];
-        let tabs = Tabs::new(
-            detail_tabs,
-            Some(match self.route {
-                Route::Bottle { tab, .. } => tab,
-                _ => DetailTab::Programs,
-            }),
-            Message::DetailTabSelected,
-        );
-        let header = context.header(Message::DragWindow, |mut header| {
-            if context.is_standalone() {
-                header = header.start(
-                    Button::icon_only("Back to bottles", Icon::Arrow)
-                        .diameter(32.0)
-                        .icon_size(16.0)
-                        .kind(ButtonKind::Transparent)
-                        .on_press(Message::Back),
-                );
+        let tabs = tabs
+            .into_iter()
+            .chain([Tab::new(Detail::Snapshots, "Snapshots")]);
+        let tabs = Tabs::new(tabs, Some(self.detail_tab), Message::Detail);
+        let header = pane.header(Message::Window(chrome::Action::Drag), |mut header| {
+            if pane.is_standalone() {
+                header = header.start(views::header_button(
+                    "Back to bottles",
+                    Icon::Arrow,
+                    Message::Back,
+                ));
             }
-
+            let mut stop = PopoverItem::new("Stop bottle").icon(Icon::Stop);
+            let mut delete = PopoverItem::new("Delete bottle").icon(Icon::Cross);
+            if !busy {
+                stop = stop.on_select(Message::Stop(id));
+                delete = delete.on_select(Message::Delete(id));
+            }
             header
-                .start(header_button(
-                    "More actions",
-                    Icon::EllipsisVertical,
-                    Message::OpenMenu,
-                ))
-                .start(header_button(
-                    "Toggle power",
-                    Icon::Power,
-                    Message::TogglePower,
-                ))
+                .start(
+                    Popover::new(
+                        Button::icon_only("Bottle menu", Icon::EllipsisVertical)
+                            .diameter(32.0)
+                            .icon_size(16.0)
+                            .kind(ButtonKind::Transparent),
+                    )
+                    .item(stop)
+                    .item(delete),
+                )
                 .middle(tabs)
         });
-        let detail_tab = match self.route {
-            Route::Bottle { tab, .. } => tab,
-            _ => DetailTab::Programs,
-        };
-        let content = match detail_tab {
-            DetailTab::Programs => {
-                if let Some(snapshot) = self.selected_bottle(domain) {
-                    bottles_view::programs(
-                        &features.bottles,
-                        snapshot.bottle.clone(),
-                        snapshot.state.as_ref(),
-                    )
-                    .map(bottles_message)
-                } else {
-                    column![].into()
-                }
-            }
-            DetailTab::Settings => {
-                if let Some(snapshot) = self.selected_bottle(domain) {
-                    let bottle_id = snapshot.state.id();
-                    settings_view::view(&features.settings, bottle_id, snapshot.state.as_ref())
-                        .map(settings_message)
-                } else {
-                    column![].into()
-                }
-            }
+        let content = match self.detail_tab {
+            Detail::Programs => bottle::programs(bottle, &ctx.jobs),
+            Detail::Settings => bottle::settings(bottle, self.rename.as_deref(), &ctx.jobs),
             #[cfg(feature = "fvs")]
-            DetailTab::Snapshots => {
-                snapshots_view::view(&features.snapshots).map(snapshots_message)
-            }
+            Detail::Snapshots => Title::new("Snapshots")
+                .subtitle("Snapshot management is coming later.")
+                .into(),
         };
-
-        let mut body = column![scroll_content(content)].width(Fill).height(Fill);
-
-        if let Some(snapshot) = self.selected_bottle(domain) {
-            let state = snapshot.state.as_ref();
-            body = body.push(
-                keyed_column([(state.id(), bottles_view::status(state).map(bottles_message))])
-                    .width(Fill),
-            );
-        }
-
-        let body = container(body)
-            .width(Fill)
-            .height(Fill)
-            .style(theme::panel)
-            .clip(true);
-
-        column![header, body].width(Fill).height(Fill).into()
-    }
-}
-
-fn reconcile_route(route: &mut Route, selected_exists: bool) -> bool {
-    if matches!(route, Route::Bottle { .. }) && !selected_exists {
-        *route = Route::Bottles;
-        true
-    } else {
-        false
-    }
-}
-
-fn scroll_panel<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    container(scroll_content(content))
-        .width(Fill)
-        .height(Fill)
-        .style(theme::panel)
-        .clip(true)
-        .into()
-}
-
-fn scroll_content<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    let content = container(content).width(Fill).max_width(CONTENT_MAX_WIDTH);
-    let content = container(content).padding(24).center_x(Fill);
-
-    container(
-        scrollable(content)
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new()
-                    .width(4)
-                    .scroller_width(4)
-                    .margin(12),
-            ))
-            .style(theme::scrollbar)
+        let body = container(
+            column![
+                views::scroll_content(content, 1150.0),
+                bottle::status(bottle)
+            ]
             .width(Fill)
             .height(Fill),
-    )
-    .width(Fill)
-    .height(Fill)
-    .into()
-}
-
-fn header_button(label: &str, icon: Icon, message: Message) -> Button<'_, Message> {
-    Button::icon_only(label, icon)
-        .diameter(32.0)
-        .icon_size(16.0)
-        .kind(ButtonKind::Transparent)
-        .on_press(message)
-}
-
-fn bottles_message(message: bottles::Message) -> Message {
-    Message::Feature(features::Message::Bottles(message))
-}
-
-fn profiles_message(message: profiles::Message) -> Message {
-    Message::Feature(features::Message::Profiles(message))
-}
-
-fn library_message(message: features::library::Message) -> Message {
-    Message::Feature(features::Message::Library(message))
-}
-
-fn settings_message(message: features::bottle_settings::Message) -> Message {
-    Message::Feature(features::Message::Settings(message))
-}
-
-#[cfg(feature = "fvs")]
-fn snapshots_message(message: features::snapshots::Message) -> Message {
-    Message::Feature(features::Message::Snapshots(message))
+        )
+        .style(theme::panel)
+        .clip(true);
+        column![header, body].width(Fill).height(Fill).into()
+    }
 }

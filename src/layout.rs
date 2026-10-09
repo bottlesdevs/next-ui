@@ -40,6 +40,14 @@ pub(super) struct PaneContext {
 }
 
 impl PaneContext {
+    #[cfg(feature = "fvs")]
+    pub(super) fn root() -> Self {
+        Self {
+            standalone: true,
+            owns_window_control: true,
+        }
+    }
+
     pub(super) fn is_standalone(self) -> bool {
         self.standalone
     }

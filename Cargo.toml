@@ -12,20 +12,16 @@ keywords = [""]
 exclude = [""]
 
 [dependencies]
-async-trait.workspace = true
 bottles-core.workspace = true
-directories.workspace = true
-iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "linux-theme-detection", "tokio"] }
+bottles-plugin-host.workspace = true
+iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "linux-theme-detection", "sipper", "tokio"] }
 next-config.workspace = true
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
 serde.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
-url.workspace = true
 uuid.workspace = true
-
-[dev-dependencies]
-futures-lite.workspace = true
-serde_json.workspace = true
 
 [features]
 default = ["fvs"]

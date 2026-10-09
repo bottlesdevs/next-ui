@@ -18,9 +18,7 @@ use next_ui::{theme, widget, Icon};
 ```
 
 The facade contains no Bottles domain types. Bottles-specific composition stays
-inside the application presentation modules. There is no speculative public
-`component` layer; one should be introduced only when Classic and Next share a
-concrete visual recipe that cannot remain a small function.
+inside the application screens and shared `views` module.
 
 Window chrome belongs to the application shell and is not part of the public
 toolkit.
@@ -28,48 +26,38 @@ toolkit.
 ## Architecture
 
 ```text
-App
-├── persistent theme
-└── Session
-    ├── persistent: core, config, canonical domain snapshots
-    ├── lifecycle: Active, Draining, Saving, ShuttingDown
-    ├── global overlay
-    └── screen
-        ├── Onboarding: setup coordinator and presentation
-        └── Running
-            ├── disposable features::State
-            │   ├── bottles and program launch
-            │   ├── library search
-            │   ├── profiles and account linking
-            │   ├── bottle settings
-            │   └── snapshots (with `fvs`)
-            └── disposable Presentation
-                ├── Classic: routes, panels, tabs, dialogs, view composition
-                └── Next: routes and view composition
+App: system theme, Loading / Failed / Ready, selected screen
+└── Context
+    ├── core: shared Bottles services and registered plugin providers
+    ├── settings: selected experience, persisted in core's config_dir/ui.toml
+    ├── store: latest bottles, programs (fvs), library, and addon snapshots
+    ├── jobs: tracked operations, progress, and cancellation tokens
+    └── notifications: dismissible cards with copy actions
 ```
 
-Features are concrete state/update modules, not services or traits. Each feature
-has one message path and may return a small typed output when a completed
-workflow must affect presentation. Presentation-only actions, such as opening
-profile settings, never round-trip through a feature.
+Boot opens core, loads installed plugins, registers their account and library
+providers, and loads UI settings. `Store::watch` starts `Task::run` streams once
+at boot. Bottles and standalone program snapshots are sorted by name.
 
-The root keeps `Action` and `Event` separate only to enforce lifecycle safety.
-User actions are accepted only while active. Task and subscription events keep
-flowing while draining so pending operations can reach terminal state. Feature
-events carry a run generation; events from a discarded experience are ignored.
+Every screen receives the same `Context`. Screens call core mutations through
+`ctx.jobs.start`; shared fetch and library-launch helpers live on the context.
+Jobs stream progress, discard successful return values, and remove themselves
+on completion. Effects arrive through the core watch streams. Non-cancelled
+failures become notifications, alongside immediate core errors and settings
+save failures.
 
-Canonical bottle and profile snapshots are session-owned and continue updating
-during onboarding, saving, and shutdown. Feature and presentation state are
-recreated when the experience changes.
+Onboarding derives required Runner/WineBridge and supported optional
+UMU/DXVK/VKD3D/LatencyFlex rows from the addon snapshots and jobs. Classic owns
+its tabs, selected bottle, creation draft, and rename input. Next owns a search
+query and selected standalone program, and requires `fvs`. Both experiences
+use the application-owned animated split layout. `views` contains shared
+pages, header buttons, and grids.
 
-The onboarding coordinator owns catalog refresh, required-runtime downloads,
-cancellation, generations, stale-event rejection, and terminal phase changes.
-Its view only selects the experience/step and renders coordinator state.
+The toolkit remains free of domain types. Its public `Notification` card
+provides kind styling and dismiss/copy actions; the application owns the
+notification stack and its scrollable bottom-right layer.
 
 ## State ownership
-
-State belongs to the lowest layer that has enough information and authority to
-change it.
 
 | State | Owner |
 | --- | --- |
@@ -77,19 +65,16 @@ change it.
 | Popover disclosure, dismissal, popup focus | `Popover` |
 | Expander disclosure and overlap eviction | `RowGroup`/standalone expander widget tree |
 | Log disclosure, resize ratio, resize focus | `LogPanel` widget tree |
-| Search query, loading/results/error data | Feature or screen |
-| Selector value, switch value, active tab | Feature or screen |
-| Dialog and side-panel presence | Presentation or root overlay |
-| Drafts, pending operations, feature errors | `features::State` |
-| Bottles, profiles, status and log contents | Canonical domain snapshots/features |
-| Core, configuration, selected experience | Session/root |
+| Search query, tabs, selection, drafts | Screen |
+| Bottles, standalone programs, library, addon state | Context store |
+| In-flight operations, progress, cancellation and shutdown drain | Context jobs |
+| Notifications, core, settings | Context |
+| Theme and startup state | App |
 
-Local widget state is discarded when a presentation is recreated. Domain and
-workflow state is never hidden inside toolkit widgets.
-
-Settings commands identify their target bottle. Their terminal completion does
-not: completion must always reach the feature and clear its pending state even
-if the bottle disappeared meanwhile.
+Local widget and screen state is discarded when an experience is recreated.
+Snapshots, jobs, and notifications survive experience switches. The shared
+registry receives every terminal job event independently of the initiating
+screen.
 
 ## Toolkit contracts
 
@@ -128,7 +113,7 @@ interaction behavior.
 
 ## Gallery coverage
 
-The gallery is an external consumer of the complete public facade.
+The gallery is an external consumer of the public facade.
 
 | Area | Covered concepts |
 | --- | --- |
@@ -151,20 +136,17 @@ cargo run -p next-ui --example gallery --no-default-features
 
 ## Experience switching and shutdown
 
-Switching experiences:
+Selecting an experience saves its settings in the background and swaps only
+screen state. Core, watches, snapshots, jobs, and notifications stay in the
+context. Settings writes are jobs queued in selection order. Next is unavailable
+without `fvs`; an existing Next preference falls back to Classic in that build.
 
-1. Confirms the target.
-2. Rejects new UI actions.
-3. Cancels disposable workflows that support cancellation.
-4. Continues accepting terminal events until every operation drains.
-5. Atomically saves the target experience.
-6. Recreates feature and presentation state over the same core and canonical
-   snapshots.
-7. Restores the source experience if saving fails.
-
-A close request during draining or saving converts the transition into shutdown.
-A failed shutdown restores the retained session. Window actions are handled
-exhaustively by the root shell.
+Closing displays “Finishing operations…”, cancels registered work, and waits for
+the `TaskTracker` to drain before calling `core.shutdown()` and exiting. Pending
+settings jobs also finish before exit. Jobs are registered before their first
+poll, so close cannot miss newly queued work. A close request during startup
+waits for boot and shuts down the opened core. Chrome and Tab focus traversal
+remain in the root shell.
 
 ## Features
 
@@ -200,7 +182,8 @@ Toolkit size is measured as physical lines in `src/lib.rs`, `src/icons.rs`,
 `src/theme.rs`, and `src/widgets/*.rs`, including inline tests.
 
 - Before the architecture rewrite: 9,445 lines.
-- After the architecture rewrite: 7,684 lines (1,761 fewer, an 18.6% reduction).
+- After the toolkit architecture rewrite: 7,684 lines (1,761 fewer, an 18.6% reduction).
+- With the public Notification card: 7,765 lines.
 
 The remaining total is above the aspirational 6,000–7,000 range because the
 required connected multi-column expanders, original in-flow selector, accessible

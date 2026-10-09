@@ -30,6 +30,7 @@ pub mod widget {
         info_card::{InfoCard, Kind as InfoCardKind},
         info_row::InfoRow,
         list_row::ListRow,
+        notification::Notification,
         picker_row::PickerRow,
         popover::{Popover, PopoverItem},
         progress_ring::ProgressRing,

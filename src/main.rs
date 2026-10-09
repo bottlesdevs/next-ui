@@ -1,16 +1,24 @@
 mod app;
 mod chrome;
 mod classic;
-mod domain;
-mod features;
+mod context;
+mod jobs;
+mod layout;
+#[cfg(feature = "fvs")]
 mod next;
+mod notifications;
 mod onboarding;
-mod operation;
+mod settings;
+mod store;
+mod views;
 
-pub(crate) use app::Experience;
 pub(crate) use next_ui::{Icon, theme, widget};
+pub(crate) use settings::Experience;
 
 fn main() -> iced::Result {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     iced::application(app::App::new, app::App::update, app::App::view)
         .title("Bottles Next")
         .theme(app::App::theme)
