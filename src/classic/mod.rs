@@ -88,9 +88,11 @@ impl State {
         match message {
             Message::Tab(tab) => self.tab = tab,
             Message::Select(id) => {
-                self.selected = Some(id);
-                self.detail_tab = Detail::Programs;
-                self.rename = None;
+                if self.selected != Some(id) {
+                    self.selected = Some(id);
+                    self.detail_tab = Detail::Programs;
+                    self.rename = None;
+                }
             }
             Message::Detail(detail) => self.detail_tab = detail,
             Message::Back => {

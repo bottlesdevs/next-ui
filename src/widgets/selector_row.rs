@@ -27,23 +27,30 @@ const RADIUS: f32 = 6.0;
 /// An in-flow row that selects one value from a connected option panel.
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
-    options: &'a [T],
+    options: Vec<T>,
     selected: Option<&'a T>,
+    label: Box<dyn Fn(&T) -> String + 'a>,
     on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
     icon: Option<Icon>,
 }
 
-impl<'a, T, Message> SelectorRow<'a, T, Message> {
-    pub fn new(title: &'a str, options: &'a [T], selected: Option<&'a T>) -> Self {
+impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
+    pub fn new(title: &'a str, options: &[T], selected: Option<&'a T>) -> Self {
         Self {
             title,
-            options,
+            options: options.to_vec(),
             selected,
+            label: Box::new(ToString::to_string),
             on_selected: None,
             placeholder: "",
             icon: None,
         }
+    }
+
+    pub fn label(mut self, label: impl Fn(&T) -> String + 'a) -> Self {
+        self.label = Box::new(label);
+        self
     }
 
     pub fn placeholder(mut self, placeholder: &'a str) -> Self {
@@ -71,7 +78,8 @@ where
         let selected = selector
             .selected
             .filter(|selected| selector.options.contains(selected));
-        let value = selected.map_or_else(|| selector.placeholder.to_owned(), ToString::to_string);
+        let label = &selector.label;
+        let value = selected.map_or_else(|| selector.placeholder.to_owned(), label);
         let enabled = selector.on_selected.is_some() && !selector.options.is_empty();
         let header = header(selector.title, value, selector.icon);
         let rows = selector.options.iter().map(|option| {
@@ -81,7 +89,7 @@ where
                 .map(|on_selected| on_selected(option.clone()));
 
             menu_item(
-                row_content(option.to_string().into(), None, None),
+                row_content(label(option).into(), None, None),
                 message,
                 selected == Some(option),
             )

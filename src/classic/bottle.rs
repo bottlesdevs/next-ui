@@ -8,8 +8,8 @@ use iced::{
 use next_ui::{
     Icon,
     widget::{
-        ActionRow, ActionTile, ArtworkCard, CardAction, CycleRow, ExpanderRow, InfoRow, RowGroup,
-        StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
+        ActionRow, ActionTile, ArtworkCard, CardAction, CycleRow, ExpanderRow, InfoRow, PickerRow,
+        RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
     },
 };
 use uuid::Uuid;
@@ -80,27 +80,41 @@ pub(super) fn creation<'a>(
     store: &'a Store,
     can_create: bool,
 ) -> Element<'a, Message> {
-    let mut runners = RowGroup::new().title("Runner");
-    for runner in store.addons.runners() {
-        runners = runners.row(
-            ActionRow::new(
-                format!("{} {}", runner.name(), runner.version()),
-                Message::Runner(runner.id()),
+    let labels = store.addons.runners();
+    let runners = labels.iter().map(|runner| runner.id()).collect::<Vec<_>>();
+    let runner = SelectorRow::new("Runner", &runners, draft.runner.as_ref())
+        .icon(Icon::Run)
+        .placeholder(if runners.is_empty() {
+            "No runners installed"
+        } else {
+            "Choose a runner"
+        })
+        .label(move |id| {
+            labels.iter().find(|runner| runner.id() == *id).map_or_else(
+                || id.to_string(),
+                |runner| format!("{} {}", runner.name(), runner.version()),
             )
-            .icon(Icon::Run)
-            .selected(draft.runner == Some(runner.id())),
-        );
-    }
-    if store.addons.runners().is_empty() {
-        runners = runners.row(InfoRow::new("No runners installed"));
-    }
-    let mut name = TextRow::new("Bottle Name", &draft.name)
-        .icon(Icon::Person)
-        .on_input(Message::Name);
+        })
+        .on_selected(Message::Runner);
+    let mut name = TextRow::new("Bottle Name", &draft.name).on_input(Message::Name);
     if can_create {
         name = name.on_submit(Message::Create);
     }
-    let mut content = column![name, runners].spacing(spacing::MD);
+    let mut content = column![
+        name,
+        runner,
+        SelectorRow::new(
+            "Purpose",
+            &["Gaming", "Software", "Gaming (ULWGL)", "Custom"],
+            None,
+        )
+        .placeholder("Not available yet"),
+        SelectorRow::new("Architecture", &["Win64", "Win32"], None)
+            .icon(Icon::Chip)
+            .placeholder("Not available yet"),
+        PickerRow::new("Use Recipe").description("Choose the location"),
+    ]
+    .spacing(spacing::SM);
     if store.addons.winebridges().is_empty() {
         content = content.push(InfoRow::new("WineBridge is required to create a bottle"));
     }
