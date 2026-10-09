@@ -45,6 +45,7 @@ pub struct State {
     selected: Option<Uuid>,
     detail_tab: Detail,
     draft: Option<Draft>,
+    creation_open: bool,
     rename: Option<String>,
 }
 
@@ -78,6 +79,7 @@ impl State {
             selected: None,
             detail_tab: Detail::Programs,
             draft: None,
+            creation_open: false,
             rename: None,
         }
     }
@@ -97,12 +99,13 @@ impl State {
             }
             Message::New => {
                 self.tab = TabKind::Bottles;
+                self.creation_open = true;
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
                     runner: ctx.store.addons.runners().first().map(|runner| runner.id()),
                 });
             }
-            Message::Cancel => self.draft = None,
+            Message::Cancel => self.creation_open = false,
             Message::Name(name) => {
                 if let Some(draft) = &mut self.draft {
                     draft.name = name;
@@ -114,7 +117,7 @@ impl State {
                 }
             }
             Message::Create => {
-                let Some(draft) = &self.draft else {
+                let Some(draft) = self.draft.as_ref().filter(|_| self.creation_open) else {
                     return Task::none();
                 };
                 let runner = ctx
@@ -141,7 +144,7 @@ impl State {
                         .first()
                         .map(|umu| umu.as_ref().clone()),
                 );
-                self.draft = None;
+                self.creation_open = false;
                 return ctx.jobs.start(Kind::CreateBottle(name), operation);
             }
             Message::Rename(name) => self.rename = Some(name),
@@ -219,7 +222,7 @@ impl State {
     pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
         side_panel(
             Side::Start,
-            self.draft.is_some(),
+            self.creation_open,
             move |pane| {
                 navigation_split(
                     pane,
@@ -262,7 +265,8 @@ impl State {
         let Some(draft) = &self.draft else {
             return column![].into();
         };
-        let can_create = !draft.name.trim().is_empty()
+        let can_create = self.creation_open
+            && !draft.name.trim().is_empty()
             && ctx
                 .store
                 .addons
