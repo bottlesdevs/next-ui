@@ -16,6 +16,14 @@ pub mod spacing {
     pub const XG: f32 = 32.0;
 }
 
+/// Shared dimensions for header content and frame-owned controls.
+pub mod header {
+    pub const HEIGHT: f32 = 64.0;
+    pub const INSET: f32 = super::spacing::SM;
+    pub const CONTROL: f32 = 32.0;
+    pub const ICON: f32 = 16.0;
+}
+
 fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, expansion: f32) {
     let handle = crate::icons::Icon::DownCaret.handle();
     let Size { width, height } = renderer.measure_svg(&handle);

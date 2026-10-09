@@ -9,7 +9,7 @@ use iced::{
 };
 use next_ui::{
     Icon,
-    widget::{Button, ButtonKind, Popover, PopoverItem, Tab, Tabs, Title},
+    widget::{Popover, PopoverItem, Tab, Tabs, Title, header_button},
 };
 use uuid::Uuid;
 
@@ -240,7 +240,8 @@ impl State {
             ],
             Some(self.tab),
             Message::Tab,
-        );
+        )
+        .height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
                 .start(views::header_button("Add bottle", Icon::Plus, Message::New))
@@ -276,7 +277,7 @@ impl State {
                     Icon::Arrow,
                     Message::Cancel,
                 ))
-                .middle(Title::new("New Bottle"))
+                .middle(Title::new("New Bottle").subtitle("Creating a new bottle."))
                 .end(
                     views::header_button("Create bottle", Icon::Checkmark, Message::Create)
                         .on_press_maybe(can_create.then_some(Message::Create)),
@@ -303,7 +304,7 @@ impl State {
         let tabs = tabs
             .into_iter()
             .chain([Tab::new(Detail::Snapshots, "Snapshots")]);
-        let tabs = Tabs::new(tabs, Some(self.detail_tab), Message::Detail);
+        let tabs = Tabs::new(tabs, Some(self.detail_tab), Message::Detail).height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |mut header| {
             if pane.is_standalone() {
                 header = header.start(views::header_button(
@@ -320,14 +321,9 @@ impl State {
             }
             header
                 .start(
-                    Popover::new(
-                        Button::icon_only("Bottle menu", Icon::EllipsisVertical)
-                            .diameter(32.0)
-                            .icon_size(16.0)
-                            .kind(ButtonKind::Transparent),
-                    )
-                    .item(stop)
-                    .item(delete),
+                    Popover::new(header_button("Bottle menu", Icon::EllipsisVertical))
+                        .item(stop)
+                        .item(delete),
                 )
                 .middle(tabs)
         });

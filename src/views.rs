@@ -11,7 +11,7 @@ use crate::{
     context::Context,
     jobs::Kind,
     theme,
-    widget::{ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, spacing},
+    widget::{ArtworkCard, Button, CardAction, InfoCard, InfoCardKind, spacing},
 };
 
 pub fn library_grid<'a, Message: Clone + 'a>(
@@ -135,9 +135,5 @@ pub fn scroll_content<'a, Message: 'a>(
 }
 
 pub fn header_button<Message>(label: &str, icon: Icon, message: Message) -> Button<'_, Message> {
-    Button::icon_only(label, icon)
-        .diameter(32.0)
-        .icon_size(16.0)
-        .kind(ButtonKind::Transparent)
-        .on_press(message)
+    crate::widget::header_button(label, icon).on_press(message)
 }

@@ -13,14 +13,12 @@ use iced::{
 
 use next_ui::{
     Icon, theme,
-    widget::{Button, ButtonKind, HeaderBar},
+    widget::{HeaderBar, header, header_button},
 };
 
 const RESIZE_EDGE: f32 = 6.0;
 const RESIZE_CORNER: f32 = 12.0;
 const PANEL_INSET: [f32; 2] = [6.0, 8.0];
-const WINDOW_CONTROL_INSET: [f32; 2] = [20.0, 20.0];
-const WINDOW_CONTROL_SIZE: f32 = 32.0;
 
 pub(crate) const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
 
@@ -100,11 +98,17 @@ pub(crate) fn window_frame<'a, Message: Clone + 'a>(
         layers = layers.push(resize_edge(direction, on_action(Action::Resize(direction))))
     }
 
-    let close = Button::icon_only("Close window", Icon::Cross)
-        .diameter(WINDOW_CONTROL_SIZE)
-        .icon_size(16.0)
-        .kind(ButtonKind::Transparent)
-        .on_press(on_action(Action::RequestClose));
+    let close = container(
+        header_button("Close window", Icon::Cross).on_press(on_action(Action::RequestClose)),
+    )
+    .height(header::HEIGHT)
+    .align_y(Vertical::Center);
+    let padding = iced::Padding::from(PANEL_INSET);
+    let padding = if WINDOW_CONTROL_AT_START {
+        padding.left(PANEL_INSET[1] + header::INSET)
+    } else {
+        padding.right(PANEL_INSET[1] + header::INSET)
+    };
     let close = container(close)
         .width(Fill)
         .height(Fill)
@@ -114,7 +118,7 @@ pub(crate) fn window_frame<'a, Message: Clone + 'a>(
             Horizontal::Right
         })
         .align_y(Vertical::Top)
-        .padding(WINDOW_CONTROL_INSET);
+        .padding(padding);
 
     layers.push(close).into()
 }
@@ -129,9 +133,7 @@ pub(crate) fn header<'a, Message: Clone + 'a>(
     let header = if !owns_window_control {
         build(header)
     } else {
-        let spacer = Space::new()
-            .width(WINDOW_CONTROL_SIZE)
-            .height(WINDOW_CONTROL_SIZE);
+        let spacer = Space::new().width(header::CONTROL).height(header::CONTROL);
 
         if WINDOW_CONTROL_AT_START {
             build(header.start(spacer))

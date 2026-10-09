@@ -3,11 +3,20 @@ use iced::{
     widget::{Row, container, mouse_area, row},
 };
 
-use crate::theme;
+use crate::{icons::Icon, theme};
 
-use super::spacing;
+use super::{
+    button::{Button, ButtonKind},
+    header, spacing,
+};
 
-const HEIGHT: f32 = 64.0;
+/// Builds a header-sized icon button; the caller supplies its action.
+pub fn header_button<Message>(label: &str, icon: Icon) -> Button<'_, Message> {
+    Button::icon_only(label, icon)
+        .diameter(header::CONTROL)
+        .icon_size(header::ICON)
+        .kind(ButtonKind::Transparent)
+}
 
 pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
@@ -62,23 +71,24 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
         let content = row![
             container(section(start))
                 .align_left(Fill)
-                .align_bottom(Fill)
-                .padding(iced::padding::bottom(spacing::MD)),
+                .height(Fill)
+                .align_y(Center),
             container(section(middle))
                 .center_x(Length::Shrink)
-                .align_bottom(Fill),
+                .height(Fill)
+                .align_y(Center),
             container(section(end))
                 .align_right(Fill)
-                .align_bottom(Fill)
-                .padding(iced::padding::bottom(spacing::MD)),
+                .height(Fill)
+                .align_y(Center),
         ]
         .height(Fill)
         .align_y(Center);
 
         let mut content = container(content)
             .width(Fill)
-            .height(HEIGHT)
-            .padding([0.0, spacing::SM]);
+            .height(header::HEIGHT)
+            .padding([0.0, header::INSET]);
         if !transparent {
             content = content.style(style);
         }

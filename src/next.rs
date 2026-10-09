@@ -96,8 +96,7 @@ impl State {
                     Message::QueryChanged,
                 ))
                 .width(Fill)
-                .max_width(550)
-                .padding(iced::padding::bottom(12)),
+                .max_width(550),
             )
         });
         let query = self.query.to_lowercase();

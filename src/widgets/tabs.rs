@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, Background, Border, Element, Fill, Padding, Theme,
-    widget::{Row, Space, button, column, container, text},
+    Alignment, Background, Border, Element, Fill, Length, Theme,
+    widget::{Row, Space, button, container, stack, text},
 };
 
 use super::{
@@ -35,6 +35,7 @@ pub struct Tabs<'a, T, Message> {
     tabs: Vec<Tab<'a, T>>,
     selected: Option<T>,
     on_select: Box<dyn Fn(T) -> Message + 'a>,
+    height: Length,
 }
 
 impl<'a, T, Message> Tabs<'a, T, Message> {
@@ -47,7 +48,13 @@ impl<'a, T, Message> Tabs<'a, T, Message> {
             tabs: tabs.into_iter().collect(),
             selected,
             on_select: Box::new(on_select),
+            height: Length::Shrink,
         }
+    }
+
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = height.into();
+        self
     }
 }
 
@@ -61,6 +68,7 @@ where
             tabs,
             selected,
             on_select,
+            height,
         } = tabs;
         let children: Vec<Element<'a, Message>> = tabs
             .into_iter()
@@ -79,26 +87,32 @@ where
                         }))
                     });
 
-                FocusableAction::new(
-                    column![
-                        text(tab.label).label(),
-                        Space::new().height(spacing::LG - indicator_height),
-                        indicator
-                    ]
-                    .align_x(Alignment::Center),
+                let label = FocusableAction::new(
+                    text(tab.label)
+                        .label()
+                        .height(height)
+                        .align_y(Alignment::Center),
                 )
-                .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
+                .height(height)
+                .padding(spacing::SM)
                 .selected(selected)
                 .on_press_maybe(message)
-                .style(tab_style)
-                .into()
+                .style(tab_style);
+
+                stack![label, container(indicator).align_bottom(Fill)]
+                    .height(height)
+                    .into()
             })
             .collect();
 
-        let content: Element<'a, Message> =
-            container(Row::with_children(children).spacing(spacing::LG))
-                .center_x(Fill)
-                .into();
+        let content: Element<'a, Message> = container(
+            Row::with_children(children)
+                .spacing(spacing::LG)
+                .height(height),
+        )
+        .height(height)
+        .center_x(Fill)
+        .into();
 
         content
     }
