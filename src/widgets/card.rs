@@ -5,8 +5,6 @@ use iced::{
 
 use super::{spacing, text::TextExt as _};
 
-pub(crate) const BANNER_HEIGHT: f32 = 132.0;
-
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
     width: Length,
@@ -65,31 +63,36 @@ pub(crate) fn image_content<'a, Message: 'a>(
     title: &'a str,
     subtitle: &'a str,
     banner: Option<image::Handle>,
-    actions: Element<'a, Message>,
+    menu: Element<'a, Message>,
+    main_actions: Element<'a, Message>,
 ) -> Element<'a, Message> {
     let banner: Element<'a, Message> = match banner {
         Some(handle) => image(handle)
             .width(Fill)
-            .height(BANNER_HEIGHT)
+            .height(Fill)
             .content_fit(ContentFit::Cover)
+            .border_radius(iced::border::top(6))
             .into(),
         None => container(Space::new())
             .width(Fill)
-            .height(BANNER_HEIGHT)
+            .height(Fill)
             .style(|theme: &Theme| {
-                container::Style::default().background(crate::theme::colors(theme).border)
+                container::Style::default()
+                    .background(crate::theme::colors(theme).border)
+                    .border(iced::Border::default().rounded(iced::border::top(6)))
             })
             .into(),
     };
 
-    stack![
-        column![
-            banner,
+    column![
+        stack![banner, menu].width(Fill).height(Fill),
+        stack![
             container(labels(title, subtitle)).padding([spacing::MD, spacing::LG]),
+            main_actions,
         ]
         .width(Fill),
-        actions,
     ]
     .width(Fill)
+    .height(Fill)
     .into()
 }

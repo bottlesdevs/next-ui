@@ -145,7 +145,7 @@ impl State {
             iced::widget::Grid::with_children(cards)
                 .fluid(400.0)
                 .spacing(spacing::SM)
-                .height(iced::Length::Shrink)
+                .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
                 .into()
         };
         views::page(header, body, f32::INFINITY)

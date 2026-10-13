@@ -1,13 +1,13 @@
 use iced::{
     Center, Element, Fill,
-    widget::{Space, column, container, image, row, stack},
+    widget::{Space, container, float, image, row},
 };
 
 use crate::{icons::Icon, widgets::button::ButtonKind};
 
 use super::{
     button::Button,
-    card::{BANNER_HEIGHT, Card, image_content},
+    card::{Card, image_content},
     spacing,
 };
 
@@ -100,7 +100,13 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
         let mut menu = row![Space::new().width(Fill)].width(Fill);
 
         if let Some(action) = card.menu {
-            menu = menu.push(action.button().kind(ButtonKind::Transparent).diameter(32.0));
+            menu = menu.push(
+                action
+                    .button()
+                    .kind(ButtonKind::Transparent)
+                    .diameter(16.0)
+                    .icon_size(16.0),
+            );
         }
 
         let mut main_actions = row![Space::new().width(Fill)]
@@ -121,26 +127,22 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             );
         }
 
-        let actions = stack![
-            container(menu)
-                .padding(spacing::SM)
-                .width(Fill)
-                .height(BANNER_HEIGHT),
-            column![
-                Space::new().height(BANNER_HEIGHT - PRIMARY_ACTION_DIAMETER / 2.0),
-                container(main_actions).padding([0.0, spacing::SM])
-            ],
-        ]
-        .width(Fill)
-        .height(Fill);
+        let menu = container(menu)
+            .padding(spacing::SM)
+            .width(Fill)
+            .height(Fill);
+        let main_actions = float(container(main_actions).padding([0.0, spacing::SM]))
+            .translate(|bounds, _| iced::Vector::new(0.0, -bounds.height / 2.0));
 
         Card::new(image_content(
             card.title,
             card.subtitle,
             card.banner,
-            actions.into(),
+            menu.into(),
+            main_actions.into(),
         ))
         .width(Fill)
+        .height(Fill)
         .into()
     }
 }

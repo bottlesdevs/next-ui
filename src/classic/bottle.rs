@@ -8,8 +8,8 @@ use iced::{
 use next_ui::{
     Icon,
     widget::{
-        ActionRow, ActionTile, ArtworkCard, CardAction, CycleRow, ExpanderRow, InfoRow, PickerRow,
-        RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
+        ActionRow, ActionTile, ArtworkCard, CardAction, CycleRow, ExpanderRow, InfoRow, LogPanel,
+        PickerRow, RowGroup, SelectorRow, SwitcherRow, TextExt as _, TextRow, spacing,
     },
 };
 use uuid::Uuid;
@@ -150,7 +150,7 @@ pub(super) fn programs<'a>(bottle: &'a BottleState, jobs: &'a Jobs) -> Element<'
     Grid::with_children(std::iter::once(new_program().into()).chain(cards))
         .fluid(400.0)
         .spacing(spacing::SM)
-        .height(Length::Shrink)
+        .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
         .into()
 }
 
@@ -171,11 +171,14 @@ fn new_program<'a>() -> ActionTile<'a, Message> {
     ]
     .spacing(spacing::XS);
     ActionTile::new(
-        container(row![icon, labels].spacing(16).align_y(Center)).center_x(Fill),
+        container(row![icon, labels].spacing(16).align_y(Center))
+            .center_x(Fill)
+            .center_y(Fill),
         Message::NewProgram,
     )
     .width(Fill)
-    .padding([72.0, spacing::LG])
+    .height(Fill)
+    .padding(spacing::LG)
 }
 
 pub(super) fn settings<'a>(
@@ -274,6 +277,12 @@ pub(super) fn busy(jobs: &Jobs, bottle: Uuid) -> bool {
         .any(|kind| jobs.running(kind))
 }
 
-pub(super) fn status(bottle: &BottleState) -> StatusBar<'_> {
-    StatusBar::new("Ready", Icon::Bottles).detail(Icon::Run, bottle.config().runner.name())
+pub(super) fn status(bottle: &BottleState) -> LogPanel<'_> {
+    let runner = &bottle.config().runner;
+    LogPanel::new(
+        "Win64",
+        format!("{} {}", runner.name(), runner.version()),
+        "Ready",
+        Icon::Lightning,
+    )
 }

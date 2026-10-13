@@ -3,7 +3,7 @@ mod chrome;
 
 use iced::{
     Center, Element, Fill, Subscription, Task, Theme,
-    widget::{Space, column, container, image, row, scrollable, text},
+    widget::{Space, column, container, grid, image, row, scrollable, text},
 };
 use next_ui::{
     Icon, theme,
@@ -151,8 +151,11 @@ impl Gallery {
         .spacing(12);
 
         let cards = column![
-            row![action_tile_example(true), action_tile_example(false)].spacing(18),
-            row![
+            grid![action_tile_example(true), action_tile_example(false)]
+                .fluid(400.0)
+                .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
+                .spacing(12),
+            grid![
                 Card::new(
                     column![
                         text("Text card").title(),
@@ -179,7 +182,9 @@ impl Gallery {
                     )
                     .banner(sample_image()),
             ]
-            .spacing(18),
+            .fluid(400.0)
+            .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
+            .spacing(12),
             row![
                 InfoCard::new(
                     InfoCardKind::Hint,
@@ -554,16 +559,20 @@ fn action_tile_example<'a>(active: bool) -> ActionTile<'a, Message> {
     ]
     .spacing(6);
 
-    let content = container(row![icon, labels].spacing(16).align_y(Center)).center_x(Fill);
+    let content = container(row![icon, labels].spacing(16).align_y(Center))
+        .center_x(Fill)
+        .center_y(Fill);
 
     if active {
         ActionTile::new(content, Message::OpenDialog)
             .width(Fill)
-            .padding([72.0, 24.0])
+            .height(Fill)
+            .padding(24)
     } else {
         ActionTile::disabled(content)
             .width(Fill)
-            .padding([72.0, 24.0])
+            .height(Fill)
+            .padding(24)
     }
 }
 

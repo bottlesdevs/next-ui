@@ -70,15 +70,15 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
 
         let content = row![
             container(section(start))
-                .align_left(Fill)
+                .align_left(Length::Shrink)
                 .height(Fill)
                 .align_y(Center),
             container(section(middle))
-                .center_x(Length::Shrink)
+                .center_x(Fill)
                 .height(Fill)
                 .align_y(Center),
             container(section(end))
-                .align_right(Fill)
+                .align_right(Length::Shrink)
                 .height(Fill)
                 .align_y(Center),
         ]

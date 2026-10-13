@@ -2,7 +2,7 @@
 
 use bottles_core::ProviderState;
 use iced::{
-    Element, Fill, Length,
+    Element, Fill,
     widget::{Grid, column, container, scrollable},
 };
 
@@ -92,7 +92,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
                 Grid::with_children(cards)
                     .fluid(400.0)
                     .spacing(spacing::SM)
-                    .height(Length::Shrink),
+                    .height(iced::widget::grid::aspect_ratio(3.0, 2.0)),
             )
             .into()
     }
