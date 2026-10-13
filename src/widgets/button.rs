@@ -267,9 +267,7 @@ fn appearance(
 
     iced::widget::button::Style {
         background: if kind == ButtonKind::Transparent {
-            if state.pressed {
-                Some(Background::Color(semantic.selection))
-            } else if state.focused && !state.hovered {
+            if state.focused && !state.hovered {
                 Some(Background::Color(semantic.hover))
             } else {
                 None
