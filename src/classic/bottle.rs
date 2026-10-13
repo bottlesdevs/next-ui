@@ -68,8 +68,7 @@ pub(super) fn rows<'a>(
                 .spacing(spacing::SM)
                 .height(Length::Shrink),
         )
-        .width(Fill)
-        .max_width(720),
+        .width(Fill),
     )
     .center_x(Fill)
     .into()

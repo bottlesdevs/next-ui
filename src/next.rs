@@ -148,7 +148,7 @@ impl State {
                 .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
                 .into()
         };
-        views::page(header, body, f32::INFINITY)
+        views::page(header, body)
     }
 
     fn detail_view<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
@@ -159,7 +159,6 @@ impl State {
             return views::page(
                 pane.header(Message::Window(chrome::Action::Drag), |header| header),
                 text("No program selected"),
-                f32::INFINITY,
             );
         };
         let id = program.id();
@@ -183,7 +182,6 @@ impl State {
             RowGroup::new()
                 .row(InfoRow::new("Executable").description(program.launch().executable()))
                 .row(InfoRow::new("Runner").description(program.config().runner.name())),
-            f32::INFINITY,
         )
     }
 }

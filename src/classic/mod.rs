@@ -260,7 +260,7 @@ impl State {
             ),
             TabKind::Library => views::library_grid(ctx, "", Message::LaunchLibrary),
         };
-        views::page(header, body, 1150.0)
+        views::page(header, body)
     }
 
     fn creation_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
@@ -289,11 +289,7 @@ impl State {
                         .on_press_maybe(can_create.then_some(Message::Create)),
                 )
         });
-        views::page(
-            header,
-            bottle::creation(draft, &ctx.store, can_create),
-            1150.0,
-        )
+        views::page(header, bottle::creation(draft, &ctx.store, can_create))
     }
 
     fn detail_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
@@ -342,12 +338,9 @@ impl State {
                 .into(),
         };
         let body = container(
-            column![
-                views::scroll_content(content, 1150.0),
-                bottle::status(bottle)
-            ]
-            .width(Fill)
-            .height(Fill),
+            column![views::scroll_content(content), bottle::status(bottle)]
+                .width(Fill)
+                .height(Fill),
         )
         .style(theme::panel)
         .clip(true);

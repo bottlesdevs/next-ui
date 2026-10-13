@@ -101,11 +101,10 @@ pub fn library_grid<'a, Message: Clone + 'a>(
 pub fn page<'a, Message: Clone + 'a>(
     header: impl Into<Element<'a, Message>>,
     body: impl Into<Element<'a, Message>>,
-    max_width: f32,
 ) -> Element<'a, Message> {
     column![
         header.into(),
-        container(scroll_content(body, max_width))
+        container(scroll_content(body))
             .width(Fill)
             .height(Fill)
             .style(theme::panel)
@@ -118,15 +117,13 @@ pub fn page<'a, Message: Clone + 'a>(
 
 pub fn scroll_content<'a, Message: 'a>(
     body: impl Into<Element<'a, Message>>,
-    max_width: f32,
 ) -> Element<'a, Message> {
-    let body = container(body).width(Fill).max_width(max_width);
-    scrollable(container(body).padding(24).center_x(Fill))
+    scrollable(container(body).padding(24).width(Fill))
         .direction(scrollable::Direction::Vertical(
             scrollable::Scrollbar::new()
                 .width(4)
                 .scroller_width(4)
-                .margin(12),
+                .margin(6),
         ))
         .style(theme::scrollbar)
         .width(Fill)
