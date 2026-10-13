@@ -25,34 +25,6 @@ pub(super) fn rows<'a>(
     jobs: &'a Jobs,
     selected: Option<Uuid>,
 ) -> Element<'a, Message> {
-    let bottles = store.bottles.iter().map(|bottle| {
-        ActionRow::new(bottle.name(), Message::Select(bottle.id()))
-            .description(bottle.config().runner.name())
-            .icon(Icon::Bottles)
-            .selected(selected == Some(bottle.id()))
-            .into()
-    });
-    let creating = jobs.map.values().filter_map(|job| {
-        let Kind::CreateBottle(name) = &job.kind else {
-            return None;
-        };
-        Some(
-            ActionRow::progress(
-                name,
-                job.progress
-                    .as_ref()
-                    .and_then(bottles_core::Progress::fraction)
-                    .unwrap_or(0.0),
-            )
-            .description(
-                job.progress
-                    .as_ref()
-                    .map_or_else(|| "Preparing".into(), |progress| progress.stage.to_string()),
-            )
-            .icon(Icon::Bottles)
-            .into(),
-        )
-    });
     if store.bottles.is_empty()
         && !jobs
             .map
@@ -61,16 +33,53 @@ pub(super) fn rows<'a>(
     {
         return text("No bottles yet. Add a bottle to get started.").into();
     }
-    container(
+    responsive(move |size| {
+        let bottles = store.bottles.iter().map(|bottle| {
+            ActionRow::new(bottle.name(), Message::Select(bottle.id()))
+                .description(bottle.config().runner.name())
+                .icon(Icon::Bottles)
+                .selected(selected == Some(bottle.id()))
+                .into()
+        });
+        let creating = jobs.map.values().filter_map(|job| {
+            let Kind::CreateBottle(name) = &job.kind else {
+                return None;
+            };
+            Some(
+                ActionRow::progress(
+                    name,
+                    job.progress
+                        .as_ref()
+                        .and_then(bottles_core::Progress::fraction)
+                        .unwrap_or(0.0),
+                )
+                .description(
+                    job.progress
+                        .as_ref()
+                        .map_or_else(|| "Preparing".into(), |progress| progress.stage.to_string()),
+                )
+                .icon(Icon::Bottles)
+                .into(),
+            )
+        });
+        let rows = bottles
+            .chain(creating)
+            .collect::<Vec<Element<'a, Message>>>();
+        let max_width = 600.0 + spacing::SM;
+        let columns = ((size.width + spacing::SM) / (max_width + spacing::SM)).ceil();
+        let occupied_columns = (rows.len() as f32).min(columns);
+        // Remove empty grid columns without changing the fluid cell widths.
+        let width = (size.width + spacing::SM) / columns * occupied_columns - spacing::SM;
         container(
-            Grid::with_children(bottles.chain(creating))
-                .fluid(600.0 + spacing::SM)
+            Grid::with_children(rows)
+                .fluid(max_width)
+                .width(width)
                 .spacing(spacing::SM)
                 .height(Length::Shrink),
         )
-        .width(Fill),
-    )
-    .center_x(Fill)
+        .center_x(Fill)
+        .into()
+    })
     .into()
 }
 
