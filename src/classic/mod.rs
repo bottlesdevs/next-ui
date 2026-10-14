@@ -100,7 +100,6 @@ impl State {
                 self.rename = None;
             }
             Message::New => {
-                self.tab = TabKind::Bottles;
                 self.creation_open = true;
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
