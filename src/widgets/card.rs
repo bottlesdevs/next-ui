@@ -1,9 +1,4 @@
-use iced::{
-    ContentFit, Element, Fill, Length, Padding, Theme,
-    widget::{Space, column, container, image, stack, text},
-};
-
-use super::{spacing, text::TextExt as _};
+use iced::{Element, Length, Padding, widget::container};
 
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
@@ -48,51 +43,4 @@ impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
             .style(crate::theme::card)
             .into()
     }
-}
-
-pub(crate) fn labels<'a, Message: 'a>(title: &'a str, subtitle: &'a str) -> Element<'a, Message> {
-    column![
-        text(title).label().medium(),
-        text(subtitle).detail().muted(),
-    ]
-    .spacing(spacing::XS)
-    .into()
-}
-
-pub(crate) fn image_content<'a, Message: 'a>(
-    title: &'a str,
-    subtitle: &'a str,
-    banner: Option<image::Handle>,
-    menu: Element<'a, Message>,
-    main_actions: Element<'a, Message>,
-) -> Element<'a, Message> {
-    let banner: Element<'a, Message> = match banner {
-        Some(handle) => image(handle)
-            .width(Fill)
-            .height(Fill)
-            .content_fit(ContentFit::Cover)
-            .border_radius(iced::border::top(6))
-            .into(),
-        None => container(Space::new())
-            .width(Fill)
-            .height(Fill)
-            .style(|theme: &Theme| {
-                container::Style::default()
-                    .background(crate::theme::colors(theme).border)
-                    .border(iced::Border::default().rounded(iced::border::top(6)))
-            })
-            .into(),
-    };
-
-    column![
-        stack![banner, menu].width(Fill).height(Fill),
-        stack![
-            container(labels(title, subtitle)).padding([spacing::MD, spacing::LG]),
-            main_actions,
-        ]
-        .width(Fill),
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
 }
