@@ -64,7 +64,7 @@ impl Interaction {
         } else {
             if matches!(event, Event::Mouse(mouse::Event::CursorLeft)) {
                 self.hovered = false;
-            } else if pointer != mouse::Cursor::Unavailable {
+            } else {
                 self.hovered = hovered;
             }
 
@@ -127,12 +127,7 @@ impl Interaction {
     ) -> ActionState {
         ActionState {
             enabled,
-            hovered: enabled
-                && if cursor == mouse::Cursor::Unavailable {
-                    self.hovered
-                } else {
-                    cursor.is_over(bounds)
-                },
+            hovered: enabled && cursor.is_over(bounds),
             pressed: enabled && self.press.is_some(),
             focused: enabled && self.focused,
             selected,

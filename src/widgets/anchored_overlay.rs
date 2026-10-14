@@ -9,7 +9,7 @@ use iced::{
 };
 
 use super::{
-    focus::{descendant_is_focused, focus_descendant, unfocus_descendants},
+    focus::{descendant_is_focused, event_cursor, focus_descendant, unfocus_descendants},
     spacing,
 };
 
@@ -281,6 +281,12 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             panel_shell.request_redraw();
         }
 
+        if matches!(event, Event::Mouse(_) | Event::Touch(_))
+            && event_cursor(event, cursor).is_over(layout.bounds())
+        {
+            panel_shell.capture_event();
+        }
+
         shell.merge(panel_shell, std::convert::identity);
     }
 
@@ -290,8 +296,15 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         cursor: mouse::Cursor,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        self.content
-            .mouse_interaction(self.tree, layout, cursor, &self.viewport, renderer)
+        let interaction =
+            self.content
+                .mouse_interaction(self.tree, layout, cursor, &self.viewport, renderer);
+
+        if interaction == mouse::Interaction::None && cursor.is_over(layout.bounds()) {
+            mouse::Interaction::Idle
+        } else {
+            interaction
+        }
     }
 
     fn draw(
