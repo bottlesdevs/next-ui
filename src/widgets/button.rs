@@ -1,13 +1,13 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
     theme::palette::Pair,
-    widget::{Row, container, svg, text, tooltip},
+    widget::{Id, Row, container, svg, text, tooltip},
 };
 
 use crate::icons::{self, Icon};
 
 use super::{
-    control::{Control, State},
+    focusable_action::{ActionState, FocusableAction},
     spacing,
     text::TextExt as _,
 };
@@ -39,12 +39,17 @@ pub struct Button<'a, Message> {
     shape: Shape,
     diameter: f32,
     kind: ButtonKind,
+    id: Option<Id>,
     on_press: Option<Message>,
     loading: bool,
 }
 
 impl<'a, Message> Button<'a, Message> {
-    pub fn new(content: impl Into<Element<'a, Message>>) -> Self {
+    pub fn new(label: impl text::IntoFragment<'a>) -> Self {
+        Self::custom(text(label))
+    }
+
+    pub fn custom(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
             tooltip: None,
@@ -55,6 +60,7 @@ impl<'a, Message> Button<'a, Message> {
             shape: Shape::Rectangular,
             diameter: 52.0,
             kind: ButtonKind::Secondary,
+            id: None,
             on_press: None,
             loading: false,
         }
@@ -65,7 +71,7 @@ impl<'a, Message> Button<'a, Message> {
             icon: Some(icon),
             shape: Shape::IconOnly,
             tooltip: Some(tooltip),
-            ..Self::new(text(""))
+            ..Self::custom(text(""))
         }
     }
 
@@ -111,6 +117,11 @@ impl<'a, Message> Button<'a, Message> {
 
     pub fn on_press(mut self, message: Message) -> Self {
         self.on_press = Some(message);
+        self
+    }
+
+    pub(crate) fn id(mut self, id: Id) -> Self {
+        self.id = Some(id);
         self
     }
 
@@ -176,10 +187,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
         let shape = button.shape;
         let kind = button.kind;
-        let mut control = Control::new(content)
-            .sensitive(!disabled)
+        let mut control = FocusableAction::new(content)
             .on_press_maybe(button.on_press.filter(|_| !button.loading))
             .style(move |theme, status| appearance(theme, status, shape, kind));
+
+        if let Some(id) = button.id {
+            control = control.id(id);
+        }
 
         control = match shape {
             Shape::Rectangular | Shape::Pill => control.padding(if kind == ButtonKind::Primary {
@@ -227,10 +241,8 @@ fn icon_element<'a, Message: 'a>(
         .height(size)
         .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
-            color: Some(if disabled {
-                theme.extended_palette().secondary.weak.text
-            } else if kind == ButtonKind::Primary {
-                theme.extended_palette().primary.base.color
+            color: Some(if disabled || kind == ButtonKind::Primary {
+                crate::theme::colors(theme).muted
             } else {
                 colors(theme, false, false, false, kind).text
             }),
@@ -240,13 +252,14 @@ fn icon_element<'a, Message: 'a>(
 
 fn appearance(
     theme: &Theme,
-    state: State,
+    state: ActionState,
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
+    let semantic = crate::theme::colors(theme);
     let colors = colors(
         theme,
-        !state.sensitive,
+        !state.enabled,
         state.hovered || state.focused,
         state.pressed,
         kind,
@@ -254,14 +267,8 @@ fn appearance(
 
     iced::widget::button::Style {
         background: if kind == ButtonKind::Transparent {
-            if state.pressed {
-                Some(Background::Color(
-                    theme.extended_palette().background.stronger.color,
-                ))
-            } else if state.focused && !state.hovered {
-                Some(Background::Color(
-                    theme.extended_palette().background.strong.color,
-                ))
+            if state.focused && !state.hovered {
+                Some(Background::Color(semantic.hover))
             } else {
                 None
             }
@@ -278,19 +285,22 @@ fn appearance(
 }
 
 fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
-    let palette = theme.extended_palette();
+    let colors = crate::theme::colors(theme);
 
     if disabled {
         return Pair {
-            color: palette.background.weaker.color,
-            text: palette.secondary.weak.text,
+            color: colors.background,
+            text: colors.muted,
         };
     }
 
     match kind {
         ButtonKind::Primary => {
             if pressed {
-                palette.background.weakest
+                Pair {
+                    color: colors.deep_background,
+                    text: colors.text,
+                }
             } else if active {
                 crate::theme::deep_surface(theme)
             } else {
@@ -299,30 +309,39 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
         }
         ButtonKind::Secondary => {
             if pressed {
-                palette.secondary.weak
+                Pair {
+                    color: colors.background,
+                    text: colors.muted,
+                }
             } else if active {
-                palette.secondary.strong
+                Pair {
+                    color: colors.surface_deep,
+                    text: colors.muted,
+                }
             } else {
-                palette.secondary.base
+                Pair {
+                    color: colors.deep_background,
+                    text: colors.muted,
+                }
             }
         }
         ButtonKind::Surface => {
             let background = if pressed {
-                palette.background.stronger
+                colors.selection
             } else if active {
-                palette.background.strong
+                colors.hover
             } else {
-                palette.background.weak
+                colors.surface
             };
 
             Pair {
-                color: background.color,
-                text: palette.secondary.base.text,
+                color: background,
+                text: colors.muted,
             }
         }
         ButtonKind::Transparent => Pair {
-            color: palette.background.base.color,
-            text: palette.secondary.weak.text,
+            color: colors.background,
+            text: colors.muted,
         },
     }
 }

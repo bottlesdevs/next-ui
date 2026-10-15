@@ -7,18 +7,31 @@ use iced::{
     animation::{Animation, Easing},
     gradient,
     time::Instant,
+    touch,
     widget::responsive,
     window,
 };
 
 use crate::{
+    chrome::{self, WINDOW_CONTROL_AT_START},
     theme,
-    ui::chrome::WINDOW_CONTROL_AT_START,
-    widgets::{event_cursor, header_bar::HeaderBar, spacing},
+    widget::{HeaderBar, spacing},
 };
 
 const BREAKPOINT: f32 = 900.0;
 const COMPACT_MAX_WIDTH: f32 = 420.0;
+
+fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
+    match event {
+        Event::Touch(
+            touch::Event::FingerPressed { position, .. }
+            | touch::Event::FingerMoved { position, .. }
+            | touch::Event::FingerLifted { position, .. }
+            | touch::Event::FingerLost { position, .. },
+        ) => mouse::Cursor::Available(*position),
+        _ => cursor,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PaneContext {
@@ -27,16 +40,24 @@ pub(super) struct PaneContext {
 }
 
 impl PaneContext {
+    #[cfg(feature = "fvs")]
+    pub(super) fn root() -> Self {
+        Self {
+            standalone: true,
+            owns_window_control: true,
+        }
+    }
+
     pub(super) fn is_standalone(self) -> bool {
         self.standalone
     }
 
-    pub(super) fn header<'a, Message>(self, on_drag: Message) -> HeaderBar<'a, Message> {
-        if self.owns_window_control {
-            HeaderBar::new(on_drag)
-        } else {
-            HeaderBar::without_window_control(on_drag)
-        }
+    pub(super) fn header<'a, Message: Clone + 'a>(
+        self,
+        on_drag: Message,
+        build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,
+    ) -> Element<'a, Message> {
+        chrome::header(on_drag, self.owns_window_control, build)
     }
 }
 
@@ -400,7 +421,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                     && progress > 0.0
                     && let Some(bounds) = child_layout.bounds().intersection(&clip)
                 {
-                    let window = theme::window_color(theme);
+                    let window = theme::colors(theme).window;
                     renderer.with_layer(bounds, |renderer| {
                         renderer.fill_quad(
                             renderer::Quad {

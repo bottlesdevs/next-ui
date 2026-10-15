@@ -114,7 +114,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
                 text(error)
                     .size(list_row::BODY_SIZE)
                     .style(|theme: &Theme| text::Style {
-                        color: Some(theme.palette().danger),
+                        color: Some(crate::theme::colors(theme).danger),
                     }),
             );
         }
@@ -122,9 +122,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         let mut row = ListRow::new(labels);
 
         if editable {
-            row = row
-                .trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false))
-                .focus_first();
+            row = row.trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false));
         }
 
         row
@@ -132,19 +130,19 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
 }
 
 fn input_style(theme: &Theme, error: bool) -> text_input::Style {
-    let muted = theme.extended_palette().secondary.base.text;
+    let colors = crate::theme::colors(theme);
 
     text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default().color(if error {
-            theme.palette().danger
+            colors.danger
         } else {
             Color::TRANSPARENT
         }),
-        icon: muted,
-        placeholder: muted,
-        value: muted,
-        selection: theme.palette().primary,
+        icon: colors.muted,
+        placeholder: colors.muted,
+        value: colors.muted,
+        selection: colors.accent,
     }
 }
 
@@ -154,10 +152,27 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
         .height(size)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if error {
-                theme.palette().danger
+                crate::theme::colors(theme).danger
             } else {
-                theme.extended_palette().secondary.base.text
+                crate::theme::colors(theme).muted
             }),
         })
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_borders_match_the_original_visual_contract() {
+        let theme = crate::theme::dark();
+        let colors = crate::theme::colors(&theme);
+        let error = input_style(&theme, true);
+        let idle = input_style(&theme, false);
+
+        assert_eq!(error.border.color, colors.danger);
+        assert_eq!(error.border.width, 0.0);
+        assert_eq!(idle.border.width, 0.0);
+    }
 }

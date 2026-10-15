@@ -1,31 +1,27 @@
+pub mod action_tile;
 mod anchored_overlay;
-mod control;
+mod focus;
+mod focusable_action;
 mod menu;
 mod style;
-mod surface;
-
-#[cfg(test)]
-pub(crate) use control::Interaction;
-pub(crate) use control::{Control, event_cursor};
 
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 
-pub(crate) mod spacing {
-    pub(crate) const XS: f32 = 6.0;
-    pub(crate) const SM: f32 = 12.0;
-    pub(crate) const MD: f32 = 18.0;
-    pub(crate) const LG: f32 = 24.0;
-    pub(crate) const XG: f32 = 32.0;
+/// Shared spacing scale used by toolkit widgets and application layouts.
+pub mod spacing {
+    pub const XS: f32 = 6.0;
+    pub const SM: f32 = 12.0;
+    pub const MD: f32 = 18.0;
+    pub const LG: f32 = 24.0;
+    pub const XG: f32 = 32.0;
 }
 
-fn reconcile_index<T: PartialEq>(
-    old_keys: &[T],
-    old_index: Option<usize>,
-    new_keys: &[T],
-) -> Option<usize> {
-    old_index
-        .and_then(|index| old_keys.get(index))
-        .and_then(|key| new_keys.iter().position(|candidate| candidate == key))
+/// Shared dimensions for header content and frame-owned controls.
+pub mod header {
+    pub const HEIGHT: f32 = 64.0;
+    pub const INSET: f32 = super::spacing::SM;
+    pub const CONTROL: f32 = 32.0;
+    pub const ICON: f32 = 16.0;
 }
 
 fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, expansion: f32) {
@@ -43,7 +39,7 @@ fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, exp
     renderer.draw_svg(
         iced::advanced::svg::Svg {
             handle,
-            color: Some(theme.extended_palette().secondary.weak.text),
+            color: Some(crate::theme::colors(theme).muted),
             rotation: (std::f32::consts::PI * expansion).into(),
             opacity: 1.0,
         },
@@ -58,12 +54,12 @@ pub mod button;
 pub mod card;
 pub mod cycle_row;
 pub mod dialog;
-pub mod drop_target;
 pub mod expander_row;
 pub mod header_bar;
 pub mod info_card;
 pub mod info_row;
 pub mod list_row;
+pub mod notification;
 pub mod picker_row;
 pub mod popover;
 pub mod progress_ring;

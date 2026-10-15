@@ -1,6 +1,9 @@
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{
+        column, row, text,
+        text::{Fragment, IntoFragment},
+    },
 };
 
 use crate::icons::Icon;
@@ -12,33 +15,40 @@ use super::{
     text::TextExt as _,
 };
 
-#[derive(Debug, Clone)]
-pub enum State<Message> {
+enum State<Message> {
     Ready(Message),
     Disabled,
-    /// In-flight state (e.g. downloading a component, linking an account), `0.0..=1.0`.
     Progress(f32),
 }
 
 pub struct ActionRow<'a, Message> {
-    title: &'a str,
-    description: &'a str,
+    title: Fragment<'a>,
+    description: Fragment<'a>,
     icon: Option<Icon>,
     state: State<Message>,
+    selected: bool,
 }
 
 impl<'a, Message> ActionRow<'a, Message> {
-    pub fn new(title: &'a str, state: State<Message>) -> Self {
+    pub fn new(title: impl IntoFragment<'a>, action: impl Into<Option<Message>>) -> Self {
         Self {
-            title,
-            description: "",
+            title: title.into_fragment(),
+            description: "".into_fragment(),
             icon: None,
-            state,
+            state: action.into().map_or(State::Disabled, State::Ready),
+            selected: false,
         }
     }
 
-    pub fn description(mut self, description: &'a str) -> Self {
-        self.description = description;
+    pub fn progress(title: impl IntoFragment<'a>, progress: f32) -> Self {
+        Self {
+            state: State::Progress(progress),
+            ..Self::new(title, None)
+        }
+    }
+
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.description = description.into_fragment();
         self
     }
 
@@ -46,19 +56,24 @@ impl<'a, Message> ActionRow<'a, Message> {
         self.icon = Some(icon);
         self
     }
+
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
 }
 
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
-        ListRow::from(action).into()
+        action.lower()
     }
 }
 
-impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Message> {
-    fn from(action: ActionRow<'a, Message>) -> Self {
+impl<'a, Message: Clone + 'a> ActionRow<'a, Message> {
+    fn lower(self) -> Element<'a, Message> {
         let mut description = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
-        if let Some(icon) = action.icon {
+        if let Some(icon) = self.icon {
             description = description.push(
                 icon.view()
                     .width(list_row::BODY_SIZE)
@@ -66,21 +81,24 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for ListRow<'a, Messa
             );
         }
 
-        description = description.push(text(action.description).size(list_row::BODY_SIZE).muted());
+        description = description.push(text(self.description).size(list_row::BODY_SIZE).muted());
 
-        let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
-        let trailing: Element<'a, Message> = match &action.state {
-            State::Progress(progress) => ProgressRing::new(*progress).into(),
-            State::Ready(_) | State::Disabled => {
-                Icon::Arrow.view().rotation(std::f32::consts::PI).into()
-            }
+        let labels = column![text(self.title).label().medium(), description].spacing(spacing::XS);
+        let (trailing, action): (Element<'a, Message>, _) = match self.state {
+            State::Ready(message) => (
+                Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
+                Some(message),
+            ),
+            State::Disabled => (
+                Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
+                None,
+            ),
+            State::Progress(progress) => (ProgressRing::new(progress).into(), None),
         };
-        let row = ListRow::new(labels).trailing(trailing);
-
-        match action.state {
-            State::Ready(message) => row.on_press(message),
-            State::Disabled => row.enabled(false),
-            State::Progress(_) => row,
-        }
+        list_row::action(
+            ListRow::new(labels).trailing(trailing),
+            action,
+            self.selected,
+        )
     }
 }

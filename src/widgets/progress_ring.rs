@@ -9,7 +9,7 @@ use iced::{
     window,
 };
 
-use crate::icons::SIZE;
+use crate::{icons::SIZE, theme};
 
 const STROKE_WIDTH: f32 = 2.5;
 const START_ANGLE: f32 = -PI / 2.0;
@@ -95,14 +95,14 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = bounds.width.min(bounds.height) / 2.0 - STROKE_WIDTH / 2.0;
-        let palette = theme.extended_palette();
+        let colors = theme::colors(theme);
         let track = canvas::Path::circle(center, radius);
 
         frame.stroke(
             &track,
             canvas::Stroke::default()
                 .with_width(STROKE_WIDTH)
-                .with_color(palette.background.neutral.color),
+                .with_color(colors.border),
         );
 
         if progress >= 1.0 {
@@ -117,7 +117,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
                 &checkmark,
                 canvas::Stroke::default()
                     .with_width(STROKE_WIDTH)
-                    .with_color(theme.palette().primary)
+                    .with_color(colors.accent)
                     .with_line_cap(canvas::LineCap::Round)
                     .with_line_join(canvas::LineJoin::Round),
             );
@@ -135,7 +135,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
                 &arc,
                 canvas::Stroke::default()
                     .with_width(STROKE_WIDTH)
-                    .with_color(theme.palette().primary)
+                    .with_color(colors.accent)
                     .with_line_cap(canvas::LineCap::Round),
             );
         }

@@ -2,7 +2,7 @@ use iced::{
     Element, Event, Fill, Length, Rectangle, Size, Theme,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, operation, tree},
+        widget::{Operation, Tree, tree},
     },
     event, keyboard, touch,
     widget::{container, stack},
@@ -11,15 +11,14 @@ use iced::{
 
 use crate::theme;
 
-use super::{
-    Control,
-    control::{descendant_is_focused, focus_first_descendant},
-    event_cursor,
-};
+use super::focus::{cycle_descendant_focus, event_cursor, focus_first_descendant};
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
 
 /// Arbitrary content presented by a [`WindowModal`].
+///
+/// Uncaptured Escape keys and presses outside the content publish the dismiss
+/// message.
 pub struct Dialog<'a, Message> {
     content: Element<'a, Message>,
     on_dismiss: Message,
@@ -74,10 +73,12 @@ impl<'a, Message> WindowModal<'a, Message> {
 impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Message> {
     fn from(modal: WindowModal<'a, Message>) -> Self {
         let open = modal.dialog.is_some();
-        let base = Control::new(modal.base)
-            .width(Fill)
-            .height(Fill)
-            .sensitive(!open);
+        let base: Element<'a, Message> = container(modal.base).width(Fill).height(Fill).into();
+        let base = if open {
+            Element::new(ModalBase { content: base })
+        } else {
+            base
+        };
         let mut layers = stack![base].width(Fill).height(Fill);
 
         if let Some(dialog) = modal.dialog {
@@ -85,7 +86,7 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
                 .center(Fill)
                 .style(|theme| container::Style::default().background(theme::scrim(theme)));
 
-            layers = layers.push(Element::new(ModalLayer {
+            layers = layers.push(Element::new(ModalScope {
                 content: content.into(),
                 on_dismiss: dialog.on_dismiss,
             }));
@@ -95,12 +96,63 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
     }
 }
 
-struct ModalLayer<'a, Message> {
+/// Draws the base without forwarding input, focus operations, or overlays.
+struct ModalBase<'a, Message> {
+    content: Element<'a, Message>,
+}
+
+impl<Message> Widget<Message, Theme, iced::Renderer> for ModalBase<'_, Message> {
+    fn tag(&self) -> tree::Tag {
+        self.content.as_widget().tag()
+    }
+
+    fn state(&self) -> tree::State {
+        self.content.as_widget().state()
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        self.content.as_widget().children()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        self.content.as_widget().diff(tree);
+    }
+
+    fn size(&self) -> Size<Length> {
+        self.content.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.content.as_widget_mut().layout(tree, renderer, limits)
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut iced::Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.content
+            .as_widget()
+            .draw(tree, renderer, theme, style, layout, cursor, viewport);
+    }
+}
+
+struct ModalScope<'a, Message> {
     content: Element<'a, Message>,
     on_dismiss: Message,
 }
 
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, Message> {
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalScope<'_, Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<bool>()
     }
@@ -213,8 +265,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
                 repeat: false,
                 ..
             }) => {
-                cycle_focus(
-                    &mut self.content,
+                cycle_descendant_focus(
+                    self.content.as_widget_mut(),
                     &mut tree.children[0],
                     content_layout,
                     renderer,
@@ -298,59 +350,24 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for ModalLayer<'_, M
     }
 }
 
-fn cycle_focus<Message>(
-    content: &mut Element<'_, Message>,
-    tree: &mut Tree,
-    layout: Layout<'_>,
-    renderer: &iced::Renderer,
-    previous: bool,
-) {
-    move_focus_once(content, tree, layout, renderer, previous);
-
-    if !descendant_is_focused(content, tree, layout, renderer) {
-        move_focus_once(content, tree, layout, renderer, previous);
-    }
-}
-
-fn move_focus_once<Message>(
-    content: &mut Element<'_, Message>,
-    tree: &mut Tree,
-    layout: Layout<'_>,
-    renderer: &iced::Renderer,
-    previous: bool,
-) {
-    let mut operation: Box<dyn Operation> = if previous {
-        Box::new(operation::focusable::focus_previous::<()>())
-    } else {
-        Box::new(operation::focusable::focus_next::<()>())
-    };
-    content
-        .as_widget_mut()
-        .operate(tree, layout, renderer, &mut operation);
-}
-
 fn requests_dismissal(
     event: &Event,
     child_status: event::Status,
     content: Rectangle,
     cursor: mouse::Cursor,
 ) -> bool {
+    if child_status == event::Status::Captured {
+        return false;
+    }
+
     match event {
         Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(keyboard::key::Named::Escape),
             repeat: false,
             ..
         }) => true,
-        Event::Mouse(iced::mouse::Event::ButtonPressed(_))
-            if child_status == event::Status::Ignored =>
-        {
-            !cursor.is_over(content)
-        }
-        Event::Touch(touch::Event::FingerPressed { position, .. })
-            if child_status == event::Status::Ignored =>
-        {
-            !content.contains(*position)
-        }
+        Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => !cursor.is_over(content),
+        Event::Touch(touch::Event::FingerPressed { position, .. }) => !content.contains(*position),
         _ => false,
     }
 }
@@ -360,7 +377,7 @@ mod tests {
     use iced::{Point, advanced::widget::Tree, widget::Space};
 
     use super::*;
-    use crate::widgets::Interaction;
+    use crate::widgets::focusable_action::{FocusableAction, Interaction};
 
     #[derive(Clone)]
     enum Message {
@@ -368,32 +385,37 @@ mod tests {
     }
 
     fn host(open: bool) -> Element<'static, Message> {
-        WindowModal::new(Control::new(Space::new()).on_press(Message::Dismiss))
+        WindowModal::new(FocusableAction::new(Space::new()).on_press_maybe(Some(Message::Dismiss)))
             .dialog(open.then(|| Dialog::new(Space::new(), Message::Dismiss)))
             .into()
     }
 
     fn base_interaction(tree: &mut Tree) -> &mut Interaction {
-        tree.children[0].children[0]
-            .state
-            .downcast_mut::<Interaction>()
+        tree.children[0].state.downcast_mut::<Interaction>()
     }
 
     #[test]
-    fn opening_and_closing_retains_the_base_tree() {
+    fn opening_and_closing_retains_the_base_tree_and_focus() {
         use iced::advanced::widget::operation::Focusable;
 
         let closed = host(false);
         let mut tree = Tree::new(&closed);
         base_interaction(&mut tree).focus();
 
-        tree.diff(&host(true));
+        tree.diff(host(true));
         assert_eq!(tree.children.len(), 2);
         assert!(base_interaction(&mut tree).is_focused());
 
-        tree.diff(&host(false));
+        tree.diff(host(false));
         assert_eq!(tree.children.len(), 1);
         assert!(base_interaction(&mut tree).is_focused());
+    }
+
+    #[test]
+    fn mapped_dialogs_preserve_the_dismiss_message() {
+        let mapped = Dialog::new(Space::new(), 7).map(|message| message.to_string());
+
+        assert_eq!(mapped.on_dismiss, "7");
     }
 
     #[test]
@@ -425,9 +447,15 @@ mod tests {
             content,
             inside,
         ));
-        assert!(requests_dismissal(
+        assert!(!requests_dismissal(
             &key_pressed(keyboard::key::Named::Escape, false),
             event::Status::Captured,
+            content,
+            inside,
+        ));
+        assert!(requests_dismissal(
+            &key_pressed(keyboard::key::Named::Escape, false),
+            event::Status::Ignored,
             content,
             inside,
         ));
