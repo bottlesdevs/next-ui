@@ -2,13 +2,14 @@
 
 use std::sync::Arc;
 
-use bottles_core::{Profile, Profiles, ProfilesConfig, error::Error as CoreError};
+use bottles_core::{Profile, Profiles, ProfilesState, error::Error as CoreError};
 use iced::{
     Element, Task,
     widget::{column, container, row},
 };
 use uuid::Uuid;
 
+use super::Keyed;
 use crate::{
     icons::Icon,
     widgets::{
@@ -22,9 +23,9 @@ use crate::{
 };
 
 pub fn profile_events(
-    profiles: &Profiles,
-) -> impl iced::futures::Stream<Item = Arc<ProfilesConfig>> + Send + 'static + use<> {
-    profiles.watch()
+    profiles: &Keyed<Profiles>,
+) -> impl iced::futures::Stream<Item = Arc<ProfilesState>> + Send + 'static + use<> {
+    profiles.handle.watch()
 }
 
 #[derive(Clone)]
@@ -271,7 +272,7 @@ impl State {
         self.last_error = None;
     }
 
-    pub fn view_switcher<'a>(&self, snapshot: &'a ProfilesConfig) -> Element<'a, Message> {
+    pub fn view_switcher<'a>(&self, snapshot: &'a ProfilesState) -> Element<'a, Message> {
         let selected = snapshot.selected();
         let label = selected.name();
         let trigger = Button::icon_only(label, Icon::Person)

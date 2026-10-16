@@ -2,10 +2,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use bottles_core::{Library, LibraryItem, SearchEntry, SearchSource, error::Error as CoreError};
+use bottles_core::{Library, LibraryItem, error::Error as CoreError};
 use iced::{
     Element, Fill, Length,
-    futures::{StreamExt as _, stream},
+    futures::{FutureExt as _, StreamExt as _, stream},
     widget::{Grid, column, container},
 };
 use tokio_util::sync::CancellationToken;
@@ -30,7 +30,7 @@ enum LibraryState {
 }
 
 struct Search {
-    entries: Vec<SearchEntry>,
+    entries: Vec<LibraryItem>,
     state: LibraryState,
     generation: u64,
     active: HashMap<u64, CancellationToken>,
@@ -59,10 +59,10 @@ impl Search {
         (self.generation, cancellation)
     }
 
-    fn push_entry(&mut self, generation: u64, entry: SearchEntry) {
+    fn push_entries(&mut self, generation: u64, entries: Vec<LibraryItem>) {
         if generation == self.generation {
             self.state = LibraryState::Loaded;
-            self.entries.push(entry);
+            self.entries = entries;
         }
     }
 
@@ -87,10 +87,13 @@ impl Search {
 #[derive(Clone)]
 pub enum Message {
     QueryChanged(String),
-    Entry { generation: u64, entry: SearchEntry },
+    Listed {
+        generation: u64,
+        result: Result<Vec<LibraryItem>, Arc<CoreError>>,
+    },
     Loaded(u64),
     Launch(LibraryItem),
-    Launched(Result<u32, Arc<CoreError>>),
+    Launched(Result<(), Arc<CoreError>>),
 }
 
 pub enum Output {
@@ -119,11 +122,22 @@ impl State {
     pub fn reload(&mut self) -> iced::Task<Message> {
         let (generation, cancellation) = self.search.begin();
         let cancelled = cancellation.cancelled_owned();
-        let events = self
-            .library
-            .search(self.query.clone())
-            .map(move |entry| Message::Entry { generation, entry })
-            .take_until(cancelled);
+        let library = self.library.clone();
+        let query = self.query.trim().to_lowercase();
+        let events = stream::once(async move {
+            let result = library
+                .list()
+                .await
+                .map(|items| {
+                    items
+                        .into_iter()
+                        .filter(|item| item.entry().title.to_lowercase().contains(&query))
+                        .collect()
+                })
+                .map_err(Arc::new);
+            Message::Listed { generation, result }
+        })
+        .take_until(cancelled);
         let finished = stream::once(async move { Message::Loaded(generation) });
 
         iced::Task::run(events.chain(finished), std::convert::identity)
@@ -135,7 +149,18 @@ impl State {
                 self.query = query;
                 return (iced::Task::none(), Some(Output::Reload));
             }
-            Message::Entry { generation, entry } => self.search.push_entry(generation, entry),
+            Message::Listed {
+                generation,
+                result: Ok(entries),
+            } => self.search.push_entries(generation, entries),
+            Message::Listed {
+                generation,
+                result: Err(error),
+            } => {
+                if generation == self.search.generation {
+                    self.last_error = Some(error.to_string());
+                }
+            }
             Message::Loaded(generation) => self.search.finish(generation),
             Message::Launch(item) => {
                 if self.launching {
@@ -144,7 +169,7 @@ impl State {
                 self.launching = true;
                 return (
                     iced::Task::perform(
-                        async move { item.launch().await.map_err(Arc::new) },
+                        async move { item.launch()?.await }.map(|result| result.map_err(Arc::new)),
                         Message::Launched,
                     ),
                     None,
@@ -201,7 +226,7 @@ impl State {
         let mut content = column![search].spacing(12);
         if let Some(error) = &self.last_error {
             content = content.push(centered_narrow(
-                InfoCard::new(Kind::Error, "Program launch failed", error).width(Fill),
+                InfoCard::new(Kind::Error, "Library error", error).width(Fill),
             ));
         }
         if self.search.entries.is_empty() {
@@ -236,15 +261,10 @@ fn centered_narrow<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, 
     .into()
 }
 
-fn entry_card(entry: &SearchEntry) -> Element<'_, Message> {
-    ArtworkCard::new(entry.title(), entry.source_name())
+fn entry_card(item: &LibraryItem) -> Element<'_, Message> {
+    ArtworkCard::new(&item.entry().title, item.provider_id())
         .menu(CardAction::new("More actions", Icon::EllipsisVertical))
-        .primary(
-            CardAction::new("Play", Icon::Play).on_press_maybe(match entry.source() {
-                SearchSource::Installed(item) => Some(Message::Launch(item.clone())),
-                _ => None,
-            }),
-        )
+        .primary(CardAction::new("Play", Icon::Play).on_press(Message::Launch(item.clone())))
         .into()
 }
 

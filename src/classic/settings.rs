@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use bottles_core::BottleState;
 #[cfg(target_os = "linux")]
-use bottles_core::{Bottle, MangoHudConfig, error::Error as CoreError};
+use bottles_core::{Bottle, error::Error as CoreError};
 use iced::{
     Element, Length,
     widget::{column, responsive},
@@ -69,17 +69,19 @@ impl State {
         match message {
             Message::ToggleGamescope(enabled) => {
                 if !self.pending
-                    && let (Some(bottle), Some(state)) = (ctx.bottle.clone(), ctx.bottle_state)
+                    && let Some(bottle) = ctx.bottle.clone()
                 {
-                    let mut config = state.wrappers().gamescope.clone();
-                    config.enabled = enabled;
                     let generation = self.next_generation();
 
                     return iced::Task::perform(
                         async move {
-                            let mut edit = bottle.edit();
-                            edit.set_gamescope(config);
-                            edit.commit().await.map_err(Arc::new)
+                            bottle
+                                .edit(move |edit| {
+                                    edit.wrappers().gamescope.enabled = enabled;
+                                    Ok(())
+                                })
+                                .await
+                                .map_err(Arc::new)
                         },
                         move |result| Message::WrapperUpdated { generation, result },
                     );
@@ -89,14 +91,17 @@ impl State {
                 if !self.pending
                     && let Some(bottle) = ctx.bottle.clone()
                 {
-                    let config = MangoHudConfig { enabled };
                     let generation = self.next_generation();
 
                     return iced::Task::perform(
                         async move {
-                            let mut edit = bottle.edit();
-                            edit.set_mangohud(config);
-                            edit.commit().await.map_err(Arc::new)
+                            bottle
+                                .edit(move |edit| {
+                                    edit.wrappers().mangohud.enabled = enabled;
+                                    Ok(())
+                                })
+                                .await
+                                .map_err(Arc::new)
                         },
                         move |result| Message::WrapperUpdated { generation, result },
                     );
@@ -146,8 +151,8 @@ impl State {
                             InfoRow::new("Runner")
                                 .description(format!(
                                     "{} {}",
-                                    state.runner().name(),
-                                    state.runner().version()
+                                    state.config().runner.name(),
+                                    state.config().runner.version()
                                 ))
                                 .icon(Icon::Run),
                         )
@@ -196,7 +201,7 @@ impl State {
 
                 #[cfg(target_os = "linux")]
                 let graphics = {
-                    let wrappers = state.wrappers();
+                    let wrappers = &state.config().wrappers;
                     graphics.row(
                         SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                             .description("Use the SteamOS compositor")
@@ -215,7 +220,7 @@ impl State {
 
                 #[cfg(target_os = "linux")]
                 let graphics = {
-                    let wrappers = state.wrappers();
+                    let wrappers = &state.config().wrappers;
                     graphics.row(
                         SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                             .description("Show a performance overlay")

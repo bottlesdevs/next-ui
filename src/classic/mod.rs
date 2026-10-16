@@ -3,7 +3,10 @@
 //! A future Next experience is a sibling of this module and cannot access these
 //! private workflow modules.
 
-use std::sync::Arc;
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 mod accounts;
 mod bottles;
@@ -29,7 +32,7 @@ use crate::{
         title::Title,
     },
 };
-use bottles_core::{Bottle, BottleManager, BottleState, Bottles, Profiles, ProfilesConfig};
+use bottles_core::{Bottle, BottleState, Bottles, Manager, Profiles, ProfilesState};
 use iced::{
     Element, Fill, Subscription, Task,
     keyboard::{self, key},
@@ -67,14 +70,29 @@ enum Panel {
     Profiles,
 }
 
+/// Carries a live core handle into an iced subscription.
+///
+/// Core handles are not hashable, so the subscription's identity comes from
+/// `key` alone: clones of the same handle must keep one subscription alive.
+struct Keyed<T> {
+    key: Uuid,
+    handle: T,
+}
+
+impl<T> Hash for Keyed<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+    }
+}
+
 struct ReadModel {
     bottles: Vec<Bottle>,
     bottle_states: Vec<Arc<BottleState>>,
-    profiles: Arc<ProfilesConfig>,
+    profiles: Arc<ProfilesState>,
 }
 
 impl ReadModel {
-    fn new(bottle_manager: &BottleManager, profiles: &Profiles) -> Self {
+    fn new(bottle_manager: &Manager<Bottle>, profiles: &Profiles) -> Self {
         let bottles = bottle_manager.list();
         let bottle_states = bottles
             .iter()
@@ -84,7 +102,7 @@ impl ReadModel {
         Self {
             bottles,
             bottle_states,
-            profiles: profiles.snapshot(),
+            profiles: profiles.state(),
         }
     }
 
@@ -94,7 +112,7 @@ impl ReadModel {
                 .bottles
                 .iter()
                 .zip(&bottles)
-                .all(|(current, next)| current.id() == next.id())
+                .all(|(current, next)| current.id().ok() == next.id().ok())
         {
             return false;
         }
@@ -125,7 +143,7 @@ impl ReadModel {
     fn bottle(&self, id: Uuid) -> Option<Bottle> {
         self.bottles
             .iter()
-            .find(|bottle| bottle.id() == id)
+            .find(|bottle| bottle.id().ok() == Some(id))
             .cloned()
     }
 
@@ -172,7 +190,7 @@ pub enum Message {
     Accounts(accounts::Message),
     BottleListChanged(Vec<Bottle>),
     BottleStateChanged(Arc<BottleState>),
-    ProfilesChanged(Arc<ProfilesConfig>),
+    ProfilesChanged(Arc<ProfilesState>),
 }
 
 impl Message {
@@ -182,7 +200,7 @@ impl Message {
                 bottles::Message::BottleCreation(_) | bottles::Message::ProgramLaunched(_),
             )
             | Self::Library(
-                library::Message::Entry { .. }
+                library::Message::Listed { .. }
                 | library::Message::Loaded(_)
                 | library::Message::Launched(_),
             )
@@ -476,20 +494,39 @@ impl State {
         let mut subscriptions = vec![keys];
 
         subscriptions.push(
-            Subscription::run_with(self.bottles.manager().clone(), bottles::bottle_events)
-                .map(Message::BottleListChanged),
+            Subscription::run_with(
+                Keyed {
+                    key: Uuid::nil(),
+                    handle: self.bottles.manager().clone(),
+                },
+                bottles::bottle_events,
+            )
+            .map(Message::BottleListChanged),
         );
 
         for bottle in &self.read_model.bottles {
+            let Ok(key) = bottle.id() else { continue };
             subscriptions.push(
-                Subscription::run_with(bottle.clone(), bottles::bottle_state_events)
-                    .map(Message::BottleStateChanged),
+                Subscription::run_with(
+                    Keyed {
+                        key,
+                        handle: bottle.clone(),
+                    },
+                    bottles::bottle_state_events,
+                )
+                .map(Message::BottleStateChanged),
             );
         }
 
         subscriptions.push(
-            Subscription::run_with(self.profiles.manager().clone(), profiles::profile_events)
-                .map(Message::ProfilesChanged),
+            Subscription::run_with(
+                Keyed {
+                    key: Uuid::nil(),
+                    handle: self.profiles.manager().clone(),
+                },
+                profiles::profile_events,
+            )
+            .map(Message::ProfilesChanged),
         );
 
         Subscription::batch(subscriptions)
