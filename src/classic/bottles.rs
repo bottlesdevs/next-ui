@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bottles_core::{Addons, Bottle, BottleManager, BottleState, Slot, Storage};
+use bottles_core::{Addon, Addons, Bottle, BottleState, Manager, PrefixBackend, Runner};
 use iced::{
     Center, Element, Length, Task, Theme,
     widget::{Grid, column, container, responsive, row, text},
@@ -11,6 +11,7 @@ use iced::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::Keyed;
 use crate::{
     icons::Icon,
     operation,
@@ -37,7 +38,7 @@ const ARCHITECTURES: [&str; 2] = ["Win64", "Win32"];
 
 #[derive(Clone, PartialEq)]
 pub struct RunnerOption {
-    id: Uuid,
+    runner: Arc<Addon<Runner>>,
     label: String,
 }
 
@@ -48,15 +49,15 @@ impl std::fmt::Display for RunnerOption {
 }
 
 pub fn bottle_events(
-    manager: &BottleManager,
+    manager: &Keyed<Manager<Bottle>>,
 ) -> impl iced::futures::Stream<Item = Vec<Bottle>> + Send + 'static + use<> {
-    manager.watch()
+    manager.handle.watch()
 }
 
 pub fn bottle_state_events(
-    bottle: &Bottle,
+    bottle: &Keyed<Bottle>,
 ) -> impl iced::futures::Stream<Item = Arc<BottleState>> + Send + 'static + use<> {
-    bottle.watch()
+    bottle.handle.watch()
 }
 
 #[derive(Clone)]
@@ -75,7 +76,8 @@ pub enum Output {
 }
 
 pub struct State {
-    manager: BottleManager,
+    manager: Manager<Bottle>,
+    addons: Addons,
     bottle_name: String,
     runners: Vec<RunnerOption>,
     selected_runner: Option<RunnerOption>,
@@ -86,19 +88,20 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(manager: BottleManager, addons: &Addons) -> Self {
+    pub fn new(manager: Manager<Bottle>, addons: &Addons) -> Self {
         let runners = addons
-            .components()
-            .iter()
-            .filter(|entry| entry.slot() == Slot::Runner)
-            .map(|entry| RunnerOption {
-                id: entry.id(),
-                label: format!("{} {}", entry.name(), entry.version()),
+            .state()
+            .runners()
+            .into_iter()
+            .map(|runner| RunnerOption {
+                label: format!("{} {}", runner.name(), runner.version()),
+                runner,
             })
             .collect::<Vec<_>>();
         let selected_runner = runners.first().cloned();
         Self {
             manager,
+            addons: addons.clone(),
             bottle_name: "Gaming paradise".into(),
             runners,
             selected_runner,
@@ -109,7 +112,7 @@ impl State {
         }
     }
 
-    pub(super) fn manager(&self) -> &BottleManager {
+    pub(super) fn manager(&self) -> &Manager<Bottle> {
         &self.manager
     }
 
@@ -138,9 +141,21 @@ impl State {
                 if self.creation_cancellation.is_none()
                     && let Some(runner) = self.selected_runner.clone()
                 {
-                    let name = self.bottle_name.clone();
-                    let manager = self.manager.clone();
-                    let operation = manager.create(name, Storage::Standard, runner.id);
+                    let addons = self.addons.state();
+                    let Some(winebridge) = addons.winebridges().into_iter().next() else {
+                        self.last_error =
+                            Some("Install WineBridge before creating a bottle.".into());
+                        return (Task::none(), None);
+                    };
+                    // Proton runners need UMU; Wine runners ignore it.
+                    let umu = addons.umus().into_iter().next();
+                    let operation = self.manager.create(
+                        self.bottle_name.clone(),
+                        PrefixBackend::Standard,
+                        runner.runner.as_ref().clone(),
+                        winebridge.as_ref().clone(),
+                        umu.map(|umu| umu.as_ref().clone()),
+                    );
                     self.creation_generation = self.creation_generation.wrapping_add(1);
                     let generation = self.creation_generation;
                     let (cancellation, task) = operation::run(operation, generation);
@@ -205,7 +220,7 @@ impl State {
             let rows = bottle_states.iter().map(|state| {
                 let row: ListRow<'_, Msg> =
                     ActionRow::new(state.name(), ActionRowState::Ready(on_select(state.id())))
-                        .description(state.runner().name())
+                        .description(state.config().runner.name())
                         .icon(Icon::Bottles)
                         .into();
 
@@ -267,7 +282,7 @@ impl State {
     }
 
     pub fn bottle_status<'a>(&self, state: &'a BottleState) -> Element<'a, Message> {
-        StatusBar::new("Win64", state.runner().name(), BottleStatus::Stopped).into()
+        StatusBar::new("Win64", state.config().runner.name(), BottleStatus::Stopped).into()
     }
 
     pub fn program_grid<'a>(&self, bottle: Bottle, state: &'a BottleState) -> Element<'a, Message> {
@@ -276,7 +291,7 @@ impl State {
             programs
                 .iter()
                 .copied()
-                .map(|program| program_card(bottle.clone(), program)),
+                .map(|(id, program)| program_card(bottle.clone(), id, program)),
         );
 
         Grid::with_children(items)
@@ -313,14 +328,16 @@ fn new_program_target<'a>() -> DropTarget<'a, Message> {
         .padding([72.0, spacing::LG])
 }
 
-fn program_card(bottle: Bottle, program: &bottles_core::Program) -> Element<'_, Message> {
+fn program_card(
+    bottle: Bottle,
+    program_id: Uuid,
+    program: &bottles_core::ProgramSpec,
+) -> Element<'_, Message> {
     ArtworkCard::new(program.name(), "Installed program")
         .menu(CardAction::new("More actions", Icon::EllipsisVertical))
         .primary(
-            CardAction::new("Play", Icon::Play).on_press(Message::LaunchProgram {
-                bottle,
-                program_id: program.id(),
-            }),
+            CardAction::new("Play", Icon::Play)
+                .on_press(Message::LaunchProgram { bottle, program_id }),
         )
         .into()
 }

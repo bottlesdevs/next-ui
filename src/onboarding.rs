@@ -20,7 +20,9 @@ use crate::{
         text::TextExt as _,
     },
 };
-use bottles_core::{Addons, CatalogEntry, Component, IndexEntry, Slot, error::Error as CoreError};
+use bottles_core::{
+    AddonKind, Addons, AddonsState, CatalogEntry, Operation, error::Error as CoreError,
+};
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
@@ -33,8 +35,10 @@ const RESOURCE_LIST_MAX_WIDTH: f32 = 500.0;
 const EXPERIENCE_ROW_GAP: f32 = 8.0;
 const TUTORIAL_TEXT_MAX_WIDTH: f32 = 700.0;
 
-const ONBOARDING_SLOTS: &[(Slot, &str)] =
-    &[(Slot::WineBridge, "WineBridge"), (Slot::Runner, "Runner")];
+const ONBOARDING_KINDS: &[(AddonKind, &str)] = &[
+    (AddonKind::WineBridge, "WineBridge"),
+    (AddonKind::Runner, "Runner"),
+];
 
 struct TutorialStep {
     title: &'static str,
@@ -72,7 +76,7 @@ enum Step {
 }
 
 struct DownloadItem {
-    slot: Slot,
+    kind: AddonKind,
     id: Option<uuid::Uuid>,
     label: String,
     size_label: String,
@@ -128,7 +132,7 @@ pub enum Message {
     NextTutorialStep,
     CatalogRefresh(OperationEvent<u64, ()>),
     StartDownloads,
-    Download(OperationEvent<(u64, Slot), Arc<IndexEntry<Component>>>),
+    Download(OperationEvent<(u64, AddonKind), ()>),
     CancelDownloads,
     Retry,
     Finished(Experience),
@@ -250,8 +254,9 @@ impl State {
     }
 
     fn prepare_downloads(&mut self) {
-        let installed = self.addons.components();
-        let catalog = self.addons.component_entries();
+        let state = self.addons.state();
+        let installed = installed_items(&state);
+        let catalog = state.component_entries();
 
         self.downloads = build_download_items(&installed, &catalog);
 
@@ -292,7 +297,7 @@ impl State {
             item.progress = 0.0;
             item.size_label = "Ready to download".into();
             let (cancellation, task) =
-                operation::run(addons.fetch_component(id), (generation, item.slot));
+                operation::run(fetch(&addons, item.kind, id), (generation, item.kind));
             tasks.push(task.map(Message::Download));
             item.state = DownloadState::Running(cancellation);
         }
@@ -533,35 +538,61 @@ fn experience_available(experience: Experience) -> bool {
 }
 
 fn downloads_complete(downloads: &[DownloadItem]) -> bool {
-    downloads.len() == ONBOARDING_SLOTS.len()
+    downloads.len() == ONBOARDING_KINDS.len()
         && downloads
             .iter()
             .all(|item| matches!(&item.state, DownloadState::Succeeded))
 }
 
+/// An acquired release as `(kind, id, "name version")`.
+type InstalledItem = (AddonKind, uuid::Uuid, String);
+
+fn installed_items(state: &AddonsState) -> Vec<InstalledItem> {
+    let runners = state.runners().into_iter().map(|addon| {
+        let label = format!("{} {}", addon.name(), addon.version());
+        (AddonKind::Runner, addon.id(), label)
+    });
+    let winebridges = state.winebridges().into_iter().map(|addon| {
+        let label = format!("{} {}", addon.name(), addon.version());
+        (AddonKind::WineBridge, addon.id(), label)
+    });
+    runners.chain(winebridges).collect()
+}
+
+fn fetch(addons: &Addons, kind: AddonKind, id: uuid::Uuid) -> Operation<()> {
+    match kind {
+        AddonKind::Runner => addons.fetch_runner(id).map(drop),
+        AddonKind::WineBridge => addons.fetch_winebridge(id).map(drop),
+        AddonKind::Umu => addons.fetch_umu(id).map(drop),
+        AddonKind::Component { .. } => addons.fetch_component(id).map(drop),
+        AddonKind::Dependency => addons.fetch_dependency(id).map(drop),
+    }
+}
+
 fn build_download_items(
-    installed: &[Arc<IndexEntry<Component>>],
-    catalog: &[CatalogEntry<Component>],
+    installed: &[InstalledItem],
+    catalog: &[CatalogEntry],
 ) -> Vec<DownloadItem> {
-    ONBOARDING_SLOTS
+    ONBOARDING_KINDS
         .iter()
-        .map(|(slot, slot_label)| {
-            if let Some(entry) = installed.iter().find(|entry| entry.slot() == *slot) {
+        .map(|(kind, kind_label)| {
+            if let Some((_, id, label)) = installed.iter().find(|(installed, ..)| installed == kind)
+            {
                 return DownloadItem {
-                    slot: *slot,
-                    id: Some(entry.id()),
-                    label: format!("{} {}", entry.name(), entry.version()),
+                    kind: *kind,
+                    id: Some(*id),
+                    label: label.clone(),
                     size_label: "Installed".into(),
                     progress: 1.0,
                     state: DownloadState::Succeeded,
                 };
             }
 
-            let Some(entry) = supported_component(catalog, *slot) else {
+            let Some(entry) = supported_entry(catalog, *kind) else {
                 return DownloadItem {
-                    slot: *slot,
+                    kind: *kind,
                     id: None,
-                    label: (*slot_label).to_string(),
+                    label: (*kind_label).to_string(),
                     size_label: "Unavailable".into(),
                     progress: 0.0,
                     state: DownloadState::Unavailable,
@@ -569,7 +600,7 @@ fn build_download_items(
             };
 
             DownloadItem {
-                slot: *slot,
+                kind: *kind,
                 id: Some(entry.id()),
                 label: format!("{} {}", entry.name(), entry.version()),
                 size_label: "Ready to download".into(),
@@ -583,12 +614,12 @@ fn build_download_items(
 fn current_download_mut(
     downloads: &mut [DownloadItem],
     current_generation: u64,
-    (generation, slot): (u64, Slot),
+    (generation, kind): (u64, AddonKind),
 ) -> Option<&mut DownloadItem> {
     if generation != current_generation {
         return None;
     }
-    downloads.iter_mut().find(|item| item.slot == slot)
+    downloads.iter_mut().find(|item| item.kind == kind)
 }
 
 fn update_download_progress(item: &mut DownloadItem, progress: &bottles_core::Progress) {
@@ -637,13 +668,10 @@ fn request_download_cancellation(downloads: &[DownloadItem]) {
     }
 }
 
-fn supported_component(
-    entries: &[CatalogEntry<Component>],
-    slot: Slot,
-) -> Option<&CatalogEntry<Component>> {
+fn supported_entry(entries: &[CatalogEntry], kind: AddonKind) -> Option<&CatalogEntry> {
     entries
         .iter()
-        .find(|entry| entry.slot() == slot && entry.is_supported())
+        .find(|entry| entry.kind() == kind && entry.is_supported())
 }
 
 fn experience_label(experience: Experience) -> &'static str {
@@ -755,9 +783,9 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
-    fn download(slot: Slot, state: DownloadState) -> DownloadItem {
+    fn download(kind: AddonKind, state: DownloadState) -> DownloadItem {
         DownloadItem {
-            slot,
+            kind,
             id: Some(Uuid::nil()),
             label: String::new(),
             size_label: String::new(),
@@ -769,9 +797,9 @@ mod tests {
     fn entry(
         id: &str,
         name: &str,
-        slot: Slot,
+        kind: AddonKind,
         platform: Option<(&str, &str)>,
-    ) -> CatalogEntry<Component> {
+    ) -> CatalogEntry {
         let mut artifact = serde_json::json!({
             "url": "https://example.com/addon.tar.xz",
             "file_name": "addon.tar.xz",
@@ -781,14 +809,17 @@ mod tests {
             artifact["platform"] = serde_json::json!({ "os": os, "arch": arch });
         }
 
-        serde_json::from_value(serde_json::json!({
+        let mut entry = serde_json::json!({
             "id": id,
             "name": name,
             "version": "1.0.0",
             "artifacts": [artifact],
-            "slot": slot.as_str(),
-        }))
-        .unwrap()
+        });
+        let serde_json::Value::Object(kind) = serde_json::to_value(kind).unwrap() else {
+            unreachable!("addon kinds serialize as tagged objects");
+        };
+        entry.as_object_mut().unwrap().extend(kind);
+        serde_json::from_value(entry).unwrap()
     }
 
     #[test]
@@ -807,22 +838,22 @@ mod tests {
         let unsupported = entry(
             "77e90211-9091-47a9-bb00-0da6c2360981",
             "WineBridge",
-            Slot::WineBridge,
+            AddonKind::WineBridge,
             Some((other_os, "x86_64")),
         );
         let universal = entry(
             "d87fd8b8-8230-4e64-a66f-8b0e1c70c694",
             "WineBridge",
-            Slot::WineBridge,
+            AddonKind::WineBridge,
             None,
         );
         let entries = [unsupported.clone(), universal.clone()];
 
         assert_eq!(
-            supported_component(&entries, Slot::WineBridge).map(CatalogEntry::id),
+            supported_entry(&entries, AddonKind::WineBridge).map(CatalogEntry::id),
             Some(universal.id())
         );
-        assert!(supported_component(&[unsupported], Slot::WineBridge).is_none());
+        assert!(supported_entry(&[unsupported], AddonKind::WineBridge).is_none());
     }
 
     #[test]
@@ -831,22 +862,22 @@ mod tests {
             entry(
                 "d87fd8b8-8230-4e64-a66f-8b0e1c70c694",
                 "WineBridge",
-                Slot::WineBridge,
+                AddonKind::WineBridge,
                 None,
             ),
             entry(
                 "77e90211-9091-47a9-bb00-0da6c2360981",
                 "Runner",
-                Slot::Runner,
+                AddonKind::Runner,
                 None,
             ),
         ];
 
         let downloads = build_download_items(&[], &catalog);
 
-        assert_eq!(downloads.len(), ONBOARDING_SLOTS.len());
-        for (item, (slot, _)) in downloads.iter().zip(ONBOARDING_SLOTS) {
-            assert_eq!(item.slot, *slot);
+        assert_eq!(downloads.len(), ONBOARDING_KINDS.len());
+        for (item, (kind, _)) in downloads.iter().zip(ONBOARDING_KINDS) {
+            assert_eq!(item.kind, *kind);
             assert!(item.id.is_some());
             assert_eq!(item.progress, 0.0);
             assert_eq!(item.size_label, "Ready to download");
@@ -862,54 +893,54 @@ mod tests {
     #[test]
     fn setup_completes_only_when_every_required_download_succeeds() {
         assert!(!downloads_complete(&[download(
-            Slot::WineBridge,
+            AddonKind::WineBridge,
             DownloadState::Running(CancellationToken::new()),
         )]));
         assert!(!downloads_complete(&[download(
-            Slot::WineBridge,
+            AddonKind::WineBridge,
             DownloadState::Cancelled,
         )]));
         assert!(!downloads_complete(&[download(
-            Slot::WineBridge,
+            AddonKind::WineBridge,
             DownloadState::Unavailable,
         )]));
-        let succeeded = ONBOARDING_SLOTS
+        let succeeded = ONBOARDING_KINDS
             .iter()
-            .map(|(slot, _)| download(*slot, DownloadState::Succeeded))
+            .map(|(kind, _)| download(*kind, DownloadState::Succeeded))
             .collect::<Vec<_>>();
 
         assert!(downloads_complete(&succeeded));
     }
 
     #[test]
-    fn download_keys_match_generation_and_slot() {
+    fn download_keys_match_generation_and_kind() {
         let mut downloads = vec![
             download(
-                Slot::WineBridge,
+                AddonKind::WineBridge,
                 DownloadState::Running(CancellationToken::new()),
             ),
             download(
-                Slot::Runner,
+                AddonKind::Runner,
                 DownloadState::Running(CancellationToken::new()),
             ),
         ];
 
         assert!(
-            current_download_mut(&mut downloads, 2, (1, Slot::Runner)).is_none(),
-            "a stale generation must not update any slot"
+            current_download_mut(&mut downloads, 2, (1, AddonKind::Runner)).is_none(),
+            "a stale generation must not update any kind"
         );
         assert_eq!(
-            current_download_mut(&mut downloads, 2, (2, Slot::Runner)).map(|item| item.slot),
-            Some(Slot::Runner)
+            current_download_mut(&mut downloads, 2, (2, AddonKind::Runner)).map(|item| item.kind),
+            Some(AddonKind::Runner)
         );
-        assert!(current_download_mut(&mut downloads, 2, (2, Slot::Dxvk)).is_none());
+        assert!(current_download_mut(&mut downloads, 2, (2, AddonKind::Umu)).is_none());
     }
 
     #[test]
     fn cancellation_is_requested_without_discarding_the_running_token() {
         let cancellation = CancellationToken::new();
         let downloads = [download(
-            Slot::WineBridge,
+            AddonKind::WineBridge,
             DownloadState::Running(cancellation.clone()),
         )];
 
@@ -927,10 +958,10 @@ mod tests {
         let mut phase = SetupPhase::Cancelling;
         let mut downloads = vec![
             download(
-                Slot::WineBridge,
+                AddonKind::WineBridge,
                 DownloadState::Running(CancellationToken::new()),
             ),
-            download(Slot::Runner, DownloadState::Cancelled),
+            download(AddonKind::Runner, DownloadState::Cancelled),
         ];
 
         settle_download_batch(&mut phase, &mut downloads);
@@ -957,7 +988,7 @@ mod tests {
 
     #[test]
     fn download_progress_uses_the_reported_http_total() {
-        let mut item = download(Slot::WineBridge, DownloadState::Pending);
+        let mut item = download(AddonKind::WineBridge, DownloadState::Pending);
         item.size_label = "Ready to download".into();
         let progress = bottles_core::Progress {
             stage: bottles_core::Stage::Downloading {

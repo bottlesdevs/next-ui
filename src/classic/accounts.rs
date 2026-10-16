@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use bottles_core::{
-    AccountLinkInteraction, PluginId, Profile, Profiles, StorefrontProvider,
+    AccountLink, AccountLinkInteraction, AccountProviderInfo, Profile, Profiles,
     error::Error as CoreError,
 };
 use iced::futures::channel::{mpsc, oneshot};
@@ -190,8 +190,8 @@ impl Drop for LoginDialog {
 
 #[derive(Clone)]
 pub enum Message {
-    UnlinkAccount(PluginId),
-    BeginLogin(StorefrontProvider),
+    UnlinkAccount(Uuid),
+    BeginLogin(AccountProviderInfo),
     LoginRequested {
         generation: u64,
         prompt: LoginPrompt,
@@ -201,8 +201,8 @@ pub enum Message {
     CopyLoginUrl,
     SubmitLogin,
     DismissLogin,
-    LinkFinished(Result<Profile, Arc<CoreError>>),
-    ProfileUpdated(Result<Profile, Arc<CoreError>>),
+    LinkFinished(Result<AccountLink, Arc<CoreError>>),
+    ProfileUpdated(Result<(), Arc<CoreError>>),
     Noop,
 }
 
@@ -230,18 +230,12 @@ impl State {
 
     pub fn update(&mut self, message: Message, ctx: &Context<'_>) -> iced::Task<Message> {
         match message {
-            Message::UnlinkAccount(provider_id) => {
+            Message::UnlinkAccount(link_id) => {
                 if !self.mutation_pending && self.link_cancellation.is_none() {
                     let profiles = ctx.profiles.clone();
-                    let profile_id = ctx.active_profile.id();
                     self.mutation_pending = true;
                     return iced::Task::perform(
-                        async move {
-                            profiles
-                                .unlink_account(profile_id, provider_id)
-                                .await
-                                .map_err(Arc::new)
-                        },
+                        async move { profiles.unlink_account(link_id).await.map_err(Arc::new) },
                         Message::ProfileUpdated,
                     );
                 }
@@ -310,13 +304,13 @@ impl State {
         }
     }
 
-    fn finish_link(&mut self, result: Result<Profile, Arc<CoreError>>) {
+    fn finish_link(&mut self, result: Result<AccountLink, Arc<CoreError>>) {
         self.login_dialog = None;
         self.link_cancellation = None;
         self.last_error = presentation_error(result);
     }
 
-    fn finish_mutation(&mut self, result: Result<Profile, Arc<CoreError>>) {
+    fn finish_mutation(&mut self, result: Result<(), Arc<CoreError>>) {
         self.mutation_pending = false;
         self.last_error = presentation_error(result);
     }
@@ -341,7 +335,7 @@ impl State {
                     account.identity.display_name, account.provider.name
                 ),
                 "Connected",
-                Message::UnlinkAccount(account.provider.id.clone()),
+                Message::UnlinkAccount(account.link_id),
             ));
         }
 
@@ -411,7 +405,7 @@ pub fn action_button_row<'a, M: Clone + 'a>(
 fn link_account(
     profiles: &Profiles,
     profile_id: Uuid,
-    provider_id: PluginId,
+    provider_id: String,
     generation: u64,
 ) -> (CancellationToken, iced::Task<Message>) {
     let (send_prompt, prompts) = mpsc::unbounded();
@@ -430,7 +424,7 @@ fn link_account(
     (cancellation, iced::Task::batch([prompts, operation]))
 }
 
-fn presentation_error(result: Result<Profile, Arc<CoreError>>) -> Option<String> {
+fn presentation_error<T>(result: Result<T, Arc<CoreError>>) -> Option<String> {
     result.err().and_then(|error| {
         (!matches!(error.as_ref(), CoreError::Cancelled)).then(|| error.to_string())
     })
@@ -447,7 +441,7 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
-fn provider_icon(provider: &StorefrontProvider) -> Icon {
+fn provider_icon(provider: &AccountProviderInfo) -> Icon {
     if provider.id.as_str() == "steam" {
         Icon::Computer
     } else {

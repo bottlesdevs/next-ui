@@ -4,7 +4,8 @@ use std::{
     sync::Arc,
 };
 
-use bottles_core::{Bottles, Config as CoreConfig, error::Error as CoreError};
+use bottles_core::{Bottles, Config as CoreConfig, Directories, error::Error as CoreError};
+use bottles_plugin_host::Plugins;
 use iced::{Element, Fill, Subscription, Task, Theme, theme::Mode as ThemeMode};
 use next_config::Config;
 use serde::{Deserialize, Serialize};
@@ -635,12 +636,18 @@ async fn save_config_to(path: &Path, experience: Experience) -> AppResult<()> {
 
 async fn boot() -> AppResult<Boot> {
     let config = load_config().await?;
-    let core = Bottles::open(core_config())
+    let core = open_core()
         .await
         .map(Arc::new)
         .map_err(|error| AppError::Core(Arc::new(error)))?;
 
     Ok(Boot { config, core })
+}
+
+async fn open_core() -> Result<Bottles, CoreError> {
+    let directories = Directories::new().await?;
+    let plugins = Plugins::open(directories.plugins(), directories.staging()).await?;
+    Bottles::open(core_config(), plugins).await
 }
 
 fn core_config() -> CoreConfig {
