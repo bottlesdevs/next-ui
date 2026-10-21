@@ -224,13 +224,14 @@ impl State {
         side_panel(
             Side::Start,
             self.creation_open,
-            move |pane| {
-                navigation_split(
+            move |pane| match self.tab {
+                TabKind::Bottles => navigation_split(
                     pane,
-                    self.tab == TabKind::Bottles && self.selected(ctx).is_some(),
+                    self.selected(ctx).is_some(),
                     move |pane| self.primary_page(ctx, pane),
                     move |pane| self.detail_page(ctx, pane),
-                )
+                ),
+                TabKind::Library => self.primary_page(ctx, pane),
             },
             move |pane| self.creation_page(ctx, pane),
         )
