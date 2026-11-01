@@ -1,6 +1,5 @@
 //! Shared screen compositions over session snapshots.
 
-use bottles_core::ProviderState;
 use iced::{
     Element, Fill,
     widget::{Grid, column, container, scrollable},
@@ -10,6 +9,7 @@ use crate::{
     Icon,
     context::Context,
     jobs::Kind,
+    library::{Entry, Listing},
     theme,
     widget::{ArtworkCard, Button, CardAction, InfoCard, InfoCardKind, spacing},
 };
@@ -17,62 +17,67 @@ use crate::{
 pub fn library_grid<'a, Message: Clone + 'a>(
     ctx: &'a Context,
     query: &str,
-    on_launch: impl Fn(String, String) -> Message,
+    on_launch: impl Fn(Entry) -> Message,
 ) -> Element<'a, Message> {
     let query = query.to_lowercase();
-    let mut cards = Vec::new();
+    let mut entries: Vec<(&str, &str, Entry)> = Vec::new();
+    for bottle in &ctx.store.bottles {
+        for (id, program) in bottle.programs() {
+            entries.push((
+                program.name(),
+                bottle.name(),
+                Entry::Bottle(bottle.id(), id),
+            ));
+        }
+    }
+    #[cfg(feature = "fvs")]
+    for program in &ctx.store.programs {
+        entries.push((program.name(), "Program", Entry::Program(program.id())));
+    }
     let mut notices = column![].spacing(spacing::SM);
-    let mut providers = ctx.store.library.iter().collect::<Vec<_>>();
-    providers.sort_by_key(|(provider, _)| *provider);
-    for (provider, state) in providers {
-        match state.as_ref() {
-            ProviderState::Loaded(entries) => {
-                let mut entries = entries
-                    .iter()
-                    .filter(|entry| entry.title.to_lowercase().contains(&query))
-                    .collect::<Vec<_>>();
-                entries.sort_by(|left, right| {
-                    left.title
-                        .cmp(&right.title)
-                        .then_with(|| left.id.cmp(&right.id))
-                });
-                for entry in entries {
-                    let launching = ctx
-                        .jobs
-                        .running(&Kind::Launch(provider.clone(), entry.id.clone()));
-                    cards.push(
-                        ArtworkCard::new(
-                            &entry.title,
-                            if launching { "Launching…" } else { provider },
-                        )
-                        .primary(
-                            CardAction::new("Play", Icon::Play)
-                                .loading(launching)
-                                .on_press_maybe(
-                                    (!launching)
-                                        .then(|| on_launch(provider.clone(), entry.id.clone())),
-                                ),
-                        )
-                        .into(),
-                    );
+    for (plugin, listing) in &ctx.store.plugins {
+        match listing {
+            Listing::Loaded(listed) => {
+                for entry in listed {
+                    entries.push((
+                        &entry.title,
+                        plugin,
+                        Entry::Plugin(plugin.clone(), entry.id.clone()),
+                    ));
                 }
             }
-            ProviderState::Loading => {
+            Listing::Loading => {
                 notices = notices.push(InfoCard::new(
                     InfoCardKind::Hint,
                     "Loading library",
-                    format!("Loading entries from {provider}."),
+                    format!("Loading entries from {plugin}."),
                 ));
             }
-            ProviderState::Failed(error) => {
+            Listing::Failed(error) => {
                 notices = notices.push(InfoCard::new(
                     InfoCardKind::Error,
                     "Library unavailable",
-                    format!("{provider}: {error}"),
+                    format!("{plugin}: {error}"),
                 ));
             }
         }
     }
+    entries.retain(|(title, _, _)| title.to_lowercase().contains(&query));
+    entries.sort_by(|left, right| (left.0, left.1).cmp(&(right.0, right.1)));
+
+    let cards = entries
+        .into_iter()
+        .map(|(title, source, entry)| {
+            let launching = ctx.jobs.running(&Kind::Launch(entry.clone()));
+            ArtworkCard::new(title, if launching { "Launching…" } else { source })
+                .primary(
+                    CardAction::new("Play", Icon::Play)
+                        .loading(launching)
+                        .on_press_maybe((!launching).then(|| on_launch(entry))),
+                )
+                .into()
+        })
+        .collect::<Vec<_>>();
 
     if cards.is_empty() {
         notices

@@ -7,6 +7,7 @@ use crate::{
     Icon,
     jobs::Kind,
     layout::{self, PaneContext},
+    library::Entry,
     widget::{ArtworkCard, CardAction, InfoRow, RowGroup, Search, spacing},
 };
 use crate::{
@@ -45,7 +46,7 @@ impl State {
             Message::QueryChanged(query) => self.query = query,
             Message::Select(id) => self.selected = Some(id),
             Message::Back => self.selected = None,
-            Message::Launch(id) => return ctx.launch_entry("programs".into(), id.to_string()),
+            Message::Launch(id) => return ctx.launch(Entry::Program(id)),
             Message::Stop(id) => match ctx.core.programs().open(id) {
                 Ok(program) => {
                     return ctx.jobs.start(
@@ -187,7 +188,5 @@ impl State {
 }
 
 fn busy(ctx: &Context, id: Uuid) -> bool {
-    ctx.jobs
-        .running(&Kind::Launch("programs".into(), id.to_string()))
-        || ctx.jobs.running(&Kind::Stop(id))
+    ctx.jobs.running(&Kind::Launch(Entry::Program(id))) || ctx.jobs.running(&Kind::Stop(id))
 }

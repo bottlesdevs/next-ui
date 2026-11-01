@@ -1,11 +1,13 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bottles_core::{AddonKind, Bottles, CatalogEntry};
+use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
 
 use crate::{
     app::Message,
     jobs::{Jobs, Kind},
+    library::Entry,
     notifications::Notifications,
     settings::Settings,
     store::Store,
@@ -13,6 +15,7 @@ use crate::{
 
 pub(crate) struct Context {
     pub(crate) core: Arc<Bottles>,
+    pub(crate) libraries: HashMap<String, Arc<Plugin<Library>>>,
     pub(crate) settings: Settings,
     pub(crate) store: Store,
     pub(crate) jobs: Jobs,
@@ -33,13 +36,28 @@ impl Context {
         self.jobs.start(Kind::Fetch(id), operation)
     }
 
-    pub(crate) fn launch_entry(&mut self, provider: String, entry: String) -> Task<Message> {
-        match self.core.library().launch(&provider, &entry) {
-            Ok(operation) => self.jobs.start(Kind::Launch(provider, entry), operation),
-            Err(error) => {
-                self.notifications.error(error.to_string());
-                Task::none()
+    pub(crate) fn launch(&mut self, entry: Entry) -> Task<Message> {
+        let kind = Kind::Launch(entry.clone());
+        match entry {
+            Entry::Bottle(bottle, program) => match self.core.bottles().open(bottle) {
+                Ok(bottle) => return self.jobs.start(kind, bottle.launch_program(program)),
+                Err(error) => self.notifications.error(error.to_string()),
+            },
+            #[cfg(feature = "fvs")]
+            Entry::Program(id) => match self.core.programs().open(id) {
+                Ok(program) => return self.jobs.start(kind, program.launch()),
+                Err(error) => self.notifications.error(error.to_string()),
+            },
+            Entry::Plugin(plugin, id) => {
+                let library = self.libraries[&plugin].clone();
+                return self.jobs.perform(kind, async move {
+                    library
+                        .launch(&id)
+                        .await
+                        .map_err(|error| format!("{plugin}: {error}"))
+                });
             }
         }
+        Task::none()
     }
 }

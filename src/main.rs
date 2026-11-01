@@ -4,6 +4,7 @@ mod classic;
 mod context;
 mod jobs;
 mod layout;
+mod library;
 #[cfg(feature = "fvs")]
 mod next;
 mod notifications;

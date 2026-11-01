@@ -1,7 +1,7 @@
-use std::{fmt, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use bottles_core::Bottles;
-use bottles_plugin_host::{Account, Library, Plugins};
+use bottles_plugin_host::{Library, Plugin, Plugins};
 use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
 use uuid::Uuid;
 
@@ -53,6 +53,7 @@ impl Screen {
 pub(crate) struct Boot {
     settings: Settings,
     core: Arc<Bottles>,
+    libraries: HashMap<String, Arc<Plugin<Library>>>,
 }
 
 #[derive(Clone)]
@@ -145,13 +146,14 @@ impl App {
             }
             Message::Booted(result) => match result {
                 Ok(boot) => {
-                    let watches = Store::watch(&boot.core);
+                    let watches = Store::watch(&boot.core, &boot.libraries);
                     let ctx = Context {
-                        store: Store::new(&boot.core),
+                        store: Store::new(&boot.core, &boot.libraries),
                         jobs: Jobs::default(),
                         notifications: Notifications::default(),
                         settings: boot.settings,
                         core: boot.core,
+                        libraries: boot.libraries,
                     };
                     let screen = ctx
                         .settings
@@ -271,22 +273,21 @@ async fn boot() -> Result<Boot, String> {
         .map_err(|error| error.to_string())?;
     let result = async {
         let plugins = Plugins::new(core.directories()).map_err(|error| error.to_string())?;
+        let mut libraries = HashMap::new();
         for manifest in plugins.list().map_err(|error| error.to_string())? {
             let plugin = plugins
                 .load(&manifest.id)
                 .await
                 .map_err(|error| error.to_string())?;
-            if let Some(account) = plugin.cast::<Account>() {
-                core.profiles().register_provider(Arc::new(account));
-            }
             if let Some(library) = plugin.cast::<Library>() {
-                core.library().register_provider(Arc::new(library));
+                libraries.insert(manifest.id, Arc::new(library));
             }
         }
         let settings = Settings::load(core.directories().config_dir()).await?;
         Ok(Boot {
             settings,
             core: core.clone(),
+            libraries,
         })
     }
     .await;

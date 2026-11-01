@@ -9,7 +9,7 @@ use iced::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use uuid::Uuid;
 
-use crate::{app::Message, settings::Settings};
+use crate::{app::Message, library::Entry, settings::Settings};
 
 #[derive(Default)]
 pub(crate) struct Jobs {
@@ -31,7 +31,7 @@ pub(crate) enum Kind {
     Fetch(Uuid),
     CreateBottle(String),
     Edit(Uuid),
-    Launch(String, String),
+    Launch(Entry),
     Stop(Uuid),
     Delete(Uuid),
     SaveSettings,
@@ -78,6 +78,19 @@ impl Jobs {
             }
         };
         self.run(kind, cancel, progress, drive)
+    }
+
+    pub(crate) fn perform(
+        &mut self,
+        kind: Kind,
+        future: impl Future<Output = Result<(), String>> + Send + 'static,
+    ) -> Task<Message> {
+        let cancel = self.shutdown.child_token();
+        let drive = {
+            let cancel = cancel.clone();
+            async move { cancel.run_until_cancelled(future).await.unwrap_or(Ok(())) }
+        };
+        self.run(kind, cancel, stream::empty(), drive)
     }
 
     pub(crate) fn save_settings(&mut self, settings: Settings, config_dir: &Path) -> Task<Message> {

@@ -18,6 +18,7 @@ use crate::{
     context::Context,
     jobs::Kind,
     layout::{PaneContext, Side, navigation_split, side_panel},
+    library::Entry,
     theme, views,
 };
 
@@ -63,7 +64,7 @@ pub enum Message {
     Rename(String),
     SaveName,
     LaunchProgram { bottle: Uuid, program: Uuid },
-    LaunchLibrary(String, String),
+    LaunchLibrary(Entry),
     Stop(Uuid),
     Delete(Uuid),
     ToggleGamescope(Uuid, bool),
@@ -169,8 +170,8 @@ impl State {
             Message::LaunchProgram {
                 bottle: id,
                 program,
-            } => return ctx.launch_entry("bottles".into(), format!("{id}/{program}")),
-            Message::LaunchLibrary(provider, entry) => return ctx.launch_entry(provider, entry),
+            } => return ctx.launch(Entry::Bottle(id, program)),
+            Message::LaunchLibrary(entry) => return ctx.launch(entry),
             Message::Stop(id) => match ctx.core.bottles().open(id) {
                 Ok(bottle) => {
                     return ctx.jobs.start(

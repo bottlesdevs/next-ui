@@ -1,17 +1,21 @@
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 #[cfg(feature = "fvs")]
 use bottles_core::ProgramState;
-use bottles_core::{AddonsState, BottleState, Bottles, LibrarySnapshot};
+use bottles_core::{AddonsState, BottleState, Bottles};
+use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
 
-use crate::app::Message;
+use crate::{app::Message, library::Listing};
 
 pub(crate) struct Store {
     pub(crate) bottles: Vec<Arc<BottleState>>,
     #[cfg(feature = "fvs")]
     pub(crate) programs: Vec<Arc<ProgramState>>,
-    pub(crate) library: LibrarySnapshot,
+    pub(crate) plugins: BTreeMap<String, Listing>,
     pub(crate) addons: Arc<AddonsState>,
 }
 
@@ -20,23 +24,42 @@ pub(crate) enum Update {
     Bottles(Vec<Arc<BottleState>>),
     #[cfg(feature = "fvs")]
     Programs(Vec<Arc<ProgramState>>),
-    Library(LibrarySnapshot),
+    Plugin(String, Listing),
     Addons(Arc<AddonsState>),
 }
 
 impl Store {
-    pub(crate) fn new(core: &Bottles) -> Self {
+    pub(crate) fn new(core: &Bottles, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
         Self {
             bottles: Vec::new(),
             #[cfg(feature = "fvs")]
             programs: Vec::new(),
-            library: LibrarySnapshot::default(),
+            plugins: libraries
+                .keys()
+                .map(|id| (id.clone(), Listing::Loading))
+                .collect(),
             addons: core.addons().state(),
         }
     }
 
-    pub(crate) fn watch(core: &Bottles) -> Task<Message> {
-        Task::batch([
+    pub(crate) fn watch(
+        core: &Bottles,
+        libraries: &HashMap<String, Arc<Plugin<Library>>>,
+    ) -> Task<Message> {
+        let listings = libraries.iter().map(|(id, library)| {
+            let id = id.clone();
+            let library = library.clone();
+            Task::perform(async move { library.list_entries().await }, move |result| {
+                Message::Store(Update::Plugin(
+                    id.clone(),
+                    match result {
+                        Ok(entries) => Listing::Loaded(entries),
+                        Err(error) => Listing::Failed(error.to_string()),
+                    },
+                ))
+            })
+        });
+        let watches = Task::batch([
             #[cfg(feature = "fvs")]
             Task::run(core.programs().watch(), |programs| {
                 Message::Store(Update::Programs(programs))
@@ -44,13 +67,11 @@ impl Store {
             Task::run(core.bottles().watch(), |bottles| {
                 Message::Store(Update::Bottles(bottles))
             }),
-            Task::run(core.library().watch(), |library| {
-                Message::Store(Update::Library(library))
-            }),
             Task::run(core.addons().watch(), |addons| {
                 Message::Store(Update::Addons(addons))
             }),
-        ])
+        ]);
+        Task::batch(listings.chain([watches]))
     }
 
     pub(crate) fn update(&mut self, update: Update) {
@@ -63,7 +84,9 @@ impl Store {
                 });
                 self.bottles = bottles;
             }
-            Update::Library(library) => self.library = library,
+            Update::Plugin(id, listing) => {
+                self.plugins.insert(id, listing);
+            }
             #[cfg(feature = "fvs")]
             Update::Programs(mut programs) => {
                 programs.sort_by(|left, right| {

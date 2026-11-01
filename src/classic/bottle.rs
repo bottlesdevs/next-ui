@@ -17,6 +17,7 @@ use uuid::Uuid;
 use super::{Draft, Message};
 use crate::{
     jobs::{Jobs, Kind},
+    library::Entry,
     store::Store,
 };
 
@@ -131,10 +132,7 @@ pub(super) fn creation<'a>(
 
 pub(super) fn programs<'a>(bottle: &'a BottleState, jobs: &'a Jobs) -> Element<'a, Message> {
     let cards = bottle.programs().map(|(id, program)| {
-        let launching = jobs.running(&Kind::Launch(
-            "bottles".into(),
-            format!("{}/{id}", bottle.id()),
-        ));
+        let launching = jobs.running(&Kind::Launch(Entry::Bottle(bottle.id(), id)));
         ArtworkCard::new(
             program.name(),
             if launching {
