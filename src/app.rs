@@ -13,6 +13,7 @@ use crate::{
     jobs::{self, Jobs},
     notifications::{self, Notifications},
     onboarding,
+    profiles::Profiles,
     settings::{Experience, Settings},
     store::{self, Store},
     theme,
@@ -54,6 +55,7 @@ pub(crate) struct Boot {
     settings: Settings,
     core: Arc<Bottles>,
     libraries: HashMap<String, Arc<Plugin<Library>>>,
+    profiles: Profiles,
 }
 
 #[derive(Clone)]
@@ -154,6 +156,7 @@ impl App {
                         settings: boot.settings,
                         core: boot.core,
                         libraries: boot.libraries,
+                        profiles: boot.profiles,
                     };
                     let screen = ctx
                         .settings
@@ -284,10 +287,12 @@ async fn boot() -> Result<Boot, String> {
             }
         }
         let settings = Settings::load(core.directories().config_dir()).await?;
+        let profiles = Profiles::load(core.directories().config_dir()).await?;
         Ok(Boot {
             settings,
             core: core.clone(),
             libraries,
+            profiles,
         })
     }
     .await;

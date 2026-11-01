@@ -9,6 +9,7 @@ use crate::{
     jobs::{Jobs, Kind},
     library::Entry,
     notifications::Notifications,
+    profiles::Profiles,
     settings::Settings,
     store::Store,
 };
@@ -17,6 +18,9 @@ pub(crate) struct Context {
     pub(crate) core: Arc<Bottles>,
     pub(crate) libraries: HashMap<String, Arc<Plugin<Library>>>,
     pub(crate) settings: Settings,
+    // No screen reads profiles yet.
+    #[allow(dead_code)]
+    pub(crate) profiles: Profiles,
     pub(crate) store: Store,
     pub(crate) jobs: Jobs,
     pub(crate) notifications: Notifications,

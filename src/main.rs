@@ -9,6 +9,7 @@ mod library;
 mod next;
 mod notifications;
 mod onboarding;
+mod profiles;
 mod settings;
 mod store;
 mod views;
