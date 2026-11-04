@@ -3,22 +3,21 @@ use std::{
     sync::Arc,
 };
 
-use bottles_core::{AddonsState, Bottles, EnvironmentState};
+use bottles_core::{AddonsState, Bottles, Inventory};
 use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
-use uuid::Uuid;
 
 use crate::{app::Message, library::Listing};
 
 pub(crate) struct Store {
-    pub(crate) environments: HashMap<Uuid, Arc<EnvironmentState>>,
+    pub(crate) environments: Inventory,
     pub(crate) plugins: BTreeMap<String, Listing>,
     pub(crate) addons: Arc<AddonsState>,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Update {
-    Environments(HashMap<Uuid, Arc<EnvironmentState>>),
+    Environments(Inventory),
     Plugin(String, Listing),
     Addons(Arc<AddonsState>),
 }
@@ -26,7 +25,7 @@ pub(crate) enum Update {
 impl Store {
     pub(crate) fn new(core: &Bottles, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
         Self {
-            environments: HashMap::new(),
+            environments: core.environments().inventory(),
             plugins: libraries
                 .keys()
                 .map(|id| (id.clone(), Listing::Loading))
@@ -53,15 +52,8 @@ impl Store {
             })
         });
         let watches = Task::batch([
-            Task::run(core.environments().watch(), |environments| {
-                Message::Store(Update::Environments(
-                    environments
-                        .iter()
-                        .filter_map(|environment| {
-                            Some((environment.id(), environment.state().ok()?))
-                        })
-                        .collect(),
-                ))
+            Task::run(core.environments().watch(), |inventory| {
+                Message::Store(Update::Environments(inventory))
             }),
             Task::run(core.addons().watch(), |addons| {
                 Message::Store(Update::Addons(addons))
