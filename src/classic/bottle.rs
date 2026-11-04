@@ -1,6 +1,6 @@
 //! Classic bottle compositions derived from the session snapshots and jobs.
 
-use bottles_core::{BottleState, Runner, WineBridge};
+use bottles_core::{Runner, WineBridge};
 use iced::{
     Center, Element, Fill, Length, Theme,
     widget::{Grid, column, container, responsive, row, text},
@@ -16,17 +16,18 @@ use uuid::Uuid;
 
 use super::{Draft, Message};
 use crate::{
+    collection::{Bottle, Item},
     jobs::{Jobs, Kind},
     library::Entry,
     store::Store,
 };
 
 pub(super) fn rows<'a>(
-    store: &'a Store,
+    bottles: Vec<Item<'a, Bottle>>,
     jobs: &'a Jobs,
     selected: Option<Uuid>,
 ) -> Element<'a, Message> {
-    if store.bottles.is_empty()
+    if bottles.is_empty()
         && !jobs
             .map
             .values()
@@ -35,11 +36,11 @@ pub(super) fn rows<'a>(
         return text("No bottles yet. Add a bottle to get started.").into();
     }
     responsive(move |size| {
-        let bottles = store.bottles.iter().map(|bottle| {
-            ActionRow::new(bottle.name(), Message::Select(bottle.id()))
-                .description(bottle.config().runner.name())
+        let bottles = bottles.iter().map(|bottle| {
+            ActionRow::new(&bottle.record.name, Message::Select(bottle.id))
+                .description(bottle.state.runner.name())
                 .icon(Icon::Bottles)
-                .selected(selected == Some(bottle.id()))
+                .selected(selected == Some(bottle.id))
                 .into()
         });
         let creating = jobs.map.values().filter_map(|job| {
@@ -130,11 +131,11 @@ pub(super) fn creation<'a>(
     content.into()
 }
 
-pub(super) fn programs<'a>(bottle: &'a BottleState, jobs: &'a Jobs) -> Element<'a, Message> {
-    let cards = bottle.programs().map(|(id, program)| {
-        let launching = jobs.running(&Kind::Launch(Entry::Bottle(bottle.id(), id)));
+pub(super) fn programs<'a>(bottle: Item<'a, Bottle>, jobs: &'a Jobs) -> Element<'a, Message> {
+    let cards = bottle.record.programs.iter().map(move |(&id, program)| {
+        let launching = jobs.running(&Kind::Launch(Entry::Bottle(bottle.id, id)));
         ArtworkCard::new(
-            program.name(),
+            &program.name,
             if launching {
                 "Launching…"
             } else {
@@ -144,9 +145,9 @@ pub(super) fn programs<'a>(bottle: &'a BottleState, jobs: &'a Jobs) -> Element<'
         .primary(
             CardAction::new("Play", Icon::Play)
                 .loading(launching)
-                .on_press_maybe((!launching && !busy(jobs, bottle.id())).then_some(
+                .on_press_maybe((!launching && !busy(jobs, bottle.id)).then_some(
                     Message::LaunchProgram {
-                        bottle: bottle.id(),
+                        bottle: bottle.id,
                         program: id,
                     },
                 )),
@@ -188,15 +189,16 @@ fn new_program<'a>() -> ActionTile<'a, Message> {
 }
 
 pub(super) fn settings<'a>(
-    bottle: &'a BottleState,
+    bottle: Item<'a, Bottle>,
     rename: Option<&'a str>,
     jobs: &Jobs,
 ) -> Element<'a, Message> {
     const SETTINGS_TRACK_MIN_WIDTH: f32 = 300.0;
-    let editing = busy(jobs, bottle.id());
+    let editing = busy(jobs, bottle.id);
+    let (id, name, state) = (bottle.id, &bottle.record.name, bottle.state);
     responsive(move |size| {
         let columns = usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
-        let value = rename.unwrap_or_else(|| bottle.name());
+        let value = rename.unwrap_or(name);
         let mut name = TextRow::new("Bottle Name", value);
         if !editing {
             name = name.on_input(Message::Rename);
@@ -215,8 +217,8 @@ pub(super) fn settings<'a>(
                     InfoRow::new("Runner")
                         .description(format!(
                             "{} {}",
-                            bottle.config().runner.name(),
-                            bottle.config().runner.version()
+                            state.runner.name(),
+                            state.runner.version()
                         ))
                         .icon(Icon::Run),
                 )
@@ -232,8 +234,7 @@ pub(super) fn settings<'a>(
                     .description("Define your custom drives")
                     .row(unavailable()),
             );
-        let id = bottle.id();
-        let wrappers = &bottle.config().wrappers;
+        let wrappers = &state.wrappers;
         let graphics = RowGroup::new()
             .title("Graphics")
             .columns(columns)
@@ -283,8 +284,8 @@ pub(super) fn busy(jobs: &Jobs, bottle: Uuid) -> bool {
         .any(|kind| jobs.running(kind))
 }
 
-pub(super) fn status(bottle: &BottleState) -> LogPanel<'_> {
-    let runner = &bottle.config().runner;
+pub(super) fn status<'a>(bottle: &Item<'a, Bottle>) -> LogPanel<'a> {
+    let runner = &bottle.state.runner;
     LogPanel::new(
         "Win64",
         format!("{} {}", runner.name(), runner.version()),

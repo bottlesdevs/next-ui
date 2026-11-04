@@ -6,6 +6,7 @@ use iced::Task;
 
 use crate::{
     app::Message,
+    collection::Collection,
     jobs::{Jobs, Kind},
     library::Entry,
     notifications::Notifications,
@@ -18,6 +19,7 @@ pub(crate) struct Context {
     pub(crate) core: Arc<Bottles>,
     pub(crate) libraries: HashMap<String, Arc<Plugin<Library>>>,
     pub(crate) settings: Settings,
+    pub(crate) collection: Collection,
     // No screen reads profiles yet.
     #[allow(dead_code)]
     pub(crate) profiles: Profiles,
@@ -33,20 +35,30 @@ impl Context {
         self.jobs.start(Kind::Fetch(id), operation)
     }
 
+    pub(crate) fn save_collection(&mut self) -> Task<Message> {
+        let save = self
+            .collection
+            .clone()
+            .save(self.core.directories().data_dir());
+        self.jobs.save(save)
+    }
+
     pub(crate) fn launch(&mut self, entry: Entry) -> Task<Message> {
         let kind = Kind::Launch(entry.clone());
-        match entry {
-            Entry::Bottle(bottle, program) => match self.core.bottles().open(bottle) {
-                Ok(bottle) => return self.jobs.start(kind, bottle.launch_program(program)),
-                Err(error) => self.notifications.error(error.to_string()),
-            },
+        let (environment, group, program) = match &entry {
+            Entry::Bottle(bottle, program) => (
+                *bottle,
+                *program,
+                self.collection
+                    .bottles
+                    .get(bottle)
+                    .and_then(|bottle| bottle.programs.get(program)),
+            ),
             #[cfg(feature = "fvs")]
-            Entry::Program(id) => match self.core.programs().open(id) {
-                Ok(program) => return self.jobs.start(kind, program.launch()),
-                Err(error) => self.notifications.error(error.to_string()),
-            },
+            Entry::Program(id) => (*id, *id, self.collection.programs.get(id)),
             Entry::Plugin(plugin, id) => {
-                let library = self.libraries[&plugin].clone();
+                let library = self.libraries[plugin].clone();
+                let (plugin, id) = (plugin.clone(), id.clone());
                 return self.jobs.perform(kind, async move {
                     library
                         .launch(&id)
@@ -54,7 +66,20 @@ impl Context {
                         .map_err(|error| format!("{plugin}: {error}"))
                 });
             }
+        };
+        let Some(spec) = program.map(|program| program.spec.clone()) else {
+            self.notifications.error("This program no longer exists");
+            return Task::none();
+        };
+        match self.core.environments().open(environment) {
+            Ok(environment) => {
+                let operation = environment.launch(group, spec);
+                self.jobs.start(kind, operation)
+            }
+            Err(error) => {
+                self.notifications.error(error.to_string());
+                Task::none()
+            }
         }
-        Task::none()
     }
 }

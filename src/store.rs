@@ -3,27 +3,22 @@ use std::{
     sync::Arc,
 };
 
-#[cfg(feature = "fvs")]
-use bottles_core::ProgramState;
-use bottles_core::{AddonsState, BottleState, Bottles};
+use bottles_core::{AddonsState, Bottles, EnvironmentState};
 use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
+use uuid::Uuid;
 
 use crate::{app::Message, library::Listing};
 
 pub(crate) struct Store {
-    pub(crate) bottles: Vec<Arc<BottleState>>,
-    #[cfg(feature = "fvs")]
-    pub(crate) programs: Vec<Arc<ProgramState>>,
+    pub(crate) environments: HashMap<Uuid, Arc<EnvironmentState>>,
     pub(crate) plugins: BTreeMap<String, Listing>,
     pub(crate) addons: Arc<AddonsState>,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Update {
-    Bottles(Vec<Arc<BottleState>>),
-    #[cfg(feature = "fvs")]
-    Programs(Vec<Arc<ProgramState>>),
+    Environments(HashMap<Uuid, Arc<EnvironmentState>>),
     Plugin(String, Listing),
     Addons(Arc<AddonsState>),
 }
@@ -31,9 +26,7 @@ pub(crate) enum Update {
 impl Store {
     pub(crate) fn new(core: &Bottles, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
         Self {
-            bottles: Vec::new(),
-            #[cfg(feature = "fvs")]
-            programs: Vec::new(),
+            environments: HashMap::new(),
             plugins: libraries
                 .keys()
                 .map(|id| (id.clone(), Listing::Loading))
@@ -60,20 +53,13 @@ impl Store {
             })
         });
         let watches = Task::batch([
-            #[cfg(feature = "fvs")]
-            Task::run(core.programs().watch(), |programs| {
-                Message::Store(Update::Programs(
-                    programs
+            Task::run(core.environments().watch(), |environments| {
+                Message::Store(Update::Environments(
+                    environments
                         .iter()
-                        .filter_map(|program| program.state().ok())
-                        .collect(),
-                ))
-            }),
-            Task::run(core.bottles().watch(), |bottles| {
-                Message::Store(Update::Bottles(
-                    bottles
-                        .iter()
-                        .filter_map(|bottle| bottle.state().ok())
+                        .filter_map(|environment| {
+                            Some((environment.id(), environment.state().ok()?))
+                        })
                         .collect(),
                 ))
             }),
@@ -86,25 +72,9 @@ impl Store {
 
     pub(crate) fn update(&mut self, update: Update) {
         match update {
-            Update::Bottles(mut bottles) => {
-                bottles.sort_by(|left, right| {
-                    left.name()
-                        .cmp(right.name())
-                        .then_with(|| left.id().cmp(&right.id()))
-                });
-                self.bottles = bottles;
-            }
+            Update::Environments(environments) => self.environments = environments,
             Update::Plugin(id, listing) => {
                 self.plugins.insert(id, listing);
-            }
-            #[cfg(feature = "fvs")]
-            Update::Programs(mut programs) => {
-                programs.sort_by(|left, right| {
-                    left.name()
-                        .cmp(right.name())
-                        .then_with(|| left.id().cmp(&right.id()))
-                });
-                self.programs = programs;
             }
             Update::Addons(addons) => self.addons = addons,
         }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, future::Future, path::Path, pin::pin};
+use std::{collections::HashMap, future::Future, pin::pin};
 
 use bottles_core::{Operation, Progress, error};
 use iced::{
@@ -9,7 +9,7 @@ use iced::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use uuid::Uuid;
 
-use crate::{app::Message, library::Entry, settings::Settings};
+use crate::{app::Message, library::Entry};
 
 #[derive(Default)]
 pub(crate) struct Jobs {
@@ -34,13 +34,14 @@ pub(crate) enum Kind {
     Launch(Entry),
     Stop(Uuid),
     Delete(Uuid),
-    SaveSettings,
+    Save,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Event {
     Progress(Progress),
-    Finished(Result<(), String>),
+    /// Carries the message to dispatch after a successful job, if any.
+    Finished(Result<Option<Box<Message>>, String>),
 }
 
 impl Jobs {
@@ -56,6 +57,16 @@ impl Jobs {
         &mut self,
         kind: Kind,
         operation: Operation<T>,
+    ) -> Task<Message> {
+        self.start_then(kind, operation, |_| None)
+    }
+
+    /// Starts `operation` and dispatches `then` with its result once it succeeds.
+    pub(crate) fn start_then<T: Send + 'static>(
+        &mut self,
+        kind: Kind,
+        operation: Operation<T>,
+        then: impl FnOnce(T) -> Option<Message> + Send + 'static,
     ) -> Task<Message> {
         let cancel = operation.cancellation_token();
         let progress = operation.progress();
@@ -73,7 +84,8 @@ impl Jobs {
                     future::Either::Right((result, _)) => result,
                 };
             match result {
-                Ok(_) | Err(error::Error::Cancelled) => Ok(()),
+                Ok(value) => Ok(then(value).map(Box::new)),
+                Err(error::Error::Cancelled) => Ok(None),
                 Err(error) => Err(error.to_string()),
             }
         };
@@ -88,30 +100,30 @@ impl Jobs {
         let cancel = self.shutdown.child_token();
         let drive = {
             let cancel = cancel.clone();
-            async move { cancel.run_until_cancelled(future).await.unwrap_or(Ok(())) }
+            async move {
+                let result = cancel.run_until_cancelled(future).await.unwrap_or(Ok(()));
+                result.map(|()| None)
+            }
         };
         self.run(kind, cancel, stream::empty(), drive)
     }
 
-    pub(crate) fn save_settings(&mut self, settings: Settings, config_dir: &Path) -> Task<Message> {
-        let save = settings.save(config_dir);
+    pub(crate) fn save(
+        &mut self,
+        save: impl Future<Output = Result<(), String>> + Send + 'static,
+    ) -> Task<Message> {
         let (completion, next) = oneshot::channel();
         let previous = self.save_tail.replace(next);
-        // Settings writes finish in invocation order, including during shutdown.
+        // Writes finish in invocation order, including during shutdown.
         let drive = async move {
             if let Some(previous) = previous {
                 let _ = previous.await;
             }
             let result = save.await;
             drop(completion);
-            result
+            result.map(|()| None)
         };
-        self.run(
-            Kind::SaveSettings,
-            CancellationToken::new(),
-            stream::empty(),
-            drive,
-        )
+        self.run(Kind::Save, CancellationToken::new(), stream::empty(), drive)
     }
 
     fn run(
@@ -119,7 +131,7 @@ impl Jobs {
         kind: Kind,
         cancel: CancellationToken,
         progress: impl Stream<Item = Progress> + Send + 'static,
-        drive: impl Future<Output = Result<(), String>> + Send + 'static,
+        drive: impl Future<Output = Result<Option<Box<Message>>, String>> + Send + 'static,
     ) -> Task<Message> {
         let id = Uuid::new_v4();
         self.map.insert(
@@ -147,17 +159,21 @@ impl Jobs {
         )
     }
 
-    pub(crate) fn update(&mut self, id: Uuid, event: Event) -> Option<String> {
+    pub(crate) fn update(
+        &mut self,
+        id: Uuid,
+        event: Event,
+    ) -> Result<Option<Box<Message>>, String> {
         match event {
             Event::Progress(progress) => {
                 if let Some(job) = self.map.get_mut(&id) {
                     job.progress = Some(progress);
                 }
-                None
+                Ok(None)
             }
             Event::Finished(result) => {
                 self.map.remove(&id);
-                result.err()
+                result
             }
         }
     }

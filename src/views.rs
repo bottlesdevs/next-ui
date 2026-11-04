@@ -21,18 +21,18 @@ pub fn library_grid<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let query = query.to_lowercase();
     let mut entries: Vec<(&str, &str, Entry)> = Vec::new();
-    for bottle in &ctx.store.bottles {
-        for (id, program) in bottle.programs() {
+    for bottle in ctx.collection.bottles(&ctx.store) {
+        for (id, program) in &bottle.record.programs {
             entries.push((
-                program.name(),
-                bottle.name(),
-                Entry::Bottle(bottle.id(), id),
+                &program.name,
+                &bottle.record.name,
+                Entry::Bottle(bottle.id, *id),
             ));
         }
     }
     #[cfg(feature = "fvs")]
-    for program in &ctx.store.programs {
-        entries.push((program.name(), "Program", Entry::Program(program.id())));
+    for program in ctx.collection.programs(&ctx.store) {
+        entries.push((&program.record.name, "Program", Entry::Program(program.id)));
     }
     let mut notices = column![].spacing(spacing::SM);
     for (plugin, listing) in &ctx.store.plugins {

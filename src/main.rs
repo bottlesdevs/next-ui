@@ -1,6 +1,7 @@
 mod app;
 mod chrome;
 mod classic;
+mod collection;
 mod context;
 mod jobs;
 mod layout;

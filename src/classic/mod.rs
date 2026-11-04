@@ -2,7 +2,7 @@
 
 mod bottle;
 
-use bottles_core::{BottleState, Operation, PrefixBackend, Runner, Umu, WineBridge};
+use bottles_core::{Operation, PrefixBackend, Runner, Umu, WineBridge};
 use iced::{
     Element, Fill, Task,
     widget::{column, container},
@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     app, chrome,
+    collection::{self, Item},
     context::Context,
     jobs::Kind,
     layout::{PaneContext, Side, navigation_split, side_panel},
@@ -141,32 +142,32 @@ impl State {
                     return Task::none();
                 };
                 let name = draft.name.clone();
-                let operation = ctx.core.bottles().create(
-                    name.clone(),
+                let operation = ctx.core.environments().create(
                     PrefixBackend::Standard,
                     runner,
                     winebridge,
                     ctx.store.addons.releases::<Umu>().into_iter().next(),
                 );
                 self.creation_open = false;
-                return ctx.jobs.start(Kind::CreateBottle(name), operation);
+                return ctx.jobs.start_then(
+                    Kind::CreateBottle(name.clone()),
+                    operation,
+                    |environment| {
+                        Some(app::Message::Collection(collection::Change::AddBottle(
+                            environment.id(),
+                            name,
+                        )))
+                    },
+                );
             }
             Message::Rename(name) => self.rename = Some(name),
             Message::SaveName => {
                 let (Some(id), Some(name)) = (self.selected, self.rename.take()) else {
                     return Task::none();
                 };
-                match ctx.core.bottles().open(id) {
-                    Ok(bottle) => {
-                        return ctx.jobs.start(
-                            Kind::Edit(id),
-                            bottle.edit(move |edit| {
-                                edit.rename(name);
-                                Ok(())
-                            }),
-                        );
-                    }
-                    Err(error) => ctx.notifications.error(error.to_string()),
+                if let Some(bottle) = ctx.collection.bottles.get_mut(&id) {
+                    bottle.name = name;
+                    return ctx.save_collection();
                 }
             }
             Message::LaunchProgram {
@@ -174,27 +175,28 @@ impl State {
                 program,
             } => return ctx.launch(Entry::Bottle(id, program)),
             Message::LaunchLibrary(entry) => return ctx.launch(entry),
-            Message::Stop(id) => match ctx.core.bottles().open(id) {
-                Ok(bottle) => {
+            Message::Stop(id) => match ctx.core.environments().open(id) {
+                Ok(environment) => {
                     return ctx.jobs.start(
                         Kind::Stop(id),
-                        Operation::new(move |_, _| async move { bottle.stop().await }),
+                        Operation::new(move |_, _| async move { environment.stop().await }),
                     );
                 }
                 Err(error) => ctx.notifications.error(error.to_string()),
             },
             Message::Delete(id) => {
-                return ctx
-                    .jobs
-                    .start(Kind::Delete(id), ctx.core.bottles().delete(id));
+                let operation = ctx.core.environments().delete(id);
+                return ctx.jobs.start_then(Kind::Delete(id), operation, move |()| {
+                    Some(app::Message::Collection(collection::Change::Remove(id)))
+                });
             }
             Message::ToggleGamescope(id, enabled) | Message::ToggleMangoHud(id, enabled) => {
                 let gamescope = matches!(message, Message::ToggleGamescope(..));
-                match ctx.core.bottles().open(id) {
-                    Ok(bottle) => {
+                match ctx.core.environments().open(id) {
+                    Ok(environment) => {
                         return ctx.jobs.start(
                             Kind::Edit(id),
-                            bottle.edit(move |edit| {
+                            environment.edit(move |edit| {
                                 if gamescope {
                                     edit.wrappers().gamescope.enabled = enabled;
                                 } else {
@@ -215,12 +217,11 @@ impl State {
         Task::none()
     }
 
-    fn selected<'a>(&self, ctx: &'a Context) -> Option<&'a BottleState> {
-        ctx.store
-            .bottles
-            .iter()
-            .find(|bottle| Some(bottle.id()) == self.selected)
-            .map(AsRef::as_ref)
+    fn selected<'a>(&self, ctx: &'a Context) -> Option<Item<'a, collection::Bottle>> {
+        ctx.collection
+            .bottles(&ctx.store)
+            .into_iter()
+            .find(|bottle| Some(bottle.id) == self.selected)
     }
 
     pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
@@ -256,11 +257,9 @@ impl State {
                 .middle(tabs)
         });
         let body = match self.tab {
-            TabKind::Bottles => bottle::rows(
-                &ctx.store,
-                &ctx.jobs,
-                self.selected(ctx).map(BottleState::id),
-            ),
+            TabKind::Bottles => {
+                bottle::rows(ctx.collection.bottles(&ctx.store), &ctx.jobs, self.selected)
+            }
             TabKind::Library => views::library_grid(ctx, "", Message::LaunchLibrary),
         };
         views::page(header, body)
@@ -299,7 +298,7 @@ impl State {
         let Some(bottle) = self.selected(ctx) else {
             return column![].into();
         };
-        let id = bottle.id();
+        let id = bottle.id;
         let busy = bottle::busy(&ctx.jobs, id);
         let tabs = [
             Tab::new(Detail::Programs, "Programs"),
@@ -332,6 +331,7 @@ impl State {
                 )
                 .middle(tabs)
         });
+        let status = bottle::status(&bottle);
         let content = match self.detail_tab {
             Detail::Programs => bottle::programs(bottle, &ctx.jobs),
             Detail::Settings => bottle::settings(bottle, self.rename.as_deref(), &ctx.jobs),
@@ -341,7 +341,7 @@ impl State {
                 .into(),
         };
         let body = container(
-            column![views::scroll_content(content), bottle::status(bottle)]
+            column![views::scroll_content(content), status]
                 .width(Fill)
                 .height(Fill),
         )

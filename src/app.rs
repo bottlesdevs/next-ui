@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::next;
 use crate::{
     chrome, classic,
+    collection::{self, Collection},
     context::Context,
     jobs::{self, Jobs},
     notifications::{self, Notifications},
@@ -53,6 +54,7 @@ impl Screen {
 #[derive(Clone)]
 pub(crate) struct Boot {
     settings: Settings,
+    collection: Collection,
     core: Arc<Bottles>,
     libraries: HashMap<String, Arc<Plugin<Library>>>,
     profiles: Profiles,
@@ -65,6 +67,7 @@ pub(crate) enum Message {
     Window(chrome::Action),
     Store(store::Update),
     Job(Uuid, jobs::Event),
+    Collection(collection::Change),
     SwitchExperience(Experience),
     DismissNotification(Uuid),
     CopyNotification(Uuid),
@@ -83,6 +86,7 @@ impl fmt::Debug for Message {
             Self::Window(_) => "Window",
             Self::Store(_) => "Store",
             Self::Job(_, _) => "Job",
+            Self::Collection(_) => "Collection",
             Self::SwitchExperience(_) => "SwitchExperience",
             Self::DismissNotification(_) => "DismissNotification",
             Self::CopyNotification(_) => "CopyNotification",
@@ -154,6 +158,7 @@ impl App {
                         jobs: Jobs::default(),
                         notifications: Notifications::default(),
                         settings: boot.settings,
+                        collection: boot.collection,
                         core: boot.core,
                         libraries: boot.libraries,
                         profiles: boot.profiles,
@@ -193,10 +198,14 @@ impl App {
                 };
                 match message {
                     Message::Store(update) => ctx.store.update(update),
-                    Message::Job(id, event) => {
-                        if let Some(error) = ctx.jobs.update(id, event) {
-                            ctx.notifications.error(error);
-                        }
+                    Message::Job(id, event) => match ctx.jobs.update(id, event) {
+                        Ok(Some(message)) => return Task::done(*message),
+                        Ok(None) => {}
+                        Err(error) => ctx.notifications.error(error),
+                    },
+                    Message::Collection(change) => {
+                        ctx.collection.apply(change);
+                        return ctx.save_collection();
                     }
                     Message::DismissNotification(id) => ctx.notifications.dismiss(id),
                     Message::CopyNotification(id) => {
@@ -211,10 +220,11 @@ impl App {
                     Message::SwitchExperience(experience) => {
                         ctx.settings.experience = Some(experience);
                         *screen = Screen::new(experience);
-                        return ctx.jobs.save_settings(
-                            ctx.settings.clone(),
-                            ctx.core.directories().config_dir(),
-                        );
+                        let save = ctx
+                            .settings
+                            .clone()
+                            .save(ctx.core.directories().config_dir());
+                        return ctx.jobs.save(save);
                     }
                     Message::Onboarding(message) => {
                         if let Screen::Onboarding(state) = screen {
@@ -288,8 +298,10 @@ async fn boot() -> Result<Boot, String> {
         }
         let settings = Settings::load(core.directories().config_dir()).await?;
         let profiles = Profiles::load(core.directories().config_dir()).await?;
+        let collection = Collection::load(core.directories().data_dir()).await?;
         Ok(Boot {
             settings,
+            collection,
             core: core.clone(),
             libraries,
             profiles,
