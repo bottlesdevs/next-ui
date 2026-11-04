@@ -2,7 +2,7 @@
 
 mod bottle;
 
-use bottles_core::{BottleState, Operation, PrefixBackend};
+use bottles_core::{BottleState, Operation, PrefixBackend, Runner, Umu, WineBridge};
 use iced::{
     Element, Fill, Task,
     widget::{column, container},
@@ -104,7 +104,12 @@ impl State {
                 self.creation_open = true;
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
-                    runner: ctx.store.addons.runners().first().map(|runner| runner.id()),
+                    runner: ctx
+                        .store
+                        .addons
+                        .releases::<Runner>()
+                        .first()
+                        .map(|runner| runner.id()),
                 });
             }
             Message::Cancel => self.creation_open = false,
@@ -125,26 +130,23 @@ impl State {
                 let runner = ctx
                     .store
                     .addons
-                    .runners()
+                    .releases::<Runner>()
                     .into_iter()
                     .find(|runner| Some(runner.id()) == draft.runner);
                 let Some(runner) = runner else {
                     return Task::none();
                 };
-                let Some(winebridge) = ctx.store.addons.winebridges().into_iter().next() else {
+                let Some(winebridge) = ctx.store.addons.releases::<WineBridge>().into_iter().next()
+                else {
                     return Task::none();
                 };
                 let name = draft.name.clone();
                 let operation = ctx.core.bottles().create(
                     name.clone(),
                     PrefixBackend::Standard,
-                    runner.as_ref().clone(),
-                    winebridge.as_ref().clone(),
-                    ctx.store
-                        .addons
-                        .umus()
-                        .first()
-                        .map(|umu| umu.as_ref().clone()),
+                    runner,
+                    winebridge,
+                    ctx.store.addons.releases::<Umu>().into_iter().next(),
                 );
                 self.creation_open = false;
                 return ctx.jobs.start(Kind::CreateBottle(name), operation);
@@ -273,10 +275,10 @@ impl State {
             && ctx
                 .store
                 .addons
-                .runners()
+                .releases::<Runner>()
                 .iter()
                 .any(|runner| Some(runner.id()) == draft.runner)
-            && !ctx.store.addons.winebridges().is_empty();
+            && !ctx.store.addons.releases::<WineBridge>().is_empty();
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
                 .start(views::header_button(

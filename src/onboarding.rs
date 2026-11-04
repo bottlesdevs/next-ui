@@ -1,6 +1,6 @@
 //! First-run experience selection and downloads derived from session snapshots.
 
-use bottles_core::{AddonKind, CatalogEntry, Slot};
+use bottles_core::{AddonRole, CatalogEntry, Component, Runner, Slot, Umu, WineBridge};
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
@@ -176,12 +176,10 @@ impl State {
         let available = required_available(&entries);
         let mut group = RowGroup::new();
         let mut running = false;
-        let complete = !store.addons.runners().is_empty() && !store.addons.winebridges().is_empty();
-        for (kind, label) in [
-            (AddonKind::Runner, "Runner"),
-            (AddonKind::WineBridge, "WineBridge"),
-        ] {
-            if !entries.iter().any(|entry| entry.kind() == kind) {
+        let complete = !store.addons.releases::<Runner>().is_empty()
+            && !store.addons.releases::<WineBridge>().is_empty();
+        for (role, label) in REQUIRED.into_iter().zip(["Runner", "WineBridge"]) {
+            if !entries.iter().any(|entry| entry.role() == role) {
                 group = group.row(InfoRow::new(label).description(if preparing {
                     "Preparing…"
                 } else {
@@ -234,14 +232,17 @@ impl State {
     }
 }
 
-const REQUIRED: [AddonKind; 2] = [AddonKind::Runner, AddonKind::WineBridge];
-const OPTIONAL: [AddonKind; 4] = [
-    AddonKind::Umu,
-    AddonKind::Component { slot: Slot::Dxvk },
-    AddonKind::Component { slot: Slot::Vkd3d },
-    AddonKind::Component {
+const REQUIRED: [AddonRole; 2] = [
+    AddonRole::Runner(Runner {}),
+    AddonRole::WineBridge(WineBridge {}),
+];
+const OPTIONAL: [AddonRole; 4] = [
+    AddonRole::Umu(Umu {}),
+    AddonRole::Component(Component { slot: Slot::Dxvk }),
+    AddonRole::Component(Component { slot: Slot::Vkd3d }),
+    AddonRole::Component(Component {
         slot: Slot::LatencyFlex,
-    },
+    }),
 ];
 
 fn essential_entries(store: &Store) -> Vec<CatalogEntry> {
@@ -249,10 +250,10 @@ fn essential_entries(store: &Store) -> Vec<CatalogEntry> {
     REQUIRED
         .into_iter()
         .chain(OPTIONAL)
-        .filter_map(|kind| {
+        .filter_map(|role| {
             catalog
                 .iter()
-                .find(|entry| entry.kind() == kind && entry.is_supported())
+                .find(|entry| entry.role() == role && entry.is_supported())
                 .cloned()
         })
         .collect()
@@ -261,37 +262,11 @@ fn essential_entries(store: &Store) -> Vec<CatalogEntry> {
 fn required_available(entries: &[CatalogEntry]) -> bool {
     REQUIRED
         .iter()
-        .all(|kind| entries.iter().any(|entry| entry.kind() == *kind))
+        .all(|role| entries.iter().any(|entry| entry.role() == *role))
 }
 
 fn installed(store: &Store, entry: &CatalogEntry) -> bool {
-    match entry.kind() {
-        AddonKind::Runner => store
-            .addons
-            .runners()
-            .iter()
-            .any(|addon| addon.id() == entry.id()),
-        AddonKind::WineBridge => store
-            .addons
-            .winebridges()
-            .iter()
-            .any(|addon| addon.id() == entry.id()),
-        AddonKind::Umu => store
-            .addons
-            .umus()
-            .iter()
-            .any(|addon| addon.id() == entry.id()),
-        AddonKind::Component { .. } => store
-            .addons
-            .components()
-            .iter()
-            .any(|addon| addon.id() == entry.id()),
-        AddonKind::Dependency => store
-            .addons
-            .dependencies()
-            .iter()
-            .any(|addon| addon.id() == entry.id()),
-    }
+    store.addons.release::<AddonRole>(entry.id()).is_some()
 }
 
 pub(crate) fn shell<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {

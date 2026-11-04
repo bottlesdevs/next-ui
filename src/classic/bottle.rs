@@ -1,6 +1,6 @@
 //! Classic bottle compositions derived from the session snapshots and jobs.
 
-use bottles_core::BottleState;
+use bottles_core::{BottleState, Runner, WineBridge};
 use iced::{
     Center, Element, Fill, Length, Theme,
     widget::{Grid, column, container, responsive, row, text},
@@ -89,7 +89,7 @@ pub(super) fn creation<'a>(
     store: &'a Store,
     can_create: bool,
 ) -> Element<'a, Message> {
-    let labels = store.addons.runners();
+    let labels = store.addons.releases::<Runner>();
     let runners = labels.iter().map(|runner| runner.id()).collect::<Vec<_>>();
     let runner = SelectorRow::new("Runner", &runners, draft.runner.as_ref())
         .icon(Icon::Run)
@@ -124,7 +124,7 @@ pub(super) fn creation<'a>(
         PickerRow::new("Use Recipe").description("Choose the location"),
     ]
     .spacing(spacing::SM);
-    if store.addons.winebridges().is_empty() {
+    if store.addons.releases::<WineBridge>().is_empty() {
         content = content.push(InfoRow::new("WineBridge is required to create a bottle"));
     }
     content.into()

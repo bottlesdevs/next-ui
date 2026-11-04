@@ -62,10 +62,20 @@ impl Store {
         let watches = Task::batch([
             #[cfg(feature = "fvs")]
             Task::run(core.programs().watch(), |programs| {
-                Message::Store(Update::Programs(programs))
+                Message::Store(Update::Programs(
+                    programs
+                        .iter()
+                        .filter_map(|program| program.state().ok())
+                        .collect(),
+                ))
             }),
             Task::run(core.bottles().watch(), |bottles| {
-                Message::Store(Update::Bottles(bottles))
+                Message::Store(Update::Bottles(
+                    bottles
+                        .iter()
+                        .filter_map(|bottle| bottle.state().ok())
+                        .collect(),
+                ))
             }),
             Task::run(core.addons().watch(), |addons| {
                 Message::Store(Update::Addons(addons))

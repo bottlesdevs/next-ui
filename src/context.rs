@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use bottles_core::{AddonKind, Bottles, CatalogEntry};
+use bottles_core::{AddonRole, Bottles, CatalogEntry};
 use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
 
@@ -29,14 +29,7 @@ pub(crate) struct Context {
 impl Context {
     pub(crate) fn fetch(&mut self, entry: CatalogEntry) -> Task<Message> {
         let id = entry.id();
-        let addons = self.core.addons();
-        let operation = match entry.kind() {
-            AddonKind::Runner => addons.fetch_runner(id).map(drop),
-            AddonKind::WineBridge => addons.fetch_winebridge(id).map(drop),
-            AddonKind::Umu => addons.fetch_umu(id).map(drop),
-            AddonKind::Component { .. } => addons.fetch_component(id).map(drop),
-            AddonKind::Dependency => addons.fetch_dependency(id).map(drop),
-        };
+        let operation = self.core.addons().fetch::<AddonRole>(id).map(drop);
         self.jobs.start(Kind::Fetch(id), operation)
     }
 
