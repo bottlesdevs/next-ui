@@ -48,13 +48,13 @@ impl State {
             Message::Select(id) => self.selected = Some(id),
             Message::Back => self.selected = None,
             Message::Launch(id) => return ctx.launch(Entry::Program(id)),
-            Message::Stop(id) => match ctx.core.environments().open(id) {
-                Ok(environment) => {
+            Message::Stop(id) => match ctx.core.prefixes().open(id) {
+                Ok(prefix) => {
                     return ctx.jobs.start(
                         Kind::Stop(id),
-                        bottles_core::Operation::new(move |_, _| async move {
-                            environment.stop().await
-                        }),
+                        bottles_core::Operation::new(
+                            move |_, _| async move { prefix.stop().await },
+                        ),
                     );
                 }
                 Err(error) => ctx.notifications.error(error.to_string()),

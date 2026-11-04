@@ -10,14 +10,14 @@ use iced::Task;
 use crate::{app::Message, library::Listing};
 
 pub(crate) struct Store {
-    pub(crate) environments: Inventory,
+    pub(crate) prefixes: Inventory,
     pub(crate) plugins: BTreeMap<String, Listing>,
     pub(crate) addons: Arc<AddonsState>,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Update {
-    Environments(Inventory),
+    Prefixes(Inventory),
     Plugin(String, Listing),
     Addons(Arc<AddonsState>),
 }
@@ -25,7 +25,7 @@ pub(crate) enum Update {
 impl Store {
     pub(crate) fn new(core: &Bottles, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
         Self {
-            environments: core.environments().inventory(),
+            prefixes: core.prefixes().inventory(),
             plugins: libraries
                 .keys()
                 .map(|id| (id.clone(), Listing::Loading))
@@ -52,8 +52,8 @@ impl Store {
             })
         });
         let watches = Task::batch([
-            Task::run(core.environments().watch(), |inventory| {
-                Message::Store(Update::Environments(inventory))
+            Task::run(core.prefixes().watch(), |inventory| {
+                Message::Store(Update::Prefixes(inventory))
             }),
             Task::run(core.addons().watch(), |addons| {
                 Message::Store(Update::Addons(addons))
@@ -64,7 +64,7 @@ impl Store {
 
     pub(crate) fn update(&mut self, update: Update) {
         match update {
-            Update::Environments(environments) => self.environments = environments,
+            Update::Prefixes(prefixes) => self.prefixes = prefixes,
             Update::Plugin(id, listing) => {
                 self.plugins.insert(id, listing);
             }

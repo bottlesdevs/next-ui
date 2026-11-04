@@ -142,7 +142,7 @@ impl State {
                     return Task::none();
                 };
                 let name = draft.name.clone();
-                let operation = ctx.core.environments().create(
+                let operation = ctx.core.prefixes().create(
                     PrefixBackend::Standard,
                     runner,
                     winebridge,
@@ -152,9 +152,9 @@ impl State {
                 return ctx.jobs.start_then(
                     Kind::CreateBottle(name.clone()),
                     operation,
-                    |environment| {
+                    |prefix| {
                         Some(app::Message::Collection(collection::Change::AddBottle(
-                            environment.id(),
+                            prefix.id(),
                             name,
                         )))
                     },
@@ -175,28 +175,28 @@ impl State {
                 program,
             } => return ctx.launch(Entry::Bottle(id, program)),
             Message::LaunchLibrary(entry) => return ctx.launch(entry),
-            Message::Stop(id) => match ctx.core.environments().open(id) {
-                Ok(environment) => {
+            Message::Stop(id) => match ctx.core.prefixes().open(id) {
+                Ok(prefix) => {
                     return ctx.jobs.start(
                         Kind::Stop(id),
-                        Operation::new(move |_, _| async move { environment.stop().await }),
+                        Operation::new(move |_, _| async move { prefix.stop().await }),
                     );
                 }
                 Err(error) => ctx.notifications.error(error.to_string()),
             },
             Message::Delete(id) => {
-                let operation = ctx.core.environments().delete(id);
+                let operation = ctx.core.prefixes().delete(id);
                 return ctx.jobs.start_then(Kind::Delete(id), operation, move |()| {
                     Some(app::Message::Collection(collection::Change::Remove(id)))
                 });
             }
             Message::ToggleGamescope(id, enabled) | Message::ToggleMangoHud(id, enabled) => {
                 let gamescope = matches!(message, Message::ToggleGamescope(..));
-                match ctx.core.environments().open(id) {
-                    Ok(environment) => {
+                match ctx.core.prefixes().open(id) {
+                    Ok(prefix) => {
                         return ctx.jobs.start(
                             Kind::Edit(id),
-                            environment.edit(move |edit| {
+                            prefix.edit(move |edit| {
                                 if gamescope {
                                     edit.wrappers().gamescope.enabled = enabled;
                                 } else {

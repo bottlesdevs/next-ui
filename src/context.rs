@@ -45,7 +45,7 @@ impl Context {
 
     pub(crate) fn launch(&mut self, entry: Entry) -> Task<Message> {
         let kind = Kind::Launch(entry.clone());
-        let (environment, group, program) = match &entry {
+        let (prefix, group, program) = match &entry {
             Entry::Bottle(bottle, program) => (
                 *bottle,
                 *program,
@@ -71,9 +71,9 @@ impl Context {
             self.notifications.error("This program no longer exists");
             return Task::none();
         };
-        match self.core.environments().open(environment) {
-            Ok(environment) => {
-                let operation = environment.launch(group, spec);
+        match self.core.prefixes().open(prefix) {
+            Ok(prefix) => {
+                let operation = prefix.launch(group, spec);
                 self.jobs.start(kind, operation)
             }
             Err(error) => {

@@ -1,10 +1,10 @@
-//! Bottles and standalone programs, kept by the UI over core environments.
+//! Bottles and standalone programs, kept by the UI over core prefixes.
 //!
-//! Each record is keyed by the identifier of the environment it describes.
+//! Each record is keyed by the identifier of the prefix it describes.
 
 use std::{collections::BTreeMap, future::Future, io, path::Path, sync::Arc};
 
-use bottles_core::{EnvironmentState, ProgramSpec};
+use bottles_core::{PrefixState, ProgramSpec};
 use next_config::Config;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,7 +20,7 @@ pub(crate) struct Collection {
     pub(crate) programs: BTreeMap<Uuid, Program>,
 }
 
-/// A named environment holding any number of programs.
+/// A named prefix holding any number of programs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Bottle {
     pub(crate) name: String,
@@ -35,18 +35,18 @@ pub(crate) struct Program {
     pub(crate) spec: ProgramSpec,
 }
 
-/// A change applied once the environment work behind it has finished.
+/// A change applied once the prefix work behind it has finished.
 #[derive(Debug, Clone)]
 pub(crate) enum Change {
     AddBottle(Uuid, String),
     Remove(Uuid),
 }
 
-/// A record joined with the current state of its environment.
+/// A record joined with the current state of its prefix.
 pub(crate) struct Item<'a, R> {
     pub(crate) id: Uuid,
     pub(crate) record: &'a R,
-    pub(crate) state: &'a Arc<EnvironmentState>,
+    pub(crate) state: &'a Arc<PrefixState>,
 }
 
 impl<R> Clone for Item<'_, R> {
@@ -105,12 +105,12 @@ impl Collection {
         data_dir.join("collection.toml")
     }
 
-    /// Bottles whose environment exists, ordered by name.
+    /// Bottles whose prefix exists, ordered by name.
     pub(crate) fn bottles<'a>(&'a self, store: &'a Store) -> Vec<Item<'a, Bottle>> {
         join(&self.bottles, store, |bottle| &bottle.name)
     }
 
-    /// Standalone programs whose environment exists, ordered by name.
+    /// Standalone programs whose prefix exists, ordered by name.
     #[cfg(feature = "fvs")]
     pub(crate) fn programs<'a>(&'a self, store: &'a Store) -> Vec<Item<'a, Program>> {
         join(&self.programs, store, |program| &program.name)
@@ -128,7 +128,7 @@ fn join<'a, R>(
             Some(Item {
                 id: *id,
                 record,
-                state: store.environments.get(id)?,
+                state: store.prefixes.get(id)?,
             })
         })
         .collect::<Vec<_>>();
