@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use bottles_core::{AddonRole, Bottles, CatalogEntry};
+use bottles_core::{AddonRole, CatalogEntry, Core};
 use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
 
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub(crate) struct Context {
-    pub(crate) core: Arc<Bottles>,
+    pub(crate) core: Arc<Core>,
     pub(crate) libraries: HashMap<String, Arc<Plugin<Library>>>,
     pub(crate) settings: Settings,
     pub(crate) collection: Collection,

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use bottles_core::Bottles;
+use bottles_core::Core;
 use bottles_plugin_host::{Library, Plugin, Plugins};
 use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
 use uuid::Uuid;
@@ -55,7 +55,7 @@ impl Screen {
 pub(crate) struct Boot {
     settings: Settings,
     collection: Collection,
-    core: Arc<Bottles>,
+    core: Arc<Core>,
     libraries: HashMap<String, Arc<Plugin<Library>>>,
     profiles: Profiles,
 }
@@ -277,7 +277,7 @@ impl App {
 }
 
 async fn boot() -> Result<Boot, String> {
-    let core = Bottles::open(bottles_core::Config::default())
+    let core = Core::open()
         .await
         .map(Arc::new)
         .map_err(|error| error.to_string())?;

@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use bottles_core::{AddonsState, Bottles, Inventory};
+use bottles_core::{AddonsState, Core, Inventory};
 use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
 
@@ -23,7 +23,7 @@ pub(crate) enum Update {
 }
 
 impl Store {
-    pub(crate) fn new(core: &Bottles, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
+    pub(crate) fn new(core: &Core, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
         Self {
             prefixes: core.prefixes().inventory(),
             plugins: libraries
@@ -35,7 +35,7 @@ impl Store {
     }
 
     pub(crate) fn watch(
-        core: &Bottles,
+        core: &Core,
         libraries: &HashMap<String, Arc<Plugin<Library>>>,
     ) -> Task<Message> {
         let listings = libraries.iter().map(|(id, library)| {
