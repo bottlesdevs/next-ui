@@ -1,5 +1,5 @@
 use iced::{
-    Center, Element, Length, Theme,
+    Center, Color, Element, Length, Theme,
     theme::palette::Pair,
     widget::{column, container, row, svg, text, text::Fragment, text::IntoFragment},
 };
@@ -77,7 +77,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
     }
 }
 
-fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
+pub(super) fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
     let icon = match kind {
         Kind::Hint => Icon::Wand,
         Kind::Info => Icon::Info,
@@ -94,14 +94,23 @@ fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
         })
 }
 
-fn colors(theme: &Theme, kind: Kind) -> Pair {
-    let palette = theme.extended_palette();
+pub(super) fn colors(theme: &Theme, kind: Kind) -> Pair {
+    let colors = theme::colors(theme);
 
     match kind {
         Kind::Hint => theme::hint(theme),
         Kind::Info => theme::info(),
-        Kind::Error => palette.danger.base,
-        Kind::Warning => palette.warning.base,
-        Kind::Success => palette.success.base,
+        Kind::Error => Pair {
+            color: colors.danger_surface,
+            text: Color::WHITE,
+        },
+        Kind::Warning => Pair {
+            color: colors.warning_surface,
+            text: Color::WHITE,
+        },
+        Kind::Success => Pair {
+            color: colors.success_surface,
+            text: Color::WHITE,
+        },
     }
 }

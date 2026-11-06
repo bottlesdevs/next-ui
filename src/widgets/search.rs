@@ -1,30 +1,26 @@
-use std::{cell::Cell, rc::Rc};
-
 use iced::{
     Alignment, Background, Border, Color, Element, Event, Fill, Length, Rectangle, Size, Theme,
     Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, tree},
+        widget::{Id, Operation, Tree, tree},
     },
     keyboard::{self, key},
-    widget::{Id, column, container, row, scrollable, text, text_input},
+    widget::{column, container, row, scrollable, text, text_input},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{AnchoredOverlay, Dismissal},
+    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    control::descendant_is_focused,
+    focus::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
     menu::{footer as panel_footer, item as menu_item, row_content},
-    reconcile_index, spacing,
-    surface::{Kind as SurfaceKind, scoped_overlay},
+    spacing,
     text::TextExt as _,
 };
 
 pub struct SearchResult<'a, Message> {
-    key: String,
     title: &'a str,
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
@@ -33,9 +29,8 @@ pub struct SearchResult<'a, Message> {
 }
 
 impl<'a, Message> SearchResult<'a, Message> {
-    pub fn new(key: impl Into<String>, title: &'a str, on_select: Message) -> Self {
+    pub fn new(title: &'a str, on_select: Message) -> Self {
         Self {
-            key: key.into(),
             title,
             subtitle: None,
             icon: None,
@@ -120,10 +115,11 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
     fn from(search: Search<'a, Message>) -> Self {
         let mut input = text_input(search.placeholder, search.query)
             .on_input(search.on_input)
+            .on_submit_maybe(search.on_submit)
             .width(Fill)
             .padding(0)
             .size(18)
-            .style(input_style);
+            .style(|theme, _| input_style(theme));
 
         if let Some(id) = search.id {
             input = input.id(id);
@@ -137,17 +133,14 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         .width(Fill)
         .padding([spacing::SM, spacing::MD])
         .style(search_style);
-        let (panel, visible, keys, selections, highlight) = panel(search.state, search.footer);
+        let (panel, visible, focus_targets) = panel(search.state, search.footer);
 
         Element::new(SearchWidget {
             input: input.into(),
             panel,
             visible,
-            keys,
-            selections,
-            highlight,
+            focus_targets,
             query: search.query,
-            on_submit: search.on_submit,
         })
     }
 }
@@ -155,56 +148,52 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
 fn panel<'a, Message: Clone + 'a>(
     state: SearchState<'a, Message>,
     footer: Option<(&'a str, Message)>,
-) -> (
-    SearchPanel<'a, Message>,
-    bool,
-    Vec<String>,
-    Vec<Message>,
-    Rc<Cell<Option<usize>>>,
-) {
-    let mut keys = Vec::new();
-    let mut selections = Vec::new();
-    let highlight = Rc::new(Cell::new(None));
+) -> (Element<'a, Message>, bool, Vec<Id>) {
+    let mut focus_targets = Vec::new();
     let visible = !matches!(state, SearchState::Hidden);
     let body: Element<'a, Message> = match state {
-        SearchState::Results(results) => {
-            let mut rows = column![].width(Fill);
-
-            for (index, result) in results.into_iter().enumerate() {
-                keys.push(result.key.clone());
-                selections.push(result.on_select.clone());
-                rows = rows.push(result_row(result, Rc::clone(&highlight), index));
-            }
-
-            container(rows).width(Fill).padding(spacing::MD).into()
-        }
+        SearchState::Results(results) => container(
+            column(
+                results
+                    .into_iter()
+                    .map(|result| result_row(result, &mut focus_targets)),
+            )
+            .width(Fill),
+        )
+        .width(Fill)
+        .padding(spacing::MD)
+        .into(),
         SearchState::Loading => status_row("Searching…", false),
         SearchState::Empty => status_row("No results", false),
         SearchState::Error(error) => status_row(error, true),
         SearchState::Hidden => column![].into(),
     };
+    let mut content = column![scrollable(body).width(Fill)].width(Fill);
 
-    let footer = footer
-        .filter(|_| visible)
-        .map(|(label, message)| panel_footer(label, message));
+    if let Some((label, message)) = footer.filter(|_| visible) {
+        let id = Id::unique();
+        focus_targets.push(id.clone());
+        content = content.push(panel_footer(label, message).id(id));
+    }
 
     (
-        SearchPanel::new(scrollable(body).width(Fill), footer),
+        container(content).style(crate::theme::overlay).into(),
         visible,
-        keys,
-        selections,
-        highlight,
+        focus_targets,
     )
 }
 
 fn result_row<'a, Message: Clone + 'a>(
     result: SearchResult<'a, Message>,
-    highlight: Rc<Cell<Option<usize>>>,
-    index: usize,
+    focus_targets: &mut Vec<Id>,
 ) -> Element<'a, Message> {
+    let primary = Id::unique();
+    focus_targets.push(primary.clone());
     let mut content = row_content(result.title.into(), result.subtitle, result.icon);
 
     if let Some((label, icon, message)) = result.action {
+        let id = Id::unique();
+        focus_targets.push(id.clone());
         content = content.push(
             Button::new(label)
                 .trailing_icon(icon)
@@ -214,21 +203,22 @@ fn result_row<'a, Message: Clone + 'a>(
                     0.0
                 })
                 .kind(ButtonKind::Surface)
+                .id(id)
                 .on_press(message),
         );
     }
 
-    menu_item(content, Some(result.on_select), false, move || {
-        highlight.get() == Some(index)
-    })
+    container(menu_item(content, Some(result.on_select), false).id(primary))
+        .width(Fill)
+        .into()
 }
 
 fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Message> {
     container(text(label).label().style(move |theme: &Theme| text::Style {
         color: Some(if error {
-            theme.extended_palette().danger.base.color
+            crate::theme::colors(theme).danger
         } else {
-            theme.extended_palette().secondary.weak.text
+            crate::theme::colors(theme).muted
         }),
     }))
     .width(Fill)
@@ -238,22 +228,27 @@ fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Messa
 
 struct SearchWidget<'a, Message> {
     input: Element<'a, Message>,
-    panel: SearchPanel<'a, Message>,
+    panel: Element<'a, Message>,
     visible: bool,
-    keys: Vec<String>,
-    selections: Vec<Message>,
-    highlight: Rc<Cell<Option<usize>>>,
+    focus_targets: Vec<Id>,
     query: &'a str,
-    on_submit: Option<Message>,
 }
 
 #[derive(Debug, Default)]
 struct SearchLocal {
-    focused: bool,
+    input_focused: bool,
+    panel_focus: PopupFocusState,
     dismissed: bool,
-    highlighted: Option<usize>,
-    keys: Vec<String>,
+    restore_input_focus: bool,
     query: String,
+}
+
+impl SearchLocal {
+    fn popup_open(&self, visible: bool) -> bool {
+        visible
+            && !self.dismissed
+            && (self.input_focused || self.panel_focus != PopupFocusState::None)
+    }
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_, Message> {
@@ -262,29 +257,28 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(SearchLocal::default())
+        tree::State::new(SearchLocal {
+            query: self.query.to_owned(),
+            ..SearchLocal::default()
+        })
     }
 
     fn children(&self) -> Vec<Tree> {
-        vec![
-            Tree::new(&self.input),
-            Tree::new(&self.panel as &dyn Widget<_, _, _>),
-        ]
+        vec![Tree::new(&self.input), Tree::new(&self.panel)]
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.children[0].diff(&self.input);
-        tree.children[1].diff(&self.panel as &dyn Widget<_, _, _>);
+        tree.diff_children(&[&self.input, &self.panel]);
         let state = tree.state.downcast_mut::<SearchLocal>();
-        state.highlighted = reconcile_index(&state.keys, state.highlighted, &self.keys)
-            .or((!self.keys.is_empty()).then_some(0));
-        state.keys.clone_from(&self.keys);
-        self.highlight.set(state.highlighted);
 
         if state.query != self.query {
             state.query.clear();
             state.query.push_str(self.query);
             state.dismissed = false;
+        }
+
+        if !self.visible {
+            state.panel_focus = PopupFocusState::None;
         }
     }
 
@@ -327,63 +321,51 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_mut::<SearchLocal>();
-        let popup_open = self.visible && state.focused && !state.dismissed;
 
-        if state.focused
-            && let Event::Keyboard(keyboard::Event::KeyPressed {
-                key, repeat: false, ..
-            }) = event
+        if state.restore_input_focus {
+            focus_first_descendant(
+                self.input.as_widget_mut(),
+                &mut tree.children[0],
+                layout,
+                renderer,
+            );
+            state.restore_input_focus = false;
+            shell.request_redraw();
+        }
+
+        if state.dismissed
+            && matches!(
+                event,
+                Event::Mouse(mouse::Event::ButtonPressed(_))
+                    | Event::Touch(iced::touch::Event::FingerPressed { .. })
+            )
+            && event_cursor(event, cursor).is_over(layout.bounds())
         {
-            let result_count = self.selections.len();
-            let handled = match key.as_ref() {
-                keyboard::Key::Named(key::Named::ArrowDown) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(
-                        state
-                            .highlighted
-                            .map_or(0, |index| (index + 1) % result_count),
-                    );
-                    true
-                }
-                keyboard::Key::Named(key::Named::ArrowUp) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(state.highlighted.map_or(result_count - 1, |index| {
-                        (index + result_count - 1) % result_count
-                    }));
-                    true
-                }
-                keyboard::Key::Named(key::Named::Home) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(0);
-                    true
-                }
-                keyboard::Key::Named(key::Named::End) if popup_open && result_count > 0 => {
-                    state.highlighted = Some(result_count - 1);
-                    true
-                }
-                keyboard::Key::Named(key::Named::Enter) => {
-                    if let Some(index) = state.highlighted.filter(|_| popup_open) {
-                        state.dismissed = true;
-                        shell.publish(self.selections[index].clone());
-                        true
-                    } else if let Some(message) = &self.on_submit {
-                        state.dismissed = true;
-                        shell.publish(message.clone());
-                        true
-                    } else {
-                        false
-                    }
-                }
-                keyboard::Key::Named(key::Named::Escape) if popup_open => {
-                    state.dismissed = true;
-                    true
-                }
-                _ => false,
-            };
+            state.dismissed = false;
+        }
 
-            if handled {
-                self.highlight.set(state.highlighted);
-                shell.capture_event();
-                shell.request_redraw();
-                return;
-            }
+        if state.input_focused
+            && state.popup_open(self.visible)
+            && !self.focus_targets.is_empty()
+            && let Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(key::Named::Tab),
+                modifiers,
+                repeat: false,
+                ..
+            }) = event
+            && !modifiers.shift()
+        {
+            state.panel_focus = PopupFocusState::Requested;
+            unfocus_descendants(
+                self.input.as_widget_mut(),
+                &mut tree.children[0],
+                layout,
+                renderer,
+            );
+            state.input_focused = false;
+            shell.capture_event();
+            shell.request_redraw();
+            return;
         }
 
         self.input.as_widget_mut().update(
@@ -397,14 +379,18 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
             viewport,
         );
 
-        let focused =
-            descendant_is_focused(&mut self.input, &mut tree.children[0], layout, renderer);
+        let input_focused = descendant_is_focused(
+            self.input.as_widget_mut(),
+            &mut tree.children[0],
+            layout,
+            renderer,
+        );
 
-        if focused && !state.focused {
+        if input_focused && !state.input_focused {
             state.dismissed = false;
         }
 
-        state.focused = focused;
+        state.input_focused = input_focused;
     }
 
     fn mouse_interaction(
@@ -449,257 +435,99 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_,
         &'a mut self,
         tree: &'a mut Tree,
         layout: Layout<'a>,
-        _renderer: &iced::Renderer,
+        renderer: &iced::Renderer,
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         let (state, children) = (&mut tree.state, &mut tree.children);
         let state = state.downcast_mut::<SearchLocal>();
 
-        if !self.visible || !state.focused || state.dismissed {
-            return None;
-        }
-
-        let bounds = layout.bounds();
-
-        let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
-        self.panel.width = anchor.width;
-
-        Some(overlay::Element::new(Box::new(AnchoredOverlay::new(
-            anchor,
-            *viewport,
-            &mut self.panel,
-            &mut children[1],
-            0.0,
-            None,
-            move |reason| {
-                if reason == Dismissal::ContentMessage {
-                    state.dismissed = true;
-                    true
-                } else {
-                    false
-                }
-            },
-        ))))
-    }
-}
-
-struct SearchPanel<'a, Message> {
-    children: Vec<Element<'a, Message>>,
-    width: f32,
-}
-
-impl<'a, Message> SearchPanel<'a, Message> {
-    fn new(body: impl Into<Element<'a, Message>>, footer: Option<Element<'a, Message>>) -> Self {
-        Self {
-            children: std::iter::once(body.into()).chain(footer).collect(),
-            width: 0.0,
-        }
-    }
-}
-
-impl<Message> Widget<Message, Theme, iced::Renderer> for SearchPanel<'_, Message> {
-    fn children(&self) -> Vec<Tree> {
-        self.children.iter().map(Tree::new).collect()
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&self.children);
-    }
-
-    fn size(&self) -> Size<Length> {
-        Size::new(Length::Fixed(self.width), Length::Shrink)
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &iced::Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        let limits = limits.width(self.width);
-        let width = limits.max().width;
-        let max_height = limits.max().height;
-        let (body, footer) = self.children.split_first_mut().expect("search panel body");
-        let (body_tree, footer_trees) = tree
-            .children
-            .split_first_mut()
-            .expect("search panel body tree");
-        let child_limits = layout::Limits::new(Size::new(width, 0.0), Size::new(width, max_height));
-        let footer = footer
-            .first_mut()
-            .zip(footer_trees.first_mut())
-            .map(|(footer, tree)| footer.as_widget_mut().layout(tree, renderer, &child_limits));
-        let footer_height = footer.as_ref().map_or(0.0, |node| node.size().height);
-        let body = body.as_widget_mut().layout(
-            body_tree,
-            renderer,
-            &child_limits.max_height((max_height - footer_height).max(0.0)),
-        );
-        let body_height = body.size().height;
-        let mut children = vec![body];
-
-        if let Some(footer) = footer {
-            children.push(footer.move_to(iced::Point::new(0.0, body_height)));
-        }
-
-        layout::Node::with_children(
-            Size::new(width, (body_height + footer_height).min(max_height)),
-            children,
-        )
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        operation.container(None, layout.bounds());
-        operation.traverse(&mut |operation| {
-            for ((child, tree), layout) in self
-                .children
-                .iter_mut()
-                .zip(&mut tree.children)
-                .zip(layout.children())
-            {
-                child
-                    .as_widget_mut()
-                    .operate(tree, layout, renderer, operation);
-            }
-        });
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        for ((child, tree), layout) in self
-            .children
-            .iter_mut()
-            .zip(&mut tree.children)
-            .zip(layout.children())
-        {
-            child.as_widget_mut().update(
-                tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+        if !state.popup_open(self.visible) {
+            return self.input.as_widget_mut().overlay(
+                &mut children[0],
+                layout,
+                renderer,
+                viewport,
+                translation,
             );
         }
+
+        let anchor = Rectangle::new(
+            layout.bounds().position() + translation,
+            layout.bounds().size(),
+        );
+        let SearchLocal {
+            panel_focus,
+            dismissed,
+            restore_input_focus,
+            ..
+        } = state;
+
+        Some(overlay::Element::new(Box::new(
+            PopupCore::new(
+                anchor,
+                *viewport,
+                self.panel.as_widget_mut(),
+                &mut children[1],
+                0.0,
+                PopupFocus {
+                    state: panel_focus,
+                    restore_anchor: restore_input_focus,
+                    targets: &self.focus_targets,
+                },
+                move |reason| {
+                    *dismissed = true;
+                    match reason {
+                        DismissReason::OutsidePress | DismissReason::FocusLost => {
+                            DismissOutcome::PassThrough
+                        }
+                        DismissReason::ContentMessage { keyboard: false } => {
+                            DismissOutcome::Captured
+                        }
+                        DismissReason::Escape
+                        | DismissReason::ContentMessage { keyboard: true } => {
+                            DismissOutcome::CapturedAndRestoreFocus
+                        }
+                    }
+                },
+            )
+            .match_anchor_width(),
+        )))
     }
+}
 
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        self.children
-            .iter()
-            .zip(&tree.children)
-            .zip(layout.children())
-            .map(|((child, tree), layout)| {
-                child
-                    .as_widget()
-                    .mouse_interaction(tree, layout, cursor, viewport, renderer)
-            })
-            .max()
-            .unwrap_or_default()
-    }
+fn search_style(theme: &Theme) -> container::Style {
+    let colors = crate::theme::colors(theme);
+    crate::theme::surface(iced::theme::palette::Pair {
+        color: colors.border,
+        text: colors.text,
+    })
+}
 
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        _style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        let theme = SurfaceKind::Overlay.draw_background(renderer, theme, layout.bounds());
-        let style = renderer::Style {
-            text_color: theme.palette().text,
-        };
+fn input_style(theme: &Theme) -> text_input::Style {
+    let colors = crate::theme::colors(theme);
 
-        for ((child, tree), layout) in self
-            .children
-            .iter()
-            .zip(&tree.children)
-            .zip(layout.children())
-        {
-            child
-                .as_widget()
-                .draw(tree, renderer, &theme, &style, layout, cursor, viewport);
-        }
-    }
-
-    fn overlay<'a>(
-        &'a mut self,
-        tree: &'a mut Tree,
-        layout: Layout<'a>,
-        renderer: &iced::Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        overlay::from_children(
-            &mut self.children,
-            tree,
-            layout,
-            renderer,
-            viewport,
-            translation,
-        )
-        .map(|content| scoped_overlay(SurfaceKind::Overlay, content))
+    text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
+        icon: colors.muted,
+        placeholder: colors.muted,
+        value: colors.text,
+        selection: colors.accent,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::reconcile_index;
+    use super::*;
 
     #[test]
-    fn preserves_highlight_across_result_changes() {
-        let old = ["a", "b", "c"].map(String::from);
-        let removed = ["a", "c"].map(String::from);
-        let empty: [String; 0] = [];
+    fn input_keeps_the_original_border_and_selection() {
+        let theme = crate::theme::dark();
+        let colors = crate::theme::colors(&theme);
+        let style = input_style(&theme);
 
-        assert_eq!(
-            reconcile_index(&old, Some(1), &["c", "a", "b"].map(String::from),),
-            Some(2)
-        );
-        assert_eq!(
-            reconcile_index(&old, Some(1), &removed).or((!removed.is_empty()).then_some(0)),
-            Some(0)
-        );
-        assert_eq!(
-            reconcile_index(&old, Some(1), &empty).or((!empty.is_empty()).then_some(0)),
-            None
-        );
-    }
-}
-
-fn search_style(theme: &Theme) -> container::Style {
-    crate::theme::surface(theme.extended_palette().background.neutral)
-}
-
-fn input_style(theme: &Theme, _: text_input::Status) -> text_input::Style {
-    let colors = theme.extended_palette();
-
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border::default(),
-        icon: colors.secondary.weak.text,
-        placeholder: colors.secondary.weak.text,
-        value: theme.palette().text,
-        selection: theme.palette().primary,
+        assert_eq!(style.border, Border::default());
+        assert_eq!(style.selection, colors.accent);
     }
 }

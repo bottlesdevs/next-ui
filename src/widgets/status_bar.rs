@@ -5,12 +5,11 @@ use iced::{
         widget::{Operation, Tree, operation, tree},
     },
     alignment::Vertical,
+    keyboard::{self, key},
     touch,
     widget::{
-        Space, container, row, scrollable,
-        scrollable::{RelativeOffset, Viewport},
-        svg, text,
-        text::{Fragment, IntoFragment},
+        Space, column, container, row, rule, scrollable, svg, text, text::Fragment,
+        text::IntoFragment,
     },
     window,
 };
@@ -19,65 +18,132 @@ use crate::{icons::Icon, theme};
 
 use super::{
     button::{Button, ButtonKind},
-    control::focus_first_descendant,
+    focus::focus_first_descendant,
+    focusable_action::Interaction,
     spacing,
     text::TextExt as _,
 };
 
 const INITIAL_LOG_RATIO: f32 = 0.3;
 const RESIZE_TARGET_HEIGHT: f32 = 8.0;
-const BOTTOM_TOLERANCE: f32 = 1.0;
 const UNBOUNDED_LOG_HEIGHT: f32 = 180.0;
 const ICON_SIZE: f32 = 16.0;
 const TEXT_SIZE: f32 = 12.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BottleStatus {
-    Stopped,
-    Starting,
-    Running,
-    Stopping,
-    Failed,
-}
-
-impl BottleStatus {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Stopped => "Stopped",
-            Self::Starting => "Starting",
-            Self::Running => "Running",
-            Self::Stopping => "Stopping",
-            Self::Failed => "Failed",
-        }
-    }
-
-    const fn icon(self) -> Icon {
-        match self {
-            Self::Stopped | Self::Stopping => Icon::Power,
-            Self::Starting | Self::Running => Icon::Lightning,
-            Self::Failed => Icon::Cross,
-        }
-    }
-}
-
-/// A bottle runtime footer showing environment status and collapsible logs.
+/// Domain-neutral status presentation.
 pub struct StatusBar<'a> {
-    architecture: Fragment<'a>,
-    runner: Fragment<'a>,
-    state: BottleStatus,
-    log: Option<Fragment<'a>>,
+    status: Fragment<'a>,
+    status_icon: Icon,
+    details: Vec<(Icon, Fragment<'a>)>,
+    danger: bool,
 }
 
 impl<'a> StatusBar<'a> {
+    pub fn new(status: impl IntoFragment<'a>, status_icon: Icon) -> Self {
+        Self {
+            status: status.into_fragment(),
+            status_icon,
+            details: Vec::new(),
+            danger: false,
+        }
+    }
+
+    pub fn detail(mut self, icon: Icon, label: impl IntoFragment<'a>) -> Self {
+        self.details.push((icon, label.into_fragment()));
+        self
+    }
+
+    pub fn danger(mut self) -> Self {
+        self.danger = true;
+        self
+    }
+
+    fn header<Message: Clone + 'a>(self, toggle: Option<Message>) -> Element<'a, Message> {
+        let danger = self.danger;
+        let mut header = row![].spacing(spacing::LG).align_y(Vertical::Center);
+
+        for (icon, label) in self.details {
+            header = header.push(
+                row![
+                    status_icon(icon, false),
+                    text(label).size(TEXT_SIZE).muted(),
+                ]
+                .spacing(spacing::SM)
+                .align_y(Vertical::Center),
+            );
+        }
+
+        header = header.extend([
+            Space::new().width(Fill).into(),
+            row![
+                status_icon(self.status_icon, danger),
+                text(self.status)
+                    .size(TEXT_SIZE)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(if danger {
+                            theme::colors(theme).danger
+                        } else {
+                            theme::colors(theme).muted
+                        }),
+                    }),
+            ]
+            .spacing(spacing::SM)
+            .align_y(Vertical::Center)
+            .into(),
+        ]);
+
+        if let Some(message) = toggle {
+            header = header.push(
+                Button::icon_only("Toggle log", Icon::Computer)
+                    .diameter(ICON_SIZE)
+                    .icon_size(ICON_SIZE)
+                    .kind(ButtonKind::Transparent)
+                    .on_press(message),
+            );
+        }
+
+        column![
+            rule::horizontal(1).style(|theme: &Theme| rule::Style {
+                color: theme::colors(theme).border,
+                radius: 0.0.into(),
+                fill_mode: rule::FillMode::Full,
+                snap: true,
+            }),
+            container(header)
+                .width(Fill)
+                .padding([spacing::XS, spacing::MD]),
+        ]
+        .into()
+    }
+}
+
+impl<'a, Message: Clone + 'a> From<StatusBar<'a>> for Element<'a, Message> {
+    fn from(status: StatusBar<'a>) -> Self {
+        container(status.header(None))
+            .width(Fill)
+            .clip(true)
+            .style(bar_style)
+            .into()
+    }
+}
+
+/// A Bottles status recipe with standard architecture and runner details.
+pub struct LogPanel<'a> {
+    status: StatusBar<'a>,
+    log: Option<Fragment<'a>>,
+}
+
+impl<'a> LogPanel<'a> {
     pub fn new(
         architecture: impl IntoFragment<'a>,
         runner: impl IntoFragment<'a>,
-        state: BottleStatus,
+        status: impl IntoFragment<'a>,
+        status_icon: Icon,
     ) -> Self {
         Self {
-            architecture: architecture.into_fragment(),
-            runner: runner.into_fragment(),
-            state,
+            status: StatusBar::new(status, status_icon)
+                .detail(Icon::Chip, architecture)
+                .detail(Icon::Run, runner),
             log: None,
         }
     }
@@ -86,72 +152,32 @@ impl<'a> StatusBar<'a> {
         self.log = Some(log.into_fragment());
         self
     }
+
+    pub fn danger(mut self) -> Self {
+        self.status = self.status.danger();
+        self
+    }
 }
 
-impl<'a, Message: 'static> From<StatusBar<'a>> for Element<'a, Message> {
-    fn from(status: StatusBar<'a>) -> Self {
-        let header = row![
-            row![
-                status_icon(Icon::Chip, false),
-                text(status.architecture).size(TEXT_SIZE).muted(),
-            ]
-            .spacing(spacing::SM)
-            .align_y(Vertical::Center),
-            row![
-                status_icon(Icon::Run, false),
-                text(status.runner).size(TEXT_SIZE).muted(),
-            ]
-            .spacing(spacing::SM)
-            .align_y(Vertical::Center),
-            Space::new().width(Fill),
-            row![
-                status_icon(status.state.icon(), status.state == BottleStatus::Failed),
-                text(status.state.label())
-                    .size(TEXT_SIZE)
-                    .style(move |theme: &Theme| text::Style {
-                        color: Some(if status.state == BottleStatus::Failed {
-                            theme.palette().danger
-                        } else {
-                            theme.extended_palette().secondary.weak.text
-                        }),
-                    }),
-            ]
-            .spacing(spacing::SM)
-            .align_y(Vertical::Center),
-            Button::icon_only("Toggle log", Icon::Computer)
-                .diameter(ICON_SIZE)
-                .icon_size(ICON_SIZE)
-                .kind(ButtonKind::Transparent)
-                .on_press(Local::Toggle),
-        ]
-        .spacing(spacing::LG)
-        .align_y(Vertical::Center);
-
-        let header = container(header)
-            .width(Fill)
-            .padding([spacing::XS, spacing::MD])
-            .into();
-        let log: Element<'a, Local> = status.log.map_or_else(
+impl<'a, Message: 'static> From<LogPanel<'a>> for Element<'a, Message> {
+    fn from(panel: LogPanel<'a>) -> Self {
+        let header = panel.status.header(Some(Local::Toggle));
+        let log: Element<'a, Local> = panel.log.map_or_else(
             || text("No activity yet").size(TEXT_SIZE).muted().into(),
             |log| text(log).size(TEXT_SIZE).into(),
         );
-        let log = container(scrollable(log).height(Fill).on_scroll(Local::Scrolled))
+        let log = container(scrollable(log).height(Fill))
             .padding([spacing::MD, spacing::LG])
             .width(Fill)
-            .style(|current_theme: &Theme| {
-                container::background(theme::hint(current_theme).color)
-                    .border(iced::Border::default().rounded(iced::border::bottom(6)))
-            })
+            .style(|current_theme: &Theme| container::background(theme::hint(current_theme).color))
             .into();
 
-        container(Element::new(StatusWidget {
+        container(Element::new(LogWidget {
             children: [header, log],
         }))
         .width(Fill)
-        .clip(true)
-        .style(|theme: &Theme| {
-            container::background(theme.extended_palette().background.weaker.color)
-                .border(iced::Border::default().rounded(iced::border::bottom(6)))
+        .style(|current_theme: &Theme| {
+            container::background(theme::colors(current_theme).background)
         })
         .into()
     }
@@ -162,20 +188,24 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
 
     if danger {
         icon.style(|theme: &Theme, _| svg::Style {
-            color: Some(theme.palette().danger),
+            color: Some(theme::colors(theme).danger),
         })
     } else {
         icon
     }
 }
 
+fn bar_style(theme: &Theme) -> container::Style {
+    container::background(theme::colors(theme).background)
+        .border(iced::Border::default().rounded(iced::border::bottom(6)))
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Local {
     Toggle,
-    Scrolled(Viewport),
 }
 
-struct StatusWidget<'a> {
+struct LogWidget<'a> {
     children: [Element<'a, Local>; 2],
 }
 
@@ -195,39 +225,39 @@ struct Drag {
 
 #[derive(Debug)]
 struct State {
-    expanded: bool,
+    open: bool,
     ratio: f32,
     available_height: f32,
     header_height: f32,
     drag: Option<Drag>,
-    follow_tail: bool,
+    resize_focus: Interaction,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            expanded: false,
+            open: false,
             ratio: INITIAL_LOG_RATIO,
             available_height: 0.0,
             header_height: 0.0,
             drag: None,
-            follow_tail: true,
+            resize_focus: Interaction::default(),
         }
     }
 }
 
 impl State {
-    fn toggle(&mut self) {
-        if self.expanded {
-            self.collapse();
+    fn toggle(&mut self) -> bool {
+        if self.open {
+            let restore_header = operation::Focusable::is_focused(&self.resize_focus);
+            self.open = false;
+            self.drag = None;
+            operation::Focusable::unfocus(&mut self.resize_focus);
+            restore_header
         } else {
-            self.expanded = true;
+            self.open = true;
+            false
         }
-    }
-
-    fn collapse(&mut self) {
-        self.expanded = false;
-        self.drag = None;
     }
 
     fn expanded_height(&self) -> f32 {
@@ -239,6 +269,45 @@ impl State {
             self.ratio = (height / self.available_height)
                 .clamp(self.header_height / self.available_height, 1.0);
         }
+    }
+
+    fn resize_with_keyboard(&mut self, key: &keyboard::Key) -> Option<bool> {
+        if !self.open
+            || !self.has_visible_log()
+            || !operation::Focusable::is_focused(&self.resize_focus)
+        {
+            return None;
+        }
+
+        let restore_header = match key.as_ref() {
+            keyboard::Key::Named(key::Named::ArrowUp) => {
+                self.set_height(self.expanded_height() + spacing::LG);
+                false
+            }
+            keyboard::Key::Named(key::Named::ArrowDown) => {
+                let height = self.expanded_height() - spacing::LG;
+
+                if height <= self.header_height + f32::EPSILON {
+                    self.toggle()
+                } else {
+                    self.set_height(height);
+                    false
+                }
+            }
+            keyboard::Key::Named(key::Named::Home) => self.toggle(),
+            keyboard::Key::Named(key::Named::End) => {
+                self.set_height(self.available_height);
+                false
+            }
+            _ => return None,
+        };
+
+        Some(restore_header)
+    }
+
+    fn has_visible_log(&self) -> bool {
+        self.available_height > self.header_height + f32::EPSILON
+            && self.expanded_height() > self.header_height + f32::EPSILON
     }
 
     fn continue_resize(&mut self, event: &Event) -> Option<bool> {
@@ -295,8 +364,7 @@ impl State {
 
             if self.expanded_height() <= self.header_height + f32::EPSILON {
                 self.ratio = drag.restore_ratio;
-                self.collapse();
-                return Some(true);
+                return Some(self.toggle());
             }
 
             return Some(false);
@@ -334,7 +402,7 @@ impl State {
     }
 }
 
-impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'_> {
+impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for LogWidget<'_> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }
@@ -377,13 +445,17 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         state.available_height = available_height;
         state.header_height = header_height;
 
-        if !state.expanded {
+        if !state.has_visible_log() {
+            operation::Focusable::unfocus(&mut state.resize_focus);
+        }
+
+        if !state.open {
             return layout::Node::with_children(header.size(), vec![header]);
         }
 
-        let height = state.expanded_height();
-        let log_height = height - header_height;
-        let log_size = Size::new(header.size().width, log_height);
+        let width = header.size().width;
+        let log_height = state.expanded_height() - header_height;
+        let log_size = Size::new(width, log_height);
         let log = self.children[1].as_widget_mut().layout(
             &mut tree.children[1],
             renderer,
@@ -391,7 +463,7 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         );
 
         layout::Node::with_children(
-            Size::new(header.size().width, height),
+            Size::new(width, state.expanded_height()),
             vec![header, log.move_to(Point::new(0.0, header_height))],
         )
     }
@@ -403,23 +475,33 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        let expanded = tree.state.downcast_ref::<State>().expanded;
+        let (state, children) = (&mut tree.state, &mut tree.children);
+        let state = state.downcast_mut::<State>();
+        let open = state.open;
         let mut layouts = layout.children();
         let header_layout = layouts.next().expect("status header layout");
+        let log_layout = open.then(|| layouts.next().expect("status log layout"));
 
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
             self.children[0].as_widget_mut().operate(
-                &mut tree.children[0],
+                &mut children[0],
                 header_layout,
                 renderer,
                 operation,
             );
 
-            if expanded {
+            if let Some(log_layout) = log_layout {
+                if log_layout.bounds().height > 0.0 {
+                    operation.focusable(
+                        None,
+                        resize_bounds(layout.bounds()),
+                        &mut state.resize_focus,
+                    );
+                }
                 self.children[1].as_widget_mut().operate(
-                    &mut tree.children[1],
-                    layouts.next().expect("status log layout"),
+                    &mut children[1],
+                    log_layout,
                     renderer,
                     operation,
                 );
@@ -438,18 +520,21 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        let expanded = tree.state.downcast_ref::<State>().expanded;
+        if matches!(event, Event::Window(window::Event::Unfocused)) {
+            operation::Focusable::unfocus(&mut tree.state.downcast_mut::<State>().resize_focus);
+        }
+
+        let open = tree.state.downcast_ref::<State>().open;
         let mut layouts = layout.children();
         let header_layout = layouts.next().expect("status header layout");
-        let log_layout = expanded.then(|| layouts.next().expect("status log layout"));
-        let resize = expanded.then(|| tree.state.downcast_mut::<State>().continue_resize(event));
+        let resize = open.then(|| tree.state.downcast_mut::<State>().continue_resize(event));
 
-        if let Some(collapsed) = resize.flatten() {
+        if let Some(restore_header) = resize.flatten() {
             shell.capture_event();
             shell.invalidate_layout();
             shell.request_redraw();
 
-            if collapsed {
+            if restore_header {
                 focus_first_descendant(
                     self.children[0].as_widget_mut(),
                     &mut tree.children[0],
@@ -461,9 +546,28 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
             return;
         }
 
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) = event
+            && let Some(restore_header) =
+                tree.state.downcast_mut::<State>().resize_with_keyboard(key)
+        {
+            if restore_header {
+                focus_first_descendant(
+                    self.children[0].as_widget_mut(),
+                    &mut tree.children[0],
+                    header_layout,
+                    renderer,
+                );
+            }
+
+            shell.capture_event();
+            shell.invalidate_layout();
+            shell.request_redraw();
+            return;
+        }
+
+        let visible = 1 + usize::from(open);
         let mut messages = Vec::new();
         let mut local_shell = Shell::new(&mut messages);
-        let visible = 1 + usize::from(expanded);
 
         for ((child, child_tree), child_layout) in self.children[..visible]
             .iter_mut()
@@ -499,39 +603,24 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         }
         shell.request_redraw_at(redraw);
 
-        let mut snap_to_end = false;
-        for message in messages {
-            match message {
-                Local::Toggle => {
-                    tree.state.downcast_mut::<State>().toggle();
-                    shell.invalidate_layout();
-                    shell.request_redraw();
-                }
-                Local::Scrolled(viewport) => {
-                    let at_bottom = is_at_bottom(viewport);
-                    let state = tree.state.downcast_mut::<State>();
+        if !messages.is_empty() {
+            let restore_header = tree.state.downcast_mut::<State>().toggle();
 
-                    if matches!(event, Event::Window(window::Event::RedrawRequested(_))) {
-                        snap_to_end |= state.follow_tail && !at_bottom;
-                    } else {
-                        state.follow_tail = at_bottom;
-                    }
-                }
+            if restore_header {
+                focus_first_descendant(
+                    self.children[0].as_widget_mut(),
+                    &mut tree.children[0],
+                    header_layout,
+                    renderer,
+                );
             }
-        }
 
-        if snap_to_end && let Some(log_layout) = log_layout {
-            self.children[1].as_widget_mut().operate(
-                &mut tree.children[1],
-                log_layout,
-                renderer,
-                &mut SnapToEnd,
-            );
+            shell.invalidate_layout();
             shell.request_redraw();
         }
 
         if !captured
-            && tree.state.downcast_ref::<State>().expanded
+            && tree.state.downcast_ref::<State>().open
             && tree
                 .state
                 .downcast_mut::<State>()
@@ -552,13 +641,12 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
     ) -> mouse::Interaction {
         let state = tree.state.downcast_ref::<State>();
 
-        if state.expanded
-            && (state.drag.is_some() || cursor.is_over(resize_bounds(layout.bounds())))
-        {
+        if state.open && (state.drag.is_some() || cursor.is_over(resize_bounds(layout.bounds()))) {
             return mouse::Interaction::ResizingVertically;
         }
 
-        let visible = 1 + usize::from(state.expanded);
+        let visible = 1 + usize::from(state.open);
+
         self.children[..visible]
             .iter()
             .zip(&tree.children[..visible])
@@ -587,7 +675,7 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
-        let visible = 1 + usize::from(state.expanded);
+        let visible = 1 + usize::from(state.open);
 
         for ((child, child_tree), child_layout) in self.children[..visible]
             .iter()
@@ -605,17 +693,19 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
             );
         }
 
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: Rectangle {
-                    height: 1.0,
-                    ..layout.bounds()
+        if state.open && operation::Focusable::is_focused(&state.resize_focus) {
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: Rectangle {
+                        height: 2.0,
+                        ..layout.bounds()
+                    },
+                    snap: true,
+                    ..renderer::Quad::default()
                 },
-                snap: true,
-                ..renderer::Quad::default()
-            },
-            Background::Color(theme.extended_palette().background.neutral.color),
-        );
+                Background::Color(theme::colors(theme).accent_muted),
+            );
+        }
     }
 
     fn overlay<'a>(
@@ -626,30 +716,17 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for StatusWidget<'
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        let expanded = tree.state.downcast_ref::<State>().expanded;
-        let visible = 1 + usize::from(expanded);
-        let children = &mut self.children[..visible];
-        overlay::from_children(children, tree, layout, renderer, viewport, translation)
-            .map(|overlay| overlay.map(&unexpected_status_message::<Message>))
-    }
-}
+        let visible = 1 + usize::from(tree.state.downcast_ref::<State>().open);
 
-struct SnapToEnd;
-
-impl Operation for SnapToEnd {
-    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
-        operate(self);
-    }
-
-    fn scrollable(
-        &mut self,
-        _id: Option<&iced::widget::Id>,
-        _bounds: Rectangle,
-        _content_bounds: Rectangle,
-        _translation: Vector,
-        state: &mut dyn operation::Scrollable,
-    ) {
-        state.snap_to(RelativeOffset::END.into());
+        overlay::from_children(
+            &mut self.children[..visible],
+            tree,
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
+        .map(|overlay| overlay.map(&unexpected_message::<Message>))
     }
 }
 
@@ -660,15 +737,8 @@ fn resize_bounds(bounds: Rectangle) -> Rectangle {
     }
 }
 
-fn is_at_bottom(viewport: Viewport) -> bool {
-    let offset = viewport.absolute_offset().y;
-    let maximum = (viewport.content_bounds().height - viewport.bounds().height).max(0.0);
-
-    maximum - offset <= BOTTOM_TOLERANCE
-}
-
-fn unexpected_status_message<Message>(_: Local) -> Message {
-    unreachable!("status bar messages are handled locally")
+fn unexpected_message<Message>(_: Local) -> Message {
+    unreachable!("log panel messages are handled locally")
 }
 
 #[cfg(test)]
@@ -677,13 +747,15 @@ mod tests {
 
     #[test]
     fn disclosure_and_size_are_local() {
-        let mut state = State::default();
-        state.available_height = 600.0;
-        state.header_height = 44.0;
+        let mut state = State {
+            available_height: 600.0,
+            header_height: 44.0,
+            ..State::default()
+        };
 
-        assert!(!state.expanded);
+        assert!(!state.open);
         state.toggle();
-        assert!(state.expanded);
+        assert!(state.open);
         assert_eq!(state.expanded_height(), 600.0 * INITIAL_LOG_RATIO);
 
         state.set_height(300.0);

@@ -1,28 +1,50 @@
-mod app;
-mod classic;
-pub mod icons;
-mod onboarding;
-mod operation;
+//! The reusable Bottles Next UI toolkit.
+//!
+//! The `next-ui` package also contains the desktop application, but this library
+//! facade exposes no application or domain types. Callers provide controlled
+//! data and semantic messages; widgets retain only cohesive interaction state
+//! such as focus, disclosure, popup placement, resizing, and animation.
+//!
+//! The supported facade is [`theme`], [`widget`], and [`Icon`].
+
+mod icons;
 pub mod theme;
-pub mod ui;
-pub mod widgets;
+mod widgets;
 
-pub(crate) use app::Experience;
-
-pub fn run() -> iced::Result {
-    iced::application(app::App::new, app::App::update, app::App::view)
-        .title("Bottles Next")
-        .theme(app::App::theme)
-        .subscription(app::App::subscription)
-        .style(|_, theme| theme::application(theme))
-        .window(iced::window::Settings {
-            size: iced::Size::new(1600.0, 1000.0),
-            position: iced::window::Position::Centered,
-            min_size: Some(iced::Size::new(720.0, 600.0)),
-            decorations: false,
-            transparent: true,
-            exit_on_close_request: false,
-            ..Default::default()
-        })
-        .run()
+pub use icons::Icon;
+/// The complete public widget catalog.
+///
+/// The caller owns values and semantic messages. Widgets own their interaction
+/// state.
+pub mod widget {
+    pub use crate::widgets::{
+        action_row::ActionRow,
+        action_tile::ActionTile,
+        artwork_card::{ArtworkCard, CardAction},
+        button::{Button, ButtonKind},
+        card::Card,
+        cycle_row::CycleRow,
+        dialog::{Dialog, WindowModal},
+        expander_row::ExpanderRow,
+        header,
+        header_bar::{HeaderBar, header_button},
+        info_card::{InfoCard, Kind as InfoCardKind},
+        info_row::InfoRow,
+        list_row::ListRow,
+        notification::Notification,
+        picker_row::PickerRow,
+        popover::{Popover, PopoverItem},
+        progress_ring::ProgressRing,
+        row_group::RowGroup,
+        search::{Search, SearchResult, SearchState},
+        selector_row::SelectorRow,
+        spacing,
+        status_bar::{LogPanel, StatusBar},
+        switcher::Switcher,
+        switcher_row::SwitcherRow,
+        tabs::{Tab, Tabs},
+        text::TextExt,
+        text_row::TextRow,
+        title::Title,
+    };
 }

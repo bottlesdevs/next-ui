@@ -1,20 +1,14 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Padding, Point, Rectangle, Renderer, Size,
-    Theme,
-    advanced::text::{self as advanced_text, Paragraph as _, Renderer as _},
-    alignment,
-    animation::{Animation, Easing},
-    mouse,
-    time::Instant,
-    widget::{Action, Space, button, canvas, column, container, row, stack, text},
-    window,
+    Alignment, Background, Border, Element, Fill, Length, Theme,
+    widget::{Row, Space, button, container, stack, text},
 };
 
 use super::{
-    control::{Control, State},
+    focusable_action::{ActionState, FocusableAction},
     spacing,
     text::TextExt as _,
 };
+use crate::theme;
 
 pub struct Tab<'a, T> {
     value: T,
@@ -41,6 +35,7 @@ pub struct Tabs<'a, T, Message> {
     tabs: Vec<Tab<'a, T>>,
     selected: Option<T>,
     on_select: Box<dyn Fn(T) -> Message + 'a>,
+    height: Length,
 }
 
 impl<'a, T, Message> Tabs<'a, T, Message> {
@@ -53,7 +48,13 @@ impl<'a, T, Message> Tabs<'a, T, Message> {
             tabs: tabs.into_iter().collect(),
             selected,
             on_select: Box::new(on_select),
+            height: Length::Shrink,
         }
+    }
+
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = height.into();
+        self
     }
 }
 
@@ -67,202 +68,66 @@ where
             tabs,
             selected,
             on_select,
+            height,
         } = tabs;
-        let labels = tabs.iter().map(|tab| tab.label).collect();
-        let selected_index = selected
-            .as_ref()
-            .and_then(|selected| tabs.iter().position(|tab| &tab.value == selected));
-        let children = tabs.into_iter().map(|tab| {
-            let selected = selected.as_ref() == Some(&tab.value);
-            let message = tab.enabled.then(|| on_select(tab.value));
+        let children: Vec<Element<'a, Message>> = tabs
+            .into_iter()
+            .map(|tab| {
+                let selected = selected.as_ref() == Some(&tab.value);
+                let message = tab.enabled.then(|| on_select(tab.value));
 
-            Control::new(
-                column![text(tab.label).label(), Space::new().height(spacing::LG),]
-                    .align_x(Alignment::Center),
-            )
-            .padding(Padding::ZERO.top(spacing::XS).horizontal(spacing::SM))
-            .sensitive(tab.enabled)
-            .selected(selected)
-            .on_press_maybe(message)
-            .style(tab_style)
-            .into()
-        });
+                let indicator_height = 3f32;
+                let indicator = container(Space::new().height(indicator_height))
+                    .width(Fill)
+                    .style(move |theme: &Theme| {
+                        container::Style::default().background(Background::Color(if selected {
+                            theme::colors(theme).accent
+                        } else {
+                            iced::Color::TRANSPARENT
+                        }))
+                    });
 
-        container(stack![
-            row(children).spacing(spacing::LG),
-            canvas::Canvas::new(TabIndicator {
-                selected_index,
-                labels,
+                let label = FocusableAction::new(
+                    text(tab.label)
+                        .label()
+                        .height(height)
+                        .align_y(Alignment::Center),
+                )
+                .height(height)
+                .padding(spacing::SM)
+                .selected(selected)
+                .on_press_maybe(message)
+                .style(tab_style);
+
+                stack![label, container(indicator).align_bottom(Fill)]
+                    .height(height)
+                    .into()
             })
-            .width(Fill)
-            .height(Fill),
-        ])
+            .collect();
+
+        let content: Element<'a, Message> = container(
+            Row::with_children(children)
+                .spacing(spacing::LG)
+                .height(height),
+        )
+        .height(height)
         .center_x(Fill)
-        .into()
+        .into();
+
+        content
     }
 }
 
-const INDICATOR_HEIGHT: f32 = 3.0;
+fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
+    let colors = theme::colors(theme);
 
-struct TabIndicator<'a> {
-    selected_index: Option<usize>,
-    labels: Vec<&'a str>,
-}
-
-#[derive(Debug, Default)]
-struct IndicatorState {
-    animation: Option<Animation<f32>>,
-    labels: Vec<String>,
-}
-
-impl IndicatorState {
-    fn sync(&mut self, selected_index: Option<usize>, labels: &[&str], now: Instant) -> bool {
-        if !self
-            .labels
-            .iter()
-            .map(String::as_str)
-            .eq(labels.iter().copied())
-        {
-            self.labels = labels.iter().map(|label| (*label).to_owned()).collect();
-            self.animation = selected_index.map(|index| {
-                Animation::new(index as f32)
-                    .very_quick()
-                    .easing(Easing::EaseOut)
-            });
-            return true;
-        }
-
-        let Some(selected_index) = selected_index else {
-            return self.animation.take().is_some();
-        };
-        let selected_index = selected_index as f32;
-        let animation = self.animation.get_or_insert_with(|| {
-            Animation::new(selected_index)
-                .very_quick()
-                .easing(Easing::EaseOut)
-        });
-
-        if animation.value() != selected_index {
-            animation.go_mut(selected_index, now);
-        }
-
-        animation.is_animating(now)
-    }
-}
-
-impl<Message> canvas::Program<Message> for TabIndicator<'_> {
-    type State = IndicatorState;
-
-    fn update(
-        &self,
-        state: &mut IndicatorState,
-        event: &Event,
-        _bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Option<Action<Message>> {
-        let now = match event {
-            Event::Window(window::Event::RedrawRequested(now)) => *now,
-            _ => Instant::now(),
-        };
-
-        if state.sync(self.selected_index, &self.labels, now) {
-            Some(Action::request_redraw())
-        } else {
-            None
-        }
-    }
-
-    fn draw(
-        &self,
-        state: &IndicatorState,
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let Some(selected_index) = self.selected_index else {
-            return Vec::new();
-        };
-        if self.labels.is_empty() {
-            return Vec::new();
-        }
-
-        let now = Instant::now();
-        let center = state.animation.as_ref().map_or_else(
-            || tab_center(renderer, &self.labels, selected_index),
-            |animation| {
-                animation.interpolate_with(
-                    |index| tab_center(renderer, &self.labels, clamped(index, &self.labels)),
-                    now,
-                )
-            },
-        );
-        let width = state.animation.as_ref().map_or_else(
-            || tab_width(renderer, self.labels[selected_index]),
-            |animation| {
-                animation.interpolate_with(
-                    |index| tab_width(renderer, self.labels[clamped(index, &self.labels)]),
-                    now,
-                )
-            },
-        );
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-
-        frame.fill_rectangle(
-            Point::new(center - width / 2.0, bounds.height - INDICATOR_HEIGHT),
-            Size::new(width, INDICATOR_HEIGHT),
-            theme.palette().primary,
-        );
-
-        vec![frame.into_geometry()]
-    }
-}
-
-fn tab_center(renderer: &Renderer, labels: &[&str], index: usize) -> f32 {
-    let index = index.min(labels.len() - 1);
-
-    labels[..index]
-        .iter()
-        .map(|label| tab_width(renderer, label))
-        .sum::<f32>()
-        + spacing::LG * index as f32
-        + tab_width(renderer, labels[index]) / 2.0
-}
-
-fn clamped(index: f32, labels: &[&str]) -> usize {
-    (index as usize).min(labels.len() - 1)
-}
-
-fn tab_width(renderer: &Renderer, label: &str) -> f32 {
-    label_width(renderer, label) + 2.0 * spacing::SM
-}
-
-fn label_width(renderer: &Renderer, label: &str) -> f32 {
-    let paragraph =
-        <Renderer as advanced_text::Renderer>::Paragraph::with_text(advanced_text::Text {
-            content: label,
-            bounds: Size::INFINITE,
-            size: 18.0.into(),
-            line_height: advanced_text::LineHeight::default(),
-            font: renderer.default_font(),
-            align_x: advanced_text::Alignment::Default,
-            align_y: alignment::Vertical::Top,
-            shaping: advanced_text::Shaping::default(),
-            wrapping: advanced_text::Wrapping::default(),
-        });
-
-    paragraph.min_width()
-}
-
-fn tab_style(theme: &Theme, state: State) -> button::Style {
     button::Style {
-        background: (state.focused && !state.hovered && !state.pressed).then_some(
-            Background::Color(theme.extended_palette().background.strong.color),
-        ),
+        background: (state.focused && !state.hovered && !state.pressed)
+            .then_some(Background::Color(colors.hover)),
         text_color: if state.selected || state.hovered || state.pressed || state.focused {
-            theme.palette().text
+            colors.text
         } else {
-            theme.extended_palette().secondary.weak.text
+            colors.muted
         },
         border: Border::default().rounded(6),
         ..button::Style::default()

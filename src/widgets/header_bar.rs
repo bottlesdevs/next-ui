@@ -1,22 +1,27 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
-    widget::{Row, Space, container, mouse_area, row},
+    widget::{Row, container, mouse_area, row},
 };
 
-use crate::{
-    theme,
-    ui::chrome::{WINDOW_CONTROL_AT_START, WINDOW_CONTROL_SIZE},
+use crate::{icons::Icon, theme};
+
+use super::{
+    button::{Button, ButtonKind},
+    header, spacing,
 };
 
-use super::spacing;
-
-const HEIGHT: f32 = 64.0;
+/// Builds a header-sized icon button; the caller supplies its action.
+pub fn header_button<Message>(label: &str, icon: Icon) -> Button<'_, Message> {
+    Button::icon_only(label, icon)
+        .diameter(header::CONTROL)
+        .icon_size(header::ICON)
+        .kind(ButtonKind::Transparent)
+}
 
 pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
-    reserve_window_control: bool,
     transparent: bool,
     on_drag: Message,
 }
@@ -27,16 +32,8 @@ impl<'a, Message> HeaderBar<'a, Message> {
             start: Vec::new(),
             middle: Vec::new(),
             end: Vec::new(),
-            reserve_window_control: true,
             transparent: false,
             on_drag,
-        }
-    }
-
-    pub(crate) fn without_window_control(on_drag: Message) -> Self {
-        Self {
-            reserve_window_control: false,
-            ..Self::new(on_drag)
         }
     }
 
@@ -64,47 +61,34 @@ impl<'a, Message> HeaderBar<'a, Message> {
 impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
     fn from(header: HeaderBar<'a, Message>) -> Self {
         let HeaderBar {
-            mut start,
+            start,
             middle,
-            mut end,
-            reserve_window_control,
+            end,
             transparent,
             on_drag,
         } = header;
 
-        if reserve_window_control {
-            let spacer: Element<'a, Message> = Space::new()
-                .width(WINDOW_CONTROL_SIZE)
-                .height(WINDOW_CONTROL_SIZE)
-                .into();
-
-            if WINDOW_CONTROL_AT_START {
-                start.insert(0, spacer);
-            } else {
-                end.push(spacer);
-            }
-        }
-
         let content = row![
             container(section(start))
-                .align_left(Fill)
-                .align_bottom(Fill)
-                .padding(iced::padding::bottom(spacing::MD)),
+                .align_left(Length::Shrink)
+                .height(Fill)
+                .align_y(Center),
             container(section(middle))
-                .center_x(Length::Shrink)
-                .align_bottom(Fill),
+                .center_x(Fill)
+                .height(Fill)
+                .align_y(Center),
             container(section(end))
-                .align_right(Fill)
-                .align_bottom(Fill)
-                .padding(iced::padding::bottom(spacing::MD)),
+                .align_right(Length::Shrink)
+                .height(Fill)
+                .align_y(Center),
         ]
         .height(Fill)
         .align_y(Center);
 
         let mut content = container(content)
             .width(Fill)
-            .height(HEIGHT)
-            .padding([0.0, spacing::SM]);
+            .height(header::HEIGHT)
+            .padding([0.0, header::INSET]);
         if !transparent {
             content = content.style(style);
         }
@@ -121,7 +105,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 
 fn style(current_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(theme::window_color(current_theme))),
+        background: Some(Background::Color(theme::colors(current_theme).window)),
         border: Border::default().rounded(iced::border::top(6)),
         ..container::Style::default()
     }

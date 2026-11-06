@@ -8,7 +8,8 @@ use iced::{
     window,
 };
 
-use super::control::{Control, State};
+use super::focusable_action::{ActionState, FocusableAction};
+use crate::theme;
 
 const WIDTH: f32 = 52.0;
 const HEIGHT: f32 = 32.0;
@@ -40,10 +41,10 @@ impl<'a, Message> Switcher<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Message> {
     fn from(switcher: Switcher<'a, Message>) -> Self {
-        let active = switcher.on_toggle.is_some();
+        let enabled = switcher.on_toggle.is_some();
         let knob = canvas::Canvas::new(AnimatedKnob {
             is_on: switcher.is_on,
-            enabled: active,
+            enabled,
         })
         .width(Fill)
         .height(Fill);
@@ -51,11 +52,10 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
             .on_toggle
             .map(|on_toggle| on_toggle(!switcher.is_on));
 
-        Control::new(knob)
+        FocusableAction::new(knob)
             .width(WIDTH)
             .height(HEIGHT)
             .padding((HEIGHT - KNOB) / 2.0)
-            .sensitive(active)
             .on_press_maybe(message)
             .style(track_style)
             .into()
@@ -118,14 +118,11 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
             |animation| animation.interpolate(0.0, 1.0, Instant::now()),
         );
         let diameter = bounds.height;
+        let colors = theme::colors(theme);
         let color = if self.enabled {
-            palette::mix(
-                theme.extended_palette().background.stronger.color,
-                theme.palette().primary,
-                progress,
-            )
+            palette::mix(colors.selection, colors.accent, progress)
         } else {
-            theme.extended_palette().secondary.weak.text
+            colors.muted
         };
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
@@ -144,12 +141,15 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
     }
 }
 
-fn track_style(theme: &Theme, _state: State) -> button::Style {
+fn track_style(theme: &Theme, state: ActionState) -> button::Style {
+    let colors = theme::colors(theme);
+
     button::Style {
-        background: Some(Background::Color(
-            theme.extended_palette().background.weaker.color,
-        )),
-        border: Border::default().rounded(HEIGHT / 2.0),
+        background: Some(Background::Color(colors.background)),
+        border: Border::default()
+            .rounded(HEIGHT / 2.0)
+            .color(colors.accent)
+            .width(if state.focused { 2 } else { 0 }),
         ..button::Style::default()
     }
 }
