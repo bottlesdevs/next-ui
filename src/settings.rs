@@ -1,4 +1,4 @@
-use std::{future::Future, io, path::Path};
+use std::{future::Future, io, path::PathBuf};
 
 use next_config::Config;
 use serde::{Deserialize, Serialize};
@@ -23,8 +23,8 @@ impl Experience {
 }
 
 impl Settings {
-    pub(crate) async fn load(config_dir: &Path) -> Result<Self, String> {
-        let path = config_dir.join("ui.toml");
+    pub(crate) async fn load() -> Result<Self, String> {
+        let path = Self::path();
         match next_config::load(&path).await {
             Ok(config) => Ok(config),
             Err(next_config::error::Error::Io(error))
@@ -36,15 +36,16 @@ impl Settings {
         }
     }
 
-    pub(crate) fn save(
-        self,
-        config_dir: &Path,
-    ) -> impl Future<Output = Result<(), String>> + Send + 'static {
-        let path = config_dir.join("ui.toml");
+    pub(crate) fn save(self) -> impl Future<Output = Result<(), String>> + Send + 'static {
+        let path = Self::path();
         async move {
             next_config::save(&path, &self)
                 .await
                 .map_err(|error| format!("failed to save {}: {error}", path.display()))
         }
+    }
+
+    fn path() -> PathBuf {
+        next_paths::config_dir().join("ui.toml")
     }
 }

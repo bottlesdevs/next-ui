@@ -36,7 +36,7 @@ impl Context {
     }
 
     pub(crate) fn save_collection(&mut self) -> Task<Message> {
-        let save = self.collection.clone().save(next_paths::data_dir());
+        let save = self.collection.clone().save();
         self.jobs.save(save)
     }
 

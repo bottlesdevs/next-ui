@@ -220,7 +220,7 @@ impl App {
                     Message::SwitchExperience(experience) => {
                         ctx.settings.experience = Some(experience);
                         *screen = Screen::new(experience);
-                        let save = ctx.settings.clone().save(next_paths::config_dir());
+                        let save = ctx.settings.clone().save();
                         return ctx.jobs.save(save);
                     }
                     Message::Onboarding(message) => {
@@ -293,9 +293,9 @@ async fn boot() -> Result<Boot, String> {
                 libraries.insert(manifest.id, Arc::new(library));
             }
         }
-        let settings = Settings::load(next_paths::config_dir()).await?;
-        let profiles = Profiles::load(next_paths::config_dir()).await?;
-        let collection = Collection::load(next_paths::data_dir()).await?;
+        let settings = Settings::load().await?;
+        let profiles = Profiles::load().await?;
+        let collection = Collection::load().await?;
         Ok(Boot {
             settings,
             collection,

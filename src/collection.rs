@@ -2,7 +2,7 @@
 //!
 //! Each record is keyed by the identifier of the prefix it describes.
 
-use std::{collections::BTreeMap, future::Future, io, path::Path, sync::Arc};
+use std::{collections::BTreeMap, future::Future, io, path::PathBuf, sync::Arc};
 
 use bottles_core::{PrefixState, ProgramSpec};
 use next_config::Config;
@@ -58,8 +58,8 @@ impl<R> Clone for Item<'_, R> {
 impl<R> Copy for Item<'_, R> {}
 
 impl Collection {
-    pub(crate) async fn load(data_dir: &Path) -> Result<Self, String> {
-        let path = Self::path(data_dir);
+    pub(crate) async fn load() -> Result<Self, String> {
+        let path = Self::path();
         match next_config::load(&path).await {
             Ok(collection) => Ok(collection),
             Err(next_config::error::Error::Io(error))
@@ -71,11 +71,8 @@ impl Collection {
         }
     }
 
-    pub(crate) fn save(
-        self,
-        data_dir: &Path,
-    ) -> impl Future<Output = Result<(), String>> + Send + 'static {
-        let path = Self::path(data_dir);
+    pub(crate) fn save(self) -> impl Future<Output = Result<(), String>> + Send + 'static {
+        let path = Self::path();
         async move {
             next_config::save(&path, &self)
                 .await
@@ -101,8 +98,8 @@ impl Collection {
         }
     }
 
-    fn path(data_dir: &Path) -> std::path::PathBuf {
-        data_dir.join("collection.toml")
+    fn path() -> PathBuf {
+        next_paths::data_dir().join("collection.toml")
     }
 
     /// Bottles whose prefix exists, ordered by name.

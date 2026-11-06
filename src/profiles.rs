@@ -8,11 +8,7 @@
 
 mod steam;
 
-use std::{
-    io,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{io, path::PathBuf, sync::Arc};
 
 use bottles_plugin_host::{Account, Interaction, Plugin};
 use next_config::Config;
@@ -54,8 +50,8 @@ pub(crate) struct Identity {
 }
 
 impl Profiles {
-    pub(crate) async fn load(config_dir: &Path) -> Result<Self, String> {
-        let path = Self::path(config_dir);
+    pub(crate) async fn load() -> Result<Self, String> {
+        let path = Self::path();
         match next_config::load(&path).await {
             Ok(profiles) => Ok(profiles),
             Err(next_config::error::Error::Io(error))
@@ -70,22 +66,22 @@ impl Profiles {
                     selected: profile.id,
                     profiles: vec![profile],
                 };
-                profiles.save(config_dir).await?;
+                profiles.save().await?;
                 Ok(profiles)
             }
             Err(error) => Err(format!("failed to load {}: {error}", path.display())),
         }
     }
 
-    pub(crate) async fn save(&self, config_dir: &Path) -> Result<(), String> {
-        let path = Self::path(config_dir);
+    pub(crate) async fn save(&self) -> Result<(), String> {
+        let path = Self::path();
         next_config::save(&path, self)
             .await
             .map_err(|error| format!("failed to save {}: {error}", path.display()))
     }
 
-    fn path(config_dir: &Path) -> PathBuf {
-        config_dir.join("profiles.toml")
+    fn path() -> PathBuf {
+        next_paths::config_dir().join("profiles.toml")
     }
 
     /// Adds a profile named `name` and selects it.
