@@ -19,6 +19,7 @@ directories.workspace = true
 iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "linux-theme-detection", "sipper", "tokio"] }
 keyvalues-parser.workspace = true
 next-config.workspace = true
+next-paths.workspace = true
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
 serde.workspace = true
 tracing.workspace = true

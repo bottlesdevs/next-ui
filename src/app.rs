@@ -220,10 +220,7 @@ impl App {
                     Message::SwitchExperience(experience) => {
                         ctx.settings.experience = Some(experience);
                         *screen = Screen::new(experience);
-                        let save = ctx
-                            .settings
-                            .clone()
-                            .save(ctx.core.directories().config_dir());
+                        let save = ctx.settings.clone().save(next_paths::config_dir());
                         return ctx.jobs.save(save);
                     }
                     Message::Onboarding(message) => {
@@ -285,7 +282,7 @@ async fn boot() -> Result<Boot, String> {
         .map(Arc::new)
         .map_err(|error| error.to_string())?;
     let result = async {
-        let plugins = Plugins::new(core.directories()).map_err(|error| error.to_string())?;
+        let plugins = Plugins::new().map_err(|error| error.to_string())?;
         let mut libraries = HashMap::new();
         for manifest in plugins.list().map_err(|error| error.to_string())? {
             let plugin = plugins
@@ -296,9 +293,9 @@ async fn boot() -> Result<Boot, String> {
                 libraries.insert(manifest.id, Arc::new(library));
             }
         }
-        let settings = Settings::load(core.directories().config_dir()).await?;
-        let profiles = Profiles::load(core.directories().config_dir()).await?;
-        let collection = Collection::load(core.directories().data_dir()).await?;
+        let settings = Settings::load(next_paths::config_dir()).await?;
+        let profiles = Profiles::load(next_paths::config_dir()).await?;
+        let collection = Collection::load(next_paths::data_dir()).await?;
         Ok(Boot {
             settings,
             collection,
