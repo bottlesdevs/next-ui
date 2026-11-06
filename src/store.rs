@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use bottles_core::{AddonsState, Core, Inventory};
+use bottles_core::{AddonsState, CatalogsState, Core, Inventory};
 use bottles_plugin_host::{Library, Plugin};
 use iced::Task;
 
@@ -13,6 +13,7 @@ pub(crate) struct Store {
     pub(crate) prefixes: Inventory,
     pub(crate) plugins: BTreeMap<String, Listing>,
     pub(crate) addons: Arc<AddonsState>,
+    pub(crate) catalogs: Arc<CatalogsState>,
 }
 
 #[derive(Clone, Debug)]
@@ -20,6 +21,7 @@ pub(crate) enum Update {
     Prefixes(Inventory),
     Plugin(String, Listing),
     Addons(Arc<AddonsState>),
+    Catalogs(Arc<CatalogsState>),
 }
 
 impl Store {
@@ -31,6 +33,7 @@ impl Store {
                 .map(|id| (id.clone(), Listing::Loading))
                 .collect(),
             addons: core.addons().state(),
+            catalogs: core.catalogs().state(),
         }
     }
 
@@ -58,6 +61,9 @@ impl Store {
             Task::run(core.addons().watch(), |addons| {
                 Message::Store(Update::Addons(addons))
             }),
+            Task::run(core.catalogs().watch(), |catalogs| {
+                Message::Store(Update::Catalogs(catalogs))
+            }),
         ]);
         Task::batch(listings.chain([watches]))
     }
@@ -69,6 +75,7 @@ impl Store {
                 self.plugins.insert(id, listing);
             }
             Update::Addons(addons) => self.addons = addons,
+            Update::Catalogs(catalogs) => self.catalogs = catalogs,
         }
     }
 }

@@ -112,7 +112,7 @@ impl State {
     fn downloads(&mut self, ctx: &mut Context) -> Task<app::Message> {
         self.step = Step::Downloads;
         ctx.jobs
-            .start(Kind::RefreshCatalog, ctx.core.addons().refresh())
+            .start(Kind::RefreshCatalog, ctx.core.catalogs().refresh())
     }
 
     pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
@@ -246,7 +246,7 @@ const OPTIONAL: [AddonRole; 4] = [
 ];
 
 fn essential_entries(store: &Store) -> Vec<CatalogEntry> {
-    let catalog = store.addons.component_entries();
+    let catalog = store.catalogs.component_entries();
     REQUIRED
         .into_iter()
         .chain(OPTIONAL)

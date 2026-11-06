@@ -31,7 +31,7 @@ pub(crate) struct Context {
 impl Context {
     pub(crate) fn fetch(&mut self, entry: CatalogEntry) -> Task<Message> {
         let id = entry.id();
-        let operation = self.core.addons().fetch::<AddonRole>(id).map(drop);
+        let operation = self.core.catalogs().fetch::<AddonRole>(id).map(drop);
         self.jobs.start(Kind::Fetch(id), operation)
     }
 
