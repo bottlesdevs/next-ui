@@ -277,7 +277,8 @@ impl App {
 }
 
 async fn boot() -> Result<Boot, String> {
-    let core = Core::open()
+    let core = Core::builder()
+        .build()
         .await
         .map(Arc::new)
         .map_err(|error| error.to_string())?;
