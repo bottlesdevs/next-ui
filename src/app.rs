@@ -284,16 +284,18 @@ async fn boot() -> Result<Boot, String> {
         .map_err(|error| error.to_string())?;
     let result = async {
         let plugins = Plugins::new().map_err(|error| error.to_string())?;
-        let mut libraries = HashMap::new();
-        for manifest in plugins.list().map_err(|error| error.to_string())? {
-            let plugin = plugins
-                .load(&manifest.id)
-                .await
-                .map_err(|error| error.to_string())?;
-            if let Some(library) = plugin.cast::<Library>() {
-                libraries.insert(manifest.id, Arc::new(library));
-            }
+        for (id, error) in plugins
+            .load_installed()
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            tracing::warn!(plugin = id, %error, "plugin failed to load");
         }
+        let libraries = plugins
+            .providing::<Library>()
+            .into_iter()
+            .map(|library| (library.manifest().id.clone(), Arc::new(library)))
+            .collect();
         let settings = Settings::load().await?;
         let profiles = Profiles::load().await?;
         let collection = Collection::load().await?;
