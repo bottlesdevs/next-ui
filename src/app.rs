@@ -284,11 +284,7 @@ async fn boot() -> Result<Boot, String> {
         .map_err(|error| error.to_string())?;
     let result = async {
         let plugins = Plugins::new().map_err(|error| error.to_string())?;
-        for (id, error) in plugins
-            .load_installed()
-            .await
-            .map_err(|error| error.to_string())?
-        {
+        for (id, error) in plugins.reload().await.map_err(|error| error.to_string())? {
             tracing::warn!(plugin = id, %error, "plugin failed to load");
         }
         let settings = Settings::load().await?;
