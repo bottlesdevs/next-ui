@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 
 use bottles_core::Core;
-use bottles_plugin_host::{Library, Plugin, Plugins};
+use bottles_plugin_host::Plugins;
 use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
 use uuid::Uuid;
 
@@ -56,7 +56,7 @@ pub(crate) struct Boot {
     settings: Settings,
     collection: Collection,
     core: Arc<Core>,
-    libraries: HashMap<String, Arc<Plugin<Library>>>,
+    plugins: Arc<Plugins>,
     profiles: Profiles,
 }
 
@@ -152,15 +152,15 @@ impl App {
             }
             Message::Booted(result) => match result {
                 Ok(boot) => {
-                    let watches = Store::watch(&boot.core, &boot.libraries);
+                    let watches = Store::watch(&boot.core, &boot.plugins);
                     let ctx = Context {
-                        store: Store::new(&boot.core, &boot.libraries),
+                        store: Store::new(&boot.core, &boot.plugins),
                         jobs: Jobs::default(),
                         notifications: Notifications::default(),
                         settings: boot.settings,
                         collection: boot.collection,
                         core: boot.core,
-                        libraries: boot.libraries,
+                        plugins: boot.plugins,
                         profiles: boot.profiles,
                     };
                     let screen = ctx
@@ -291,11 +291,6 @@ async fn boot() -> Result<Boot, String> {
         {
             tracing::warn!(plugin = id, %error, "plugin failed to load");
         }
-        let libraries = plugins
-            .providing::<Library>()
-            .into_iter()
-            .map(|library| (library.manifest().id.clone(), Arc::new(library)))
-            .collect();
         let settings = Settings::load().await?;
         let profiles = Profiles::load().await?;
         let collection = Collection::load().await?;
@@ -303,7 +298,7 @@ async fn boot() -> Result<Boot, String> {
             settings,
             collection,
             core: core.clone(),
-            libraries,
+            plugins: Arc::new(plugins),
             profiles,
         })
     }
