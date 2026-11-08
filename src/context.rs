@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use bottles_core::{AddonRole, CatalogEntry, Core};
-use bottles_plugin_host::{Library, Plugin};
+use bottles_plugin_host::{Library, Plugins};
 use iced::Task;
 
 use crate::{
@@ -17,7 +17,7 @@ use crate::{
 
 pub(crate) struct Context {
     pub(crate) core: Arc<Core>,
-    pub(crate) libraries: HashMap<String, Arc<Plugin<Library>>>,
+    pub(crate) plugins: Arc<Plugins>,
     pub(crate) settings: Settings,
     pub(crate) collection: Collection,
     // No screen reads profiles yet.
@@ -54,7 +54,14 @@ impl Context {
             #[cfg(feature = "fvs")]
             Entry::Program(id) => (*id, *id, self.collection.programs.get(id)),
             Entry::Plugin(plugin, id) => {
-                let library = self.libraries[plugin].clone();
+                let Some(library) = self
+                    .plugins
+                    .get(plugin)
+                    .and_then(|plugin| plugin.cast::<Library>())
+                else {
+                    self.notifications.error("This plugin is no longer loaded");
+                    return Task::none();
+                };
                 let (plugin, id) = (plugin.clone(), id.clone());
                 return self.jobs.perform(kind, async move {
                     library

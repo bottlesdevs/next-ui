@@ -1,10 +1,7 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 use bottles_core::{AddonsState, CatalogsState, Core, Inventory};
-use bottles_plugin_host::{Library, Plugin};
+use bottles_plugin_host::{Library, Plugins};
 use iced::Task;
 
 use crate::{app::Message, library::Listing};
@@ -25,25 +22,22 @@ pub(crate) enum Update {
 }
 
 impl Store {
-    pub(crate) fn new(core: &Core, libraries: &HashMap<String, Arc<Plugin<Library>>>) -> Self {
+    pub(crate) fn new(core: &Core, plugins: &Plugins) -> Self {
         Self {
             prefixes: core.prefixes().inventory(),
-            plugins: libraries
-                .keys()
-                .map(|id| (id.clone(), Listing::Loading))
+            plugins: plugins
+                .providing::<Library>()
+                .iter()
+                .map(|library| (library.manifest().id.clone(), Listing::Loading))
                 .collect(),
             addons: core.addons().state(),
             catalogs: core.catalogs().state(),
         }
     }
 
-    pub(crate) fn watch(
-        core: &Core,
-        libraries: &HashMap<String, Arc<Plugin<Library>>>,
-    ) -> Task<Message> {
-        let listings = libraries.iter().map(|(id, library)| {
-            let id = id.clone();
-            let library = library.clone();
+    pub(crate) fn watch(core: &Core, plugins: &Plugins) -> Task<Message> {
+        let listings = plugins.providing::<Library>().into_iter().map(|library| {
+            let id = library.manifest().id.clone();
             Task::perform(async move { library.list_entries().await }, move |result| {
                 Message::Store(Update::Plugin(
                     id.clone(),
