@@ -1,7 +1,7 @@
 //! People using this installation and the storefront accounts linked to them.
 //!
 //! Accounts are linked through the built-in Steam detection or an account
-//! plugin. Only public identities are kept; plugin credentials are discarded.
+//! plugin. Only public identities are kept here; a plugin keeps its own session.
 
 // No screen manages profiles or accounts yet.
 #![allow(dead_code)]
@@ -181,15 +181,15 @@ pub(crate) async fn plugin_account(
     plugin: &Plugin<Account>,
     interaction: Arc<dyn Interaction>,
 ) -> Result<(Provider, Identity), String> {
-    let linked = plugin
+    let identity = plugin
         .link_account(interaction)
         .await
         .map_err(|error| error.to_string())?;
     Ok((
         provider,
         Identity {
-            account_id: linked.identity.account_id,
-            display_name: linked.identity.display_name,
+            account_id: identity.account_id,
+            display_name: identity.display_name,
         },
     ))
 }
