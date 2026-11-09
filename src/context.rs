@@ -54,11 +54,7 @@ impl Context {
             #[cfg(feature = "fvs")]
             Entry::Program(id) => (*id, *id, self.collection.programs.get(id)),
             Entry::Plugin(plugin, id) => {
-                let Some(library) = self
-                    .plugins
-                    .get(plugin)
-                    .and_then(|plugin| plugin.cast::<Library>())
-                else {
+                let Some(library) = self.plugins.get::<Library>(plugin) else {
                     self.notifications.error("This plugin is no longer loaded");
                     return Task::none();
                 };
