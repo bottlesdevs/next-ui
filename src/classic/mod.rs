@@ -179,7 +179,7 @@ impl State {
                 Ok(prefix) => {
                     return ctx.jobs.start(
                         Kind::Stop(id),
-                        Operation::new(move |_, _| async move { prefix.stop().await }),
+                        Operation::new(move |_| async move { prefix.stop().await }),
                     );
                 }
                 Err(error) => ctx.notifications.error(error.to_string()),
