@@ -109,7 +109,7 @@ impl State {
                         .store
                         .addons
                         .releases::<Runner>()
-                        .first()
+                        .next()
                         .map(|runner| runner.id()),
                 });
             }
@@ -132,13 +132,11 @@ impl State {
                     .store
                     .addons
                     .releases::<Runner>()
-                    .into_iter()
                     .find(|runner| Some(runner.id()) == draft.runner);
                 let Some(runner) = runner else {
                     return Task::none();
                 };
-                let Some(winebridge) = ctx.store.addons.releases::<WineBridge>().into_iter().next()
-                else {
+                let Some(winebridge) = ctx.store.addons.releases::<WineBridge>().next() else {
                     return Task::none();
                 };
                 let name = draft.name.clone();
@@ -146,7 +144,7 @@ impl State {
                     PrefixBackend::Standard,
                     runner,
                     winebridge,
-                    ctx.store.addons.releases::<Umu>().into_iter().next(),
+                    ctx.store.addons.releases::<Umu>().next(),
                 );
                 self.creation_open = false;
                 return ctx.jobs.start_then(
@@ -275,9 +273,8 @@ impl State {
                 .store
                 .addons
                 .releases::<Runner>()
-                .iter()
                 .any(|runner| Some(runner.id()) == draft.runner)
-            && !ctx.store.addons.releases::<WineBridge>().is_empty();
+            && ctx.store.addons.releases::<WineBridge>().next().is_some();
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
                 .start(views::header_button(
