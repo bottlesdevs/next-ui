@@ -90,7 +90,7 @@ pub(super) fn creation<'a>(
     store: &'a Store,
     can_create: bool,
 ) -> Element<'a, Message> {
-    let labels = store.addons.releases::<Runner>();
+    let labels: Vec<_> = store.addons.releases::<Runner>().collect();
     let runners = labels.iter().map(|runner| runner.id()).collect::<Vec<_>>();
     let runner = SelectorRow::new("Runner", &runners, draft.runner.as_ref())
         .icon(Icon::Run)
@@ -125,7 +125,7 @@ pub(super) fn creation<'a>(
         PickerRow::new("Use Recipe").description("Choose the location"),
     ]
     .spacing(spacing::SM);
-    if store.addons.releases::<WineBridge>().is_empty() {
+    if store.addons.releases::<WineBridge>().next().is_none() {
         content = content.push(InfoRow::new("WineBridge is required to create a bottle"));
     }
     content.into()

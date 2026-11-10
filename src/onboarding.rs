@@ -176,8 +176,8 @@ impl State {
         let available = required_available(&entries);
         let mut group = RowGroup::new();
         let mut running = false;
-        let complete = !store.addons.releases::<Runner>().is_empty()
-            && !store.addons.releases::<WineBridge>().is_empty();
+        let complete = store.addons.releases::<Runner>().next().is_some()
+            && store.addons.releases::<WineBridge>().next().is_some();
         for (role, label) in REQUIRED.into_iter().zip(["Runner", "WineBridge"]) {
             if !entries.iter().any(|entry| entry.role() == role) {
                 group = group.row(InfoRow::new(label).description(if preparing {
@@ -246,13 +246,13 @@ const OPTIONAL: [AddonRole; 4] = [
 ];
 
 fn essential_entries(store: &Store) -> Vec<CatalogEntry> {
-    let catalog = store.catalogs.component_entries();
     REQUIRED
         .into_iter()
         .chain(OPTIONAL)
         .filter_map(|role| {
-            catalog
-                .iter()
+            store
+                .catalogs
+                .entries::<AddonRole>()
                 .find(|entry| entry.role() == role && entry.is_supported())
                 .cloned()
         })
