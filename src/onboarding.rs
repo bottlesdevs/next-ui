@@ -1,6 +1,6 @@
 //! First-run experience selection and downloads derived from session snapshots.
 
-use bottles_core::{AddonRole, CatalogEntry, Component, Runner, Slot, Umu, WineBridge};
+use bottles_core::{AddonRole, CatalogEntry, Component, RunnerFlavor, Runner, Slot, Umu, WineBridge};
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},
@@ -233,7 +233,9 @@ impl State {
 }
 
 const REQUIRED: [AddonRole; 2] = [
-    AddonRole::Runner(Runner {}),
+    AddonRole::Runner(Runner {
+        flavor: RunnerFlavor::Wine,
+    }),
     AddonRole::WineBridge(WineBridge {}),
 ];
 const OPTIONAL: [AddonRole; 4] = [
