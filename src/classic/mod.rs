@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::{
     app::Request,
     manage_profiles,
-    model::{Action, Activity, Bottle, Model, Subject},
+    model::{Action, Activity, Bottle, Experience, Model, Subject},
     parts,
 };
 
@@ -68,6 +68,7 @@ pub enum Message {
     Act(Action),
     Window(chrome::Action),
     Profiles(manage_profiles::Message),
+    OpenPreferences,
 }
 
 impl State {
@@ -140,6 +141,7 @@ impl State {
             }
             Message::Act(action) => return Some(Request::Act(action)),
             Message::Window(action) => return Some(Request::Window(action)),
+            Message::OpenPreferences => return Some(Request::OpenPreferences),
         }
         None
     }
@@ -202,6 +204,11 @@ impl State {
                 header
             };
             header
+                .start(parts::app_menu(
+                    Experience::Classic,
+                    Message::OpenPreferences,
+                    |experience| Message::Act(Action::SwitchExperience(experience)),
+                ))
                 .start(parts::header_button("Add bottle", Icon::Plus, Message::New))
                 .middle(tabs)
         });

@@ -6,6 +6,7 @@ mod next;
 mod notifications;
 mod onboarding;
 mod parts;
+mod preferences;
 mod profiles;
 
 fn main() -> iced::Result {

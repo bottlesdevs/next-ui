@@ -6,10 +6,12 @@ use iced::{
 };
 use next_ui::{
     Icon, theme,
-    widget::{ArtworkCard, Button, CardAction, InfoCard, InfoCardKind, spacing},
+    widget::{
+        ArtworkCard, Button, CardAction, InfoCard, InfoCardKind, Popover, PopoverItem, spacing,
+    },
 };
 
-use crate::model::{Activity, Listing, Model, Target};
+use crate::model::{Activity, Experience, Listing, Model, Target};
 
 /// A card for every program and library entry whose title contains `query`.
 ///
@@ -131,4 +133,37 @@ pub fn scroll_content<'a, Message: 'a>(
 
 pub fn header_button<Message>(label: &str, icon: Icon, message: Message) -> Button<'_, Message> {
     next_ui::widget::header_button(label, icon).on_press(message)
+}
+
+/// The app menu at the start of the main header: Preferences, and switching
+/// to the other experience when this build has it.
+pub fn app_menu<'a, Message: Clone + 'a>(
+    current: Experience,
+    preferences: Message,
+    switch: impl Fn(Experience) -> Message,
+) -> Element<'a, Message> {
+    let other = match current {
+        Experience::Next => Experience::Classic,
+        Experience::Classic => Experience::Next,
+    };
+    let mut menu = Popover::new(next_ui::widget::header_button(
+        "App menu",
+        Icon::EllipsisVertical,
+    ))
+    .item(
+        PopoverItem::new("Preferences")
+            .icon(Icon::Gear)
+            .on_select(preferences),
+    );
+    if other.is_available() {
+        menu = menu.item(
+            PopoverItem::new(match other {
+                Experience::Next => "Switch to Next",
+                Experience::Classic => "Switch to Classic",
+            })
+            .icon(Icon::Refresh)
+            .on_select(switch(other)),
+        );
+    }
+    menu.into()
 }
