@@ -2,7 +2,7 @@
 
 mod bottle;
 
-use bottles_core::{PrefixBackend, Runner, Umu, WineBridge};
+use bottles_core::{PrefixBackend, Runner, Umu, WineArch, WineBridge};
 use iced::{
     Element, Fill, Task,
     widget::{column, container},
@@ -142,6 +142,7 @@ impl State {
                 let name = draft.name.clone();
                 let operation = ctx.core.prefixes().create(
                     PrefixBackend::Standard,
+                    WineArch::default(),
                     runner,
                     winebridge,
                     ctx.store.addons.releases::<Umu>().next(),
