@@ -25,6 +25,7 @@ const COMPACT_MAX_WIDTH: f32 = 420.0;
 pub struct PaneContext {
     standalone: bool,
     owns_window_control: bool,
+    at_end: bool,
 }
 
 impl PaneContext {
@@ -32,6 +33,7 @@ impl PaneContext {
         Self {
             standalone: true,
             owns_window_control: true,
+            at_end: true,
         }
     }
 
@@ -39,10 +41,13 @@ impl PaneContext {
         self.standalone
     }
 
-    /// Whether this pane's header holds the window control, i.e. it is the
-    /// pane at the window's control edge.
-    pub fn owns_window_control(self) -> bool {
-        self.owns_window_control
+    /// Whether this pane reaches the window's end edge, where app-wide
+    /// header controls such as the profile button go.
+    ///
+    /// A side panel never does: it covers the edge, and the pane it pushes
+    /// aside keeps its controls.
+    pub fn is_at_end(self) -> bool {
+        self.at_end
     }
 
     pub fn header<'a, Message: Clone + 'a>(
@@ -92,14 +97,22 @@ impl Kind {
             Self::SidePanel(side) => [false, side.owns(window_control_at_start)],
         };
 
+        let [first_at_end, second_at_end] = match self {
+            Self::Navigation(parent) if !show_second => [parent.at_end, false],
+            Self::Navigation(parent) => [false, parent.at_end],
+            Self::SidePanel(_) => [true, false],
+        };
+
         [
             PaneContext {
                 standalone: first_standalone,
                 owns_window_control: first_owns_control,
+                at_end: first_at_end,
             },
             PaneContext {
                 standalone: second_standalone,
                 owns_window_control: second_owns_control,
+                at_end: second_at_end,
             },
         ]
     }
@@ -565,10 +578,7 @@ mod tests {
     use super::*;
 
     fn root_context() -> PaneContext {
-        PaneContext {
-            standalone: true,
-            owns_window_control: true,
-        }
+        PaneContext::root()
     }
 
     fn owners(contexts: [PaneContext; 2]) -> [bool; 2] {
@@ -596,6 +606,7 @@ mod tests {
         let nested = Kind::Navigation(PaneContext {
             standalone: false,
             owns_window_control: false,
+            at_end: false,
         });
         assert_eq!(owners(nested.contexts(true, true, false)), [false, false]);
     }
