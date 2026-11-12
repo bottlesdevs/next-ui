@@ -1,12 +1,9 @@
-#[path = "../src/chrome.rs"]
-mod chrome;
-
 use iced::{
     Center, Element, Fill, Subscription, Task, Theme,
     widget::{Space, column, container, grid, image, row, scrollable, text},
 };
 use next_ui::{
-    Icon, theme,
+    Icon, chrome, theme,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
         ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,

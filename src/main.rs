@@ -1,10 +1,8 @@
 mod app;
-mod chrome;
 mod classic;
 mod collection;
 mod context;
 mod jobs;
-mod layout;
 mod library;
 #[cfg(feature = "fvs")]
 mod next;
@@ -15,7 +13,7 @@ mod settings;
 mod store;
 mod views;
 
-pub(crate) use next_ui::{Icon, theme, widget};
+pub(crate) use next_ui::{Icon, chrome, layout, theme, widget};
 pub(crate) use settings::Experience;
 
 fn main() -> iced::Result {

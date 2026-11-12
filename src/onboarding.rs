@@ -1,6 +1,8 @@
 //! First-run experience selection and downloads derived from session snapshots.
 
-use bottles_core::{AddonRole, CatalogEntry, Component, RunnerFlavor, Runner, Slot, Umu, WineBridge};
+use bottles_core::{
+    AddonRole, CatalogEntry, Component, Runner, RunnerFlavor, Slot, Umu, WineBridge,
+};
 use iced::{
     Element, Fill, Length, Task, Theme,
     alignment::{Horizontal, Vertical},

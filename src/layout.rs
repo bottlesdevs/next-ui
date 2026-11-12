@@ -7,7 +7,6 @@ use iced::{
     animation::{Animation, Easing},
     gradient,
     time::Instant,
-    touch,
     widget::responsive,
     window,
 };
@@ -16,43 +15,31 @@ use crate::{
     chrome::{self, WINDOW_CONTROL_AT_START},
     theme,
     widget::{HeaderBar, spacing},
+    widgets::focus::event_cursor,
 };
 
 const BREAKPOINT: f32 = 900.0;
 const COMPACT_MAX_WIDTH: f32 = 420.0;
 
-fn event_cursor(event: &Event, cursor: mouse::Cursor) -> mouse::Cursor {
-    match event {
-        Event::Touch(
-            touch::Event::FingerPressed { position, .. }
-            | touch::Event::FingerMoved { position, .. }
-            | touch::Event::FingerLifted { position, .. }
-            | touch::Event::FingerLost { position, .. },
-        ) => mouse::Cursor::Available(*position),
-        _ => cursor,
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct PaneContext {
+pub struct PaneContext {
     standalone: bool,
     owns_window_control: bool,
 }
 
 impl PaneContext {
-    #[cfg(feature = "fvs")]
-    pub(super) fn root() -> Self {
+    pub fn root() -> Self {
         Self {
             standalone: true,
             owns_window_control: true,
         }
     }
 
-    pub(super) fn is_standalone(self) -> bool {
+    pub fn is_standalone(self) -> bool {
         self.standalone
     }
 
-    pub(super) fn header<'a, Message: Clone + 'a>(
+    pub fn header<'a, Message: Clone + 'a>(
         self,
         on_drag: Message,
         build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,
@@ -62,7 +49,7 @@ impl PaneContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Side {
+pub enum Side {
     Start,
     End,
 }
@@ -118,7 +105,7 @@ impl Side {
     }
 }
 
-pub(super) fn navigation_split<'a, Message: 'a>(
+pub fn navigation_split<'a, Message: 'a>(
     parent: PaneContext,
     show_detail: bool,
     master: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
@@ -127,7 +114,7 @@ pub(super) fn navigation_split<'a, Message: 'a>(
     adaptive_split(Kind::Navigation(parent), show_detail, master, detail)
 }
 
-pub(super) fn side_panel<'a, Message: 'a>(
+pub fn side_panel<'a, Message: 'a>(
     side: Side,
     open: bool,
     base: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
