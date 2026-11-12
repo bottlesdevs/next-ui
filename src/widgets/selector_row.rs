@@ -21,6 +21,7 @@ use super::{
     menu::{item as menu_item, row_content},
     progress_bar::ProgressBar,
     spacing,
+    switcher::Switcher,
     text::TextExt as _,
 };
 
@@ -38,6 +39,7 @@ pub struct SelectorRow<'a, T, Message> {
     icon: Option<Icon>,
     available: Vec<AvailableOption<'a, Message>>,
     popup: bool,
+    switch: Option<Switcher<'a, Message>>,
 }
 
 /// An option offered for download in a [`SelectorRow`], listed under the
@@ -83,6 +85,7 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
             icon: None,
             available: Vec::new(),
             popup: false,
+            switch: None,
         }
     }
 
@@ -101,6 +104,13 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
     /// e.g. in a two-column settings grid.
     pub fn popup(mut self) -> Self {
         self.popup = true;
+        self
+    }
+
+    /// Adds a switch before the caret that turns the setting on or off, e.g.
+    /// a component whose release the options pick.
+    pub fn switch(mut self, value: bool, on_toggle: Option<impl Fn(bool) -> Message + 'a>) -> Self {
+        self.switch = Some(Switcher::new(value).on_toggle_maybe(on_toggle));
         self
     }
 
@@ -137,19 +147,27 @@ where
             .filter(|selected| selector.options.contains(selected));
         let label = &selector.label;
         let value = selected.map_or_else(|| selector.placeholder.to_owned(), label);
-        let enabled = selector.on_selected.is_some() && !selector.options.is_empty();
-        let header = header(selector.title, value, selector.icon);
+        // Releases to download are worth opening for even with none to pick.
+        let enabled = selector.on_selected.is_some()
+            && !(selector.options.is_empty() && selector.available.is_empty());
+        let header = header(
+            selector.title,
+            value,
+            selector.icon,
+            selector.switch.map(Element::from),
+        );
         let rows = selector.options.iter().map(|option| {
             let message = selector
                 .on_selected
                 .as_ref()
                 .map(|on_selected| on_selected(option.clone()));
 
-            menu_item(
-                row_content(label(option).into(), None, None),
-                message,
-                selected == Some(option),
-            )
+            let current = selected == Some(option);
+            let mut content = row_content(label(option).into(), None, None);
+            if current {
+                content = content.push(Icon::Checkmark.view().width(16).height(16));
+            }
+            menu_item(content, message, current)
             .into()
         });
         let mut list = Column::new().width(Fill);
@@ -173,13 +191,25 @@ where
                 .extend(selector.available.into_iter().map(available_row));
         }
         let popup = selector.popup;
-        let panel = container(
-            scrollable(container(list).width(Fill).padding(PANEL_PADDING))
-                .width(Fill)
-                .style(crate::theme::scrollbar),
-        )
-        .width(Fill)
-        .style(move |theme| {
+        let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING))
+            .width(Fill)
+            .style(crate::theme::scrollbar);
+        // A popup hangs from the row: a hairline marks where the row ends.
+        let list: Element<'a, Message> = if popup {
+            column![
+                container(iced::widget::Space::new().height(1))
+                    .width(Fill)
+                    .style(|theme| {
+                        container::Style::default()
+                            .background(crate::theme::colors(theme).selection)
+                    }),
+                list,
+            ]
+            .into()
+        } else {
+            list.into()
+        };
+        let panel = container(list).width(Fill).style(move |theme| {
             if popup {
                 let colors = crate::theme::colors(theme);
                 container::Style::default()
@@ -241,6 +271,7 @@ fn header<'a, Message: 'a>(
     title: &'a str,
     value: String,
     icon: Option<Icon>,
+    switch: Option<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     let mut value_row = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
@@ -254,12 +285,15 @@ fn header<'a, Message: 'a>(
 
     value_row = value_row.push(text(value).size(list_row::BODY_SIZE).muted());
 
-    ListRow::new(
+    let mut row = ListRow::new(
         column![text(title).label().medium(), value_row]
             .width(Fill)
             .spacing(spacing::XS),
-    )
-    .into_disclosure_content()
+    );
+    if let Some(switch) = switch {
+        row = row.trailing(switch);
+    }
+    row.into_disclosure_content()
 }
 
 struct Selector<'a, Message> {
@@ -503,7 +537,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                 .interaction
                 .state(self.enabled, false, header.bounds(), cursor);
         header_state.selected = state.open;
-        let header_style = list_row::action_style(theme, header_state);
+        let mut header_style = list_row::action_style(theme, header_state);
+        // An open popup continues the row, so the row's bottom corners go.
+        if state.open && self.popup {
+            header_style.border = Border::default().rounded(iced::border::top(RADIUS));
+        }
         renderer.fill_quad(
             renderer::Quad {
                 bounds: header.bounds(),
@@ -617,7 +655,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                         }
                     },
                 )
-                .match_anchor_width(),
+                .match_anchor_width()
+                .attached(),
             )));
         }
 

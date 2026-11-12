@@ -80,7 +80,8 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
 
 pub(super) fn row_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
-    let highlighted = state.enabled && (state.hovered || state.pressed || state.focused);
+    let highlighted =
+        state.enabled && (state.selected || state.hovered || state.pressed || state.focused);
 
     button::Style {
         background: highlighted.then_some(Background::Color(colors.selection)),
