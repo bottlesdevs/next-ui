@@ -25,6 +25,8 @@ pub struct ActionRow<'a, Message> {
     title: Fragment<'a>,
     description: Fragment<'a>,
     icon: Option<Icon>,
+    leading: Option<Element<'a, Message>>,
+    trailing: Option<Element<'a, Message>>,
     state: State<Message>,
     selected: bool,
 }
@@ -35,6 +37,8 @@ impl<'a, Message> ActionRow<'a, Message> {
             title: title.into_fragment(),
             description: "".into_fragment(),
             icon: None,
+            leading: None,
+            trailing: None,
             state: action.into().map_or(State::Disabled, State::Ready),
             selected: false,
         }
@@ -54,6 +58,21 @@ impl<'a, Message> ActionRow<'a, Message> {
 
     pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
+        self
+    }
+
+    /// Leads the row with `leading`, e.g. an [`Avatar`].
+    ///
+    /// [`Avatar`]: super::avatar::Avatar
+    pub fn leading(mut self, leading: impl Into<Element<'a, Message>>) -> Self {
+        self.leading = Some(leading.into());
+        self
+    }
+
+    /// Ends the row with `trailing` instead of the arrow, e.g. a delete
+    /// button.
+    pub fn trailing(mut self, trailing: impl Into<Element<'a, Message>>) -> Self {
+        self.trailing = Some(trailing.into());
         self
     }
 
@@ -84,7 +103,7 @@ impl<'a, Message: Clone + 'a> ActionRow<'a, Message> {
         description = description.push(text(self.description).size(list_row::BODY_SIZE).muted());
 
         let labels = column![text(self.title).label().medium(), description].spacing(spacing::XS);
-        let (trailing, action): (Element<'a, Message>, _) = match self.state {
+        let (arrow, action): (Element<'a, Message>, _) = match self.state {
             State::Ready(message) => (
                 Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
                 Some(message),
@@ -95,10 +114,10 @@ impl<'a, Message: Clone + 'a> ActionRow<'a, Message> {
             ),
             State::Progress(progress) => (ProgressRing::new(progress).into(), None),
         };
-        list_row::action(
-            ListRow::new(labels).trailing(trailing),
-            action,
-            self.selected,
-        )
+        let mut row = ListRow::new(labels).trailing(self.trailing.unwrap_or(arrow));
+        if let Some(leading) = self.leading {
+            row = row.leading(leading);
+        }
+        list_row::action(row, action, self.selected)
     }
 }

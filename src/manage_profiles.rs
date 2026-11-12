@@ -9,8 +9,8 @@ use next_ui::{
     Icon, chrome,
     layout::PaneContext,
     widget::{
-        Avatar, Button, ButtonKind, ListRow, Popover, PopoverItem, RowGroup, TextExt as _, TextRow,
-        Title, spacing,
+        ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, PopoverItem, RowGroup,
+        TextExt as _, TextRow, Title, spacing,
     },
 };
 use uuid::Uuid;
@@ -120,29 +120,8 @@ impl State {
             .iter()
             .map(|profile| -> Element<'a, Message> {
                 let active = profile.id == profiles.selected;
-                let summary = summary(profile, active);
-                let body = row![
-                    Avatar::new(initial(&profile.name)).active(active),
-                    column![
-                        text(profile.name.as_str()).size(20).medium(),
-                        text(summary).size(16).muted(),
-                    ]
-                    .spacing(4)
-                    .width(Fill),
-                ]
-                .spacing(spacing::MD)
-                .align_y(Alignment::Center);
-                let mut row = ListRow::new(
-                    Button::custom(body)
-                        .kind(if profile.id == editing.id {
-                            ButtonKind::Surface
-                        } else {
-                            ButtonKind::Transparent
-                        })
-                        .on_press(Message::Edit(profile.id)),
-                );
-                if deletable {
-                    row = row.trailing(Popover::confirm(
+                let delete: Element<'a, Message> = if deletable {
+                    Popover::confirm(
                         next_ui::widget::header_button("Delete profile", Icon::Trash),
                         format!("Delete {}?", profile.name),
                         "Its linked accounts are removed from Bottles. Installed games and \
@@ -150,9 +129,17 @@ impl State {
                         "Delete",
                         Message::Delete(profile.id),
                         Message::Dismiss,
-                    ));
-                }
-                row.into()
+                    )
+                    .into()
+                } else {
+                    Space::new().into()
+                };
+                ActionRow::new(profile.name.as_str(), Message::Edit(profile.id))
+                    .description(summary(profile, active))
+                    .leading(Avatar::new(initial(&profile.name)).active(active))
+                    .trailing(delete)
+                    .selected(profile.id == editing.id)
+                    .into()
             });
 
         let name = self.name.as_deref().unwrap_or(&editing.name);
