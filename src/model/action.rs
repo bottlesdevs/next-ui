@@ -37,6 +37,11 @@ pub(crate) enum Action {
     CancelEssentials,
     RefreshCatalog,
     SwitchExperience(Experience),
+    SelectProfile(Uuid),
+    CreateProfile,
+    RenameProfile(Uuid, String),
+    DeleteProfile(Uuid),
+    Unlink(Uuid),
 }
 
 /// A change to how a prefix starts.
@@ -50,6 +55,19 @@ impl Model {
     pub(crate) fn perform(&mut self, action: Action) -> Task<Message> {
         match action {
             Action::Launch(target) => self.launch(target),
+            Action::SelectProfile(id) => self.change_profiles(|profiles| profiles.select(id)),
+            Action::CreateProfile => self.change_profiles(|profiles| {
+                profiles.create("New Profile");
+                Ok(())
+            }),
+            Action::RenameProfile(id, name) => {
+                self.change_profiles(move |profiles| profiles.rename(id, &name))
+            }
+            Action::DeleteProfile(id) => self.change_profiles(|profiles| profiles.delete(id)),
+            Action::Unlink(link) => self.change_profiles(|profiles| {
+                profiles.unlink(link);
+                Ok(())
+            }),
             Action::Stop(id) => self.on_prefix(id, Verb::Stop, |prefix| prefix.stop(false)),
             Action::Kill { prefix, group } => match self.core.prefixes().open(prefix) {
                 Ok(handle) => {

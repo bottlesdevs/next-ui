@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use crate::{
     app::Request,
+    manage_profiles,
     model::{Action, Activity, Bottle, Model, Subject},
     parts,
 };
@@ -47,6 +48,7 @@ pub struct State {
     draft: Option<Draft>,
     creation_open: bool,
     rename: Option<String>,
+    profiles: manage_profiles::State,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +67,7 @@ pub enum Message {
     SaveName,
     Act(Action),
     Window(chrome::Action),
+    Profiles(manage_profiles::Message),
 }
 
 impl State {
@@ -76,11 +79,13 @@ impl State {
             draft: None,
             creation_open: false,
             rename: None,
+            profiles: manage_profiles::State::default(),
         }
     }
 
     pub fn update(&mut self, model: &Model, message: Message) -> Option<Request> {
         match message {
+            Message::Profiles(message) => return self.profiles.update(model, message),
             Message::Tab(tab) => self.tab = tab,
             Message::Select(id) => {
                 if self.selected != Some(id) {
@@ -156,6 +161,15 @@ impl State {
 
     pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
         side_panel(
+            Side::End,
+            self.profiles.is_open(),
+            move |_| self.screen(model),
+            move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
+        )
+    }
+
+    fn screen<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
+        side_panel(
             Side::Start,
             self.creation_open,
             move |pane| match self.tab {
@@ -182,6 +196,11 @@ impl State {
         )
         .height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+            let header = if pane.owns_window_control() {
+                header.end(manage_profiles::button(model).map(Message::Profiles))
+            } else {
+                header
+            };
             header
                 .start(parts::header_button("Add bottle", Icon::Plus, Message::New))
                 .middle(tabs)
@@ -252,13 +271,18 @@ impl State {
             if activity.is_settled() {
                 delete = delete.on_select(Message::Act(Action::Delete(id)));
             }
-            header
+            let header = header
                 .start(
                     Popover::new(header_button("Bottle menu", Icon::EllipsisVertical))
                         .item(stop)
                         .item(delete),
                 )
-                .middle(tabs)
+                .middle(tabs);
+            if pane.owns_window_control() {
+                header.end(manage_profiles::button(model).map(Message::Profiles))
+            } else {
+                header
+            }
         });
         let status = bottle::status(&bottle, activity);
         let content = match self.detail_tab {

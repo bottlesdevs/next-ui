@@ -3,7 +3,7 @@
 //! Accounts are linked through the built-in Steam detection or an account
 //! plugin. Only public identities are kept here; a plugin keeps its own session.
 
-// No screen manages profiles or accounts yet.
+// Account linking has no screen yet.
 #![allow(dead_code)]
 
 mod steam;
@@ -80,7 +80,7 @@ impl Profiles {
             .map_err(|error| format!("failed to save {}: {error}", path.display()))
     }
 
-    fn path() -> PathBuf {
+    pub(crate) fn path() -> PathBuf {
         next_paths::config_dir().join("profiles.toml")
     }
 
@@ -150,6 +150,17 @@ impl Profiles {
                 .accounts
                 .retain(|account| account.link_id != link_id);
         }
+    }
+
+    pub(crate) fn selected(&self) -> &Profile {
+        self.profiles
+            .iter()
+            .find(|profile| profile.id == self.selected)
+            .unwrap_or(&self.profiles[0])
+    }
+
+    pub(crate) fn profile(&self, id: Uuid) -> Option<&Profile> {
+        self.profiles.iter().find(|profile| profile.id == id)
     }
 
     fn profile_mut(&mut self, id: Uuid) -> Result<&mut Profile, String> {

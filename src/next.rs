@@ -3,13 +3,14 @@
 use iced::{Element, Fill, widget::text};
 use next_ui::{
     Icon, chrome,
-    layout::{self, PaneContext},
+    layout::{self, PaneContext, Side},
     widget::{InfoRow, RowGroup, Search},
 };
 use uuid::Uuid;
 
 use crate::{
     app::Request,
+    manage_profiles,
     model::{Action, Activity, Model, Program},
     parts,
 };
@@ -17,6 +18,7 @@ use crate::{
 pub struct State {
     query: String,
     selected: Option<Uuid>,
+    profiles: manage_profiles::State,
 }
 
 #[derive(Clone)]
@@ -26,6 +28,7 @@ pub enum Message {
     Back,
     Act(Action),
     Window(chrome::Action),
+    Profiles(manage_profiles::Message),
 }
 
 impl State {
@@ -33,11 +36,13 @@ impl State {
         Self {
             query: String::new(),
             selected: None,
+            profiles: manage_profiles::State::default(),
         }
     }
 
-    pub fn update(&mut self, message: Message) -> Option<Request> {
+    pub fn update(&mut self, model: &Model, message: Message) -> Option<Request> {
         match message {
+            Message::Profiles(message) => return self.profiles.update(model, message),
             Message::Window(action) => return Some(Request::Window(action)),
             Message::Act(action) => return Some(Request::Act(action)),
             Message::QueryChanged(query) => self.query = query,
@@ -48,12 +53,19 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
-        let selected = self.selected(model);
-        layout::navigation_split(
-            PaneContext::root(),
-            selected.is_some(),
-            move |pane| self.programs_view(model, pane, selected.is_some()),
-            move |pane| self.detail_view(model, pane),
+        let selected = self.selected(model).is_some();
+        layout::side_panel(
+            Side::End,
+            self.profiles.is_open(),
+            move |pane| {
+                layout::navigation_split(
+                    pane,
+                    selected,
+                    move |pane| self.programs_view(model, pane, selected),
+                    move |pane| self.detail_view(model, pane),
+                )
+            },
+            move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
         )
     }
 
@@ -70,6 +82,11 @@ impl State {
                     Icon::Arrow,
                     Message::Back,
                 ))
+            } else {
+                header
+            };
+            let header = if pane.owns_window_control() {
+                header.end(manage_profiles::button(model).map(Message::Profiles))
             } else {
                 header
             };
@@ -108,6 +125,11 @@ impl State {
                     Icon::Arrow,
                     Message::Back,
                 ))
+            } else {
+                header
+            };
+            let header = if pane.owns_window_control() {
+                header.end(manage_profiles::button(model).map(Message::Profiles))
             } else {
                 header
             };

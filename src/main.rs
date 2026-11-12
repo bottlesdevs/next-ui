@@ -1,5 +1,6 @@
 mod app;
 mod classic;
+mod manage_profiles;
 mod model;
 mod next;
 mod notifications;

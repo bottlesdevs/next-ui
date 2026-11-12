@@ -195,7 +195,7 @@ impl App {
                         _ => None,
                     },
                     Message::Next(message) => match screen {
-                        Screen::Next(state) => state.update(message),
+                        Screen::Next(state) => state.update(model, message),
                         _ => None,
                     },
                     Message::Booted(_)

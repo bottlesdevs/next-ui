@@ -39,9 +39,7 @@ pub(crate) struct Model {
     pub(crate) sources: Sources,
     pub(crate) settings: Saved<Settings>,
     collection: Saved<Collection>,
-    // No screen reads profiles yet.
-    #[allow(dead_code)]
-    profiles: Profiles,
+    pub(crate) profiles: Saved<Profiles>,
     pub(crate) operations: Operations,
     pub(crate) notifications: Notifications,
     tracker: TaskTracker,
@@ -99,7 +97,7 @@ impl Model {
             sources: Sources::new(&boot.core, &boot.plugins),
             settings: Saved::new(boot.settings, Settings::path()),
             collection: Saved::new(boot.collection, Collection::path()),
-            profiles: boot.profiles,
+            profiles: Saved::new(boot.profiles, Profiles::path()),
             operations: Operations::new(tracker.clone()),
             notifications: Notifications::default(),
             core: boot.core,
@@ -168,6 +166,35 @@ impl Model {
     fn change_collection(&mut self, change: impl FnOnce(&mut Collection)) -> Task<Message> {
         let save = self.collection.change(change);
         self.write(save)
+    }
+
+    fn change_profiles(
+        &mut self,
+        change: impl FnOnce(&mut Profiles) -> Result<(), String>,
+    ) -> Task<Message> {
+        let mut changed = self.profiles.clone();
+        if let Err(error) = change(&mut changed) {
+            self.notifications.error(error);
+            return Task::none();
+        }
+        let save = self.profiles.change(move |profiles| *profiles = changed);
+        self.write(save)
+    }
+
+    /// The storefronts an account can be linked from: built-in Steam
+    /// detection and every account plugin, as `(id, name)`.
+    pub(crate) fn account_providers(&self) -> Vec<(String, String)> {
+        std::iter::once(("steam".to_owned(), "Steam".to_owned()))
+            .chain(
+                self.plugins
+                    .providing::<bottles_plugin_host::Account>()
+                    .iter()
+                    .map(|plugin| {
+                        let manifest = plugin.manifest();
+                        (manifest.id.clone(), manifest.name.clone())
+                    }),
+            )
+            .collect()
     }
 
     fn write(&self, save: BoxFuture<'static, Result<(), String>>) -> Task<Message> {
