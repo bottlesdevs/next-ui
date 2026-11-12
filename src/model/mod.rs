@@ -308,6 +308,12 @@ impl Model {
         downloads
     }
 
+    /// Programs to suggest installing when the library is empty.
+    #[allow(dead_code)]
+    pub(crate) fn suggestions(&self) -> Vec<String> {
+        todo!("the repository of bottle recipes doesn't exist yet")
+    }
+
     /// Names the bottles that use release `id`, so Preferences can say
     /// "In use" instead of offering Remove.
     #[allow(dead_code)]

@@ -108,8 +108,9 @@ impl State {
             &self.query,
             |target| Message::Act(Action::Launch(target)),
             |target| target.standalone().map(Message::Select),
+            Message::Act(Action::AddProgram),
         );
-        parts::page(header, body)
+        parts::body_page(header, body)
     }
 
     fn detail_view<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {

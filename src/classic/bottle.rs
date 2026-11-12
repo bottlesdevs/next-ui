@@ -18,7 +18,7 @@ use super::{Draft, Message};
 use crate::model::{Action, Activity, Bottle, Change, Model, Verb};
 
 /// A row for every bottle and for every bottle being created.
-pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> Element<'_, Message> {
+pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<'_, Message> {
     let bottles = model.bottles();
     let creating = || {
         model
@@ -30,9 +30,20 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> Element<'_, Message
             })
     };
     if bottles.is_empty() && creating().next().is_none() {
-        return text("No bottles yet. Add a bottle to get started.").into();
+        return Err(next_ui::widget::StatusPage::new("No bottles yet")
+            .description(
+                "A bottle is a Windows environment for the programs you install. Create one to \
+                 get started.",
+            )
+            .child(
+                next_ui::widget::Button::new("New Bottle")
+                    .icon(Icon::Plus)
+                    .kind(next_ui::widget::ButtonKind::Accent)
+                    .on_press(Message::New),
+            )
+            .into());
     }
-    responsive(move |size| {
+    Ok(responsive(move |size| {
         let bottles = bottles.iter().map(|bottle| {
             ActionRow::new(bottle.name, Message::Select(bottle.id))
                 .description(bottle.state.runner.name())
@@ -72,7 +83,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> Element<'_, Message
         .center_x(Fill)
         .into()
     })
-    .into()
+    .into())
 }
 
 pub(super) fn creation<'a>(
