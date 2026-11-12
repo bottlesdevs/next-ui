@@ -10,6 +10,7 @@ pub struct SwitcherRow<'a, Message> {
     description: &'a str,
     value: bool,
     on_toggle: Option<Box<dyn Fn(bool) -> Message + 'a>>,
+    accessory: Option<Element<'a, Message>>,
 }
 
 impl<'a, Message> SwitcherRow<'a, Message> {
@@ -19,11 +20,21 @@ impl<'a, Message> SwitcherRow<'a, Message> {
             description: "",
             value,
             on_toggle: None,
+            accessory: None,
         }
     }
 
     pub fn description(mut self, description: &'a str) -> Self {
         self.description = description;
+        self
+    }
+
+    /// Places `accessory` before the switch, e.g. a [`Popover`] that picks
+    /// which release the switch turns on.
+    ///
+    /// [`Popover`]: super::popover::Popover
+    pub fn accessory(mut self, accessory: impl Into<Element<'a, Message>>) -> Self {
+        self.accessory = Some(accessory.into());
         self
     }
 
@@ -46,7 +57,10 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Mes
 
 impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Message> {
     fn from(switcher: SwitcherRow<'a, Message>) -> Self {
-        ListRow::new(labels(switcher.title, switcher.description))
-            .trailing(Switcher::new(switcher.value).on_toggle_maybe(switcher.on_toggle))
+        let mut row = ListRow::new(labels(switcher.title, switcher.description));
+        if let Some(accessory) = switcher.accessory {
+            row = row.trailing(accessory);
+        }
+        row.trailing(Switcher::new(switcher.value).on_toggle_maybe(switcher.on_toggle))
     }
 }

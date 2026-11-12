@@ -16,6 +16,18 @@ pub(super) fn row_content<'a, Message: 'a>(
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
 ) -> iced::widget::Row<'a, Message> {
+    row_content_with(
+        title,
+        subtitle,
+        icon.map(|icon| icon.view().width(20).height(20).into()),
+    )
+}
+
+pub(super) fn row_content_with<'a, Message: 'a>(
+    title: Fragment<'a>,
+    subtitle: Option<&'a str>,
+    leading: Option<Element<'a, Message>>,
+) -> iced::widget::Row<'a, Message> {
     let mut labels = column![text(title).label()].spacing(spacing::XS);
 
     if let Some(subtitle) = subtitle {
@@ -24,8 +36,8 @@ pub(super) fn row_content<'a, Message: 'a>(
 
     let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
-    if let Some(icon) = icon {
-        content = content.push(icon.view().width(20).height(20));
+    if let Some(leading) = leading {
+        content = content.push(leading);
     }
 
     content.push(labels).push(Space::new().width(Fill))

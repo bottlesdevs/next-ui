@@ -4,57 +4,132 @@ use iced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Id, Operation, Tree, tree},
     },
-    widget::{column, container, scrollable, svg, text::Fragment, text::IntoFragment, tooltip},
+    widget::{
+        Space, column, container, row, scrollable, svg, text, text::Fragment, text::IntoFragment,
+        tooltip,
+    },
 };
 
 use crate::icons::Icon;
 
+use super::text::TextExt as _;
 use super::{
     anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    menu::{item as menu_item, row_content},
+    menu::{item as menu_item, row_content_with},
     picker_row::PickerRow,
     spacing,
 };
 
 const WIDTH: f32 = 240.0;
 
-/// A trigger that opens an anchored menu of [`PopoverItem`]s.
+/// A trigger that opens an anchored panel: a menu of [`PopoverItem`]s, or
+/// arbitrary content such as a confirmation.
+///
+/// Any message published from the panel closes it.
 pub struct Popover<'a, Message> {
     trigger: Element<'a, ()>,
-    items: Vec<PopoverItem<'a, Message>>,
+    body: Body<'a, Message>,
+    width: f32,
 }
 
-impl<'a, Message> Popover<'a, Message> {
+enum Body<'a, Message> {
+    Items(Vec<PopoverItem<'a, Message>>),
+    Content(Element<'a, Message>, Vec<Id>),
+}
+
+impl<'a, Message: Clone + 'a> Popover<'a, Message> {
     pub fn new(trigger: Button<'a, ()>) -> Self {
         Self {
             trigger: trigger.on_press(()).into(),
-            items: Vec::new(),
+            body: Body::Items(Vec::new()),
+            width: WIDTH,
         }
     }
 
     pub fn row(trigger: PickerRow<'a, ()>) -> Self {
         Self {
             trigger: trigger.on_press(()).into(),
-            items: Vec::new(),
+            body: Body::Items(Vec::new()),
+            width: WIDTH,
         }
     }
 
     pub fn item(mut self, item: PopoverItem<'a, Message>) -> Self {
-        self.items.push(item);
+        match &mut self.body {
+            Body::Items(items) => items.push(item),
+            Body::Content(..) => self.body = Body::Items(vec![item]),
+        }
         self
+    }
+
+    /// Shows `content` in the panel instead of a menu.
+    pub fn content(mut self, content: impl Into<Element<'a, Message>>) -> Self {
+        self.body = Body::Content(content.into(), Vec::new());
+        self
+    }
+
+    /// Sets the panel's width.
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width.max(1.0);
+        self
+    }
+
+    /// Asks before a destructive action started from `trigger`: a title, one
+    /// line explaining the consequence, Cancel and a destructive confirm.
+    pub fn confirm(
+        trigger: Button<'a, ()>,
+        title: impl IntoFragment<'a>,
+        body: impl IntoFragment<'a>,
+        confirm: &'a str,
+        on_confirm: Message,
+        on_cancel: Message,
+    ) -> Self {
+        let cancel_id = Id::unique();
+        let confirm_id = Id::unique();
+        let content = column![
+            text(title).size(17).medium(),
+            text(body).size(14).muted(),
+            row![
+                Space::new().width(Fill),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Secondary)
+                    .id(cancel_id.clone())
+                    .on_press(on_cancel),
+                Button::new(confirm)
+                    .kind(ButtonKind::Destructive)
+                    .id(confirm_id.clone())
+                    .on_press(on_confirm),
+            ]
+            .spacing(spacing::XS),
+        ]
+        .spacing(spacing::SM);
+
+        Self {
+            trigger: trigger.on_press(()).into(),
+            body: Body::Content(content.into(), vec![cancel_id, confirm_id]),
+            width: 320.0,
+        }
     }
 }
 
 impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
     fn from(popover: Popover<'a, Message>) -> Self {
         let mut focus_targets = Vec::new();
-        let rows = popover
-            .items
-            .into_iter()
-            .map(|item| item_row(item, &mut focus_targets));
-        let content = container(scrollable(container(column(rows).width(Fill)).width(Fill)))
-            .width(Length::Fixed(WIDTH))
+        let body: Element<'a, Message> = match popover.body {
+            Body::Items(items) => {
+                let rows = items
+                    .into_iter()
+                    .map(|item| item_row(item, &mut focus_targets));
+                scrollable(container(column(rows).width(Fill)).width(Fill)).into()
+            }
+            Body::Content(content, targets) => {
+                focus_targets = targets;
+                content
+            }
+        };
+        let content = container(body)
+            .width(Length::Fixed(popover.width))
             .padding(spacing::MD);
 
         Element::new(PopoverWidget {
@@ -70,6 +145,7 @@ pub struct PopoverItem<'a, Message> {
     title: Fragment<'a>,
     subtitle: Option<&'a str>,
     icon: Option<Icon>,
+    leading: Option<Element<'a, Message>>,
     action: Option<ItemAction<'a, Message>>,
     tooltip: Option<Element<'a, Message>>,
     selected: bool,
@@ -87,6 +163,7 @@ impl<'a, Message> PopoverItem<'a, Message> {
             title: title.into_fragment(),
             subtitle: None,
             icon: None,
+            leading: None,
             action: None,
             tooltip: None,
             selected: false,
@@ -100,6 +177,14 @@ impl<'a, Message> PopoverItem<'a, Message> {
 
     pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
+        self
+    }
+
+    /// Leads the row with `leading` instead of an icon, e.g. an [`Avatar`].
+    ///
+    /// [`Avatar`]: super::avatar::Avatar
+    pub fn leading(mut self, leading: impl Into<Element<'a, Message>>) -> Self {
+        self.leading = Some(leading.into());
         self
     }
 
@@ -140,7 +225,11 @@ fn item_row<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let primary = matches!(item.action.as_ref(), Some(ItemAction::Row(_))).then(Id::unique);
     focus_targets.extend(primary.iter().cloned());
-    let mut content = row_content(item.title, item.subtitle, item.icon);
+    let leading = item.leading.or_else(|| {
+        item.icon
+            .map(|icon| icon.view().width(20).height(20).into())
+    });
+    let mut content = row_content_with(item.title, item.subtitle, leading);
 
     if item.selected {
         content = content.push(Icon::Checkmark.view().width(16).height(16).style(
