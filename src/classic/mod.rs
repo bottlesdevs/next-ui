@@ -179,9 +179,12 @@ impl State {
         });
         let body = match self.tab {
             TabKind::Bottles => bottle::rows(model, self.selected),
-            TabKind::Library => {
-                parts::library_grid(model, "", |target| Message::Act(Action::Launch(target)))
-            }
+            TabKind::Library => parts::library_grid(
+                model,
+                "",
+                |target| Message::Act(Action::Launch(target)),
+                |_| None,
+            ),
         };
         parts::page(header, body)
     }

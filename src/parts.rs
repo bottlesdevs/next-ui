@@ -12,10 +12,13 @@ use next_ui::{
 use crate::model::{Activity, Listing, Model, Target};
 
 /// A card for every program and library entry whose title contains `query`.
+///
+/// A card has a details button when `on_details` returns a message for it.
 pub fn library_grid<'a, Message: Clone + 'a>(
     model: &'a Model,
     query: &str,
     on_launch: impl Fn(Target) -> Message,
+    on_details: impl Fn(&Target) -> Option<Message>,
 ) -> Element<'a, Message> {
     let query = query.to_lowercase();
     let mut notices = column![].spacing(spacing::SM);
@@ -46,7 +49,8 @@ pub fn library_grid<'a, Message: Clone + 'a>(
         .map(|entry| {
             let activity = model.activity(&entry.target.subject());
             let launching = activity == Activity::Launching;
-            ArtworkCard::new(
+            let details = on_details(&entry.target);
+            let card = ArtworkCard::new(
                 entry.title,
                 match activity {
                     Activity::Launching => "Launching…",
@@ -58,8 +62,13 @@ pub fn library_grid<'a, Message: Clone + 'a>(
                 CardAction::new("Play", Icon::Play)
                     .loading(launching)
                     .on_press_maybe((activity == Activity::Idle).then(|| on_launch(entry.target))),
-            )
-            .into()
+            );
+            match details {
+                Some(message) => card
+                    .menu(CardAction::new("Details", Icon::EllipsisVertical).on_press(message))
+                    .into(),
+                None => card.into(),
+            }
         })
         .collect::<Vec<_>>();
 
