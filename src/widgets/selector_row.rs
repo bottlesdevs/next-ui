@@ -176,14 +176,17 @@ where
         });
         let mut list = Column::new().width(Fill);
         // A selector that can download names what's already downloaded,
-        // whether or not anything is on offer right now.
-        if selector.downloads {
+        // whether or not anything is on offer right now, unless that's
+        // nothing.
+        if selector.downloads && !selector.options.is_empty() {
             list = list.push(section_heading("Downloaded"));
         }
         list = list.extend(rows);
         if !selector.available.is_empty() {
+            if !selector.options.is_empty() {
+                list = list.push(menu::separator());
+            }
             list = list
-                .push(menu::separator())
                 .push(section_heading("Available"))
                 .extend(selector.available.into_iter().map(available_row));
         }
