@@ -1,20 +1,34 @@
 //! Session notifications and their overlay layer.
 
 use iced::{
-    Element, Fill,
-    widget::{column, container, responsive, scrollable},
+    Alignment, Element, Fill,
+    widget::{column, container, responsive, row, scrollable, text},
 };
 use uuid::Uuid;
 
-use next_ui::widget::{InfoCardKind, Notification as NotificationCard};
+use next_ui::widget::{
+    Button, ButtonKind, InfoCardKind, Notification as NotificationCard, TextExt as _,
+};
 
-use crate::app::Message;
+use crate::{app::Message, model::Action};
+
+/// How many notifications show before older ones fold away.
+const VISIBLE: usize = 2;
+
+/// What a notification's button does.
+#[derive(Clone, Debug)]
+pub(crate) enum Follow {
+    Act(Action),
+    /// Opens Preferences at Plugins.
+    Plugins,
+}
 
 pub(crate) struct Notification {
     pub(crate) id: Uuid,
     pub(crate) kind: InfoCardKind,
     pub(crate) title: String,
     pub(crate) message: String,
+    pub(crate) action: Option<(String, Follow)>,
 }
 
 impl Notification {
@@ -28,12 +42,24 @@ impl Notification {
             kind,
             title: title.into(),
             message: message.into(),
+            action: None,
         }
+    }
+
+    /// Adds a button under the message, e.g. "Retry".
+    pub(crate) fn action(mut self, label: impl Into<String>, follow: Follow) -> Self {
+        self.action = Some((label.into(), follow));
+        self
     }
 }
 
+/// The notifications of this session, oldest first.
 #[derive(Default)]
-pub(crate) struct Notifications(Vec<Notification>);
+pub(crate) struct Notifications {
+    list: Vec<Notification>,
+    /// Whether the folded older notifications are shown.
+    expanded: bool,
+}
 
 impl Notifications {
     pub(crate) fn info(&mut self, message: impl Into<String>) {
@@ -44,54 +70,70 @@ impl Notifications {
         ));
     }
 
+    pub(crate) fn success(&mut self, title: impl Into<String>, message: impl Into<String>) {
+        self.push(Notification::new(InfoCardKind::Success, title, message));
+    }
+
     pub(crate) fn error(&mut self, message: impl Into<String>) {
         self.push(Notification::new(InfoCardKind::Error, "Error", message));
     }
 
     pub(crate) fn push(&mut self, notification: Notification) {
-        self.0.push(notification);
+        self.list.push(notification);
     }
 
     pub(crate) fn dismiss(&mut self, id: Uuid) {
-        self.0.retain(|notification| notification.id != id);
+        self.list.retain(|notification| notification.id != id);
+        if self.list.len() <= VISIBLE {
+            self.expanded = false;
+        }
+    }
+
+    pub(crate) fn dismiss_all(&mut self) {
+        self.list.clear();
+        self.expanded = false;
+    }
+
+    pub(crate) fn toggle_expanded(&mut self) {
+        self.expanded = !self.expanded;
     }
 
     pub(crate) fn get(&self, id: Uuid) -> Option<&Notification> {
-        self.0.iter().find(|notification| notification.id == id)
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Notification> {
-        self.0.iter()
+        self.list.iter().find(|notification| notification.id == id)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.list.is_empty()
     }
 }
 
+/// The newest notifications in the bottom-right corner, newest last, under a
+/// pill that unfolds the older ones or dismisses them all.
 pub(crate) fn layer(notifications: &Notifications) -> Element<'_, Message> {
     responsive(move |size| {
-        let cards = column(notifications.iter().map(|notification| {
-            NotificationCard::new(
-                notification.kind,
-                &notification.title,
-                &notification.message,
-            )
-            .on_dismiss(Message::DismissNotification(notification.id))
-            .on_copy(Message::CopyNotification(notification.id))
-            .into()
-        }))
-        .spacing(8)
-        .width(Fill);
+        let list = &notifications.list;
+        let folded = if notifications.expanded {
+            0
+        } else {
+            list.len().saturating_sub(VISIBLE)
+        };
+        let cards = column(list[folded..].iter().map(card))
+            .spacing(10)
+            .width(Fill);
+        let mut stack = column![].spacing(10).align_x(Alignment::End);
+        if list.len() > VISIBLE {
+            stack = stack.push(pill(folded));
+        }
+        let stack = stack.push(
+            scrollable(cards)
+                .anchor_bottom()
+                .height(iced::Length::Shrink),
+        );
         container(
-            container(
-                scrollable(cards)
-                    .anchor_bottom()
-                    .height(iced::Length::Shrink),
-            )
-            .width(Fill)
-            .max_width(420)
-            .max_height(size.height * 0.6),
+            container(stack)
+                .width(Fill)
+                .max_width(420)
+                .max_height(size.height * 0.6),
         )
         .width(Fill)
         .height(Fill)
@@ -102,5 +144,56 @@ pub(crate) fn layer(notifications: &Notifications) -> Element<'_, Message> {
     })
     .width(Fill)
     .height(Fill)
+    .into()
+}
+
+fn card(notification: &Notification) -> Element<'_, Message> {
+    let mut card = NotificationCard::new(
+        notification.kind,
+        &notification.title,
+        &notification.message,
+    )
+    .on_dismiss(Message::DismissNotification(notification.id));
+    // Copying is for passing error details on, e.g. in a bug report.
+    if notification.kind == InfoCardKind::Error {
+        card = card.on_copy(Message::CopyNotification(notification.id));
+    }
+    if let Some((label, _)) = &notification.action {
+        card = card.action(label, Message::FollowNotification(notification.id));
+    }
+    card.into()
+}
+
+/// "3 more | Dismiss All" while older notifications are folded, or
+/// "Show Fewer | Dismiss All" once they're unfolded.
+fn pill<'a>(folded: usize) -> Element<'a, Message> {
+    let toggle = if folded > 0 {
+        format!("{folded} more")
+    } else {
+        "Show Fewer".to_owned()
+    };
+    let button = |label: String, message| {
+        Button::custom(text(label).size(15).muted())
+            .kind(ButtonKind::Transparent)
+            .on_press(message)
+    };
+    container(
+        row![
+            button(toggle, Message::ExpandNotifications),
+            container(iced::widget::Space::new().width(1).height(18)).style(|theme| {
+                container::Style::default().background(next_ui::theme::colors(theme).border)
+            }),
+            button("Dismiss All".to_owned(), Message::DismissAllNotifications),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
+    )
+    .padding([0, 6])
+    .style(|theme| {
+        let colors = next_ui::theme::colors(theme);
+        container::Style::default()
+            .background(colors.selection)
+            .border(iced::Border::default().rounded(20))
+    })
     .into()
 }

@@ -45,6 +45,11 @@ pub enum Message {
 }
 
 impl State {
+    /// Opens Preferences at `page`.
+    pub fn at(page: Page) -> Self {
+        Self { page }
+    }
+
     pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
             Message::Page(page) => self.page = page,
