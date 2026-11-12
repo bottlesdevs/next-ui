@@ -9,8 +9,8 @@ use next_ui::{
     Icon, chrome,
     layout::{PaneContext, Side, side_panel},
     widget::{
-        ActionRow, Avatar, AvatarShape, Button, ButtonKind, ListRow, Popover, RowGroup, StatusPage,
-        Tab, Tabs, Tag, TextExt as _, Title, spacing,
+        ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, ListRow, Popover, RowGroup,
+        StatusPage, Tab, Tabs, Tag, TextExt as _, Title, spacing,
     },
 };
 
@@ -265,8 +265,14 @@ fn addons(model: &Model) -> Body<'_> {
     Ok(groups
         .into_iter()
         .fold(column![].spacing(spacing::LG), |page, (title, releases)| {
+            let icon = match title {
+                "Runners" => Icon::Run,
+                "WineBridge and UMU" => Icon::Computer,
+                "Dependencies" => Icon::Library,
+                _ => Icon::Chip,
+            };
             page.push(releases.into_iter().fold(
-                RowGroup::new().title(title),
+                BoxedGroup::new().title(title).icon(icon),
                 |group, (id, label)| {
                     group.row(ListRow::new(text(label).label().medium()).trailing(
                         Popover::confirm(

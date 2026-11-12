@@ -1,5 +1,6 @@
 use iced::{
     Alignment, Background, Border, Element, Fill, Padding, Theme,
+    border::Radius,
     widget::{Row as IcedRow, Space, button, column, container, text, text::IntoFragment},
 };
 
@@ -11,6 +12,9 @@ use super::{
 
 #[doc(hidden)]
 pub const BODY_SIZE: f32 = 16.0;
+/// The corner radius of a row standing on its own.
+const RADIUS: f32 = 6.0;
+
 pub(crate) const STANDARD_PADDING: Padding = Padding {
     top: spacing::MD,
     right: spacing::MD,
@@ -24,6 +28,7 @@ pub struct ListRow<'a, Message> {
     leading: Vec<Element<'a, Message>>,
     trailing: Vec<Element<'a, Message>>,
     padding: Padding,
+    corners: Radius,
 }
 
 #[doc(hidden)]
@@ -46,6 +51,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             leading: Vec::new(),
             trailing: Vec::new(),
             padding: STANDARD_PADDING,
+            corners: Radius::new(RADIUS),
         }
     }
 
@@ -66,6 +72,14 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
 
     pub(crate) fn body(mut self, body: impl Into<Element<'a, Message>>) -> Self {
         self.body = body.into();
+        self
+    }
+
+    /// Rounds the row's corners as a [`BoxedGroup`] places it.
+    ///
+    /// [`BoxedGroup`]: super::boxed_group::BoxedGroup
+    pub(crate) fn corners(mut self, corners: Radius) -> Self {
+        self.corners = corners;
         self
     }
 
@@ -107,9 +121,10 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
 
 impl<'a, Message: 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
     fn from(row: ListRow<'a, Message>) -> Self {
+        let corners = row.corners;
         container(row.into_content())
             .width(Fill)
-            .style(control_style)
+            .style(move |theme| control_style(theme, corners))
             .into()
     }
 }
@@ -119,20 +134,24 @@ pub(crate) fn action<'a, Message: Clone + 'a>(
     on_press: Option<Message>,
     selected: bool,
 ) -> Element<'a, Message> {
+    let corners = row.corners;
     FocusableAction::new(row.into_content())
         .width(Fill)
         .selected(selected)
         .on_press_maybe(on_press)
-        .style(action_style)
+        .style(move |theme, state| button::Style {
+            border: Border::default().rounded(corners),
+            ..action_style(theme, state)
+        })
         .into()
 }
 
-fn control_style(theme: &Theme) -> container::Style {
+fn control_style(theme: &Theme, corners: Radius) -> container::Style {
     let colors = crate::theme::colors(theme);
 
     container::Style::default()
         .background(colors.surface)
-        .border(Border::default().rounded(6))
+        .border(Border::default().rounded(corners))
         .color(colors.text)
 }
 
