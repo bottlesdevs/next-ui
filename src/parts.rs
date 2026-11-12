@@ -48,10 +48,10 @@ pub fn library_grid<'a, Message: Clone + 'a>(
             let launching = activity == Activity::Launching;
             ArtworkCard::new(
                 entry.title,
-                if launching {
-                    "Launching…"
-                } else {
-                    entry.source
+                match activity {
+                    Activity::Launching => "Launching…",
+                    Activity::Running => "Running",
+                    _ => entry.source,
                 },
             )
             .primary(

@@ -84,9 +84,17 @@ pub(crate) struct Entry<'a> {
 pub(crate) enum Activity {
     Idle,
     Launching,
+    Running,
     Stopping,
     /// Being edited, deleted, created, or downloaded.
     Busy,
+}
+
+impl Activity {
+    /// Returns whether nothing is in flight: the subject is idle or running.
+    pub(crate) fn is_settled(self) -> bool {
+        matches!(self, Self::Idle | Self::Running)
+    }
 }
 
 impl Model {
@@ -179,7 +187,9 @@ impl Model {
 
     /// Returns what is happening to `subject`.
     ///
-    /// A program is also affected by what happens to its prefix.
+    /// An operation in flight comes first, and a program is also affected by
+    /// the operation on its prefix. Otherwise a prefix is running while Wine
+    /// runs in it, and a program while its process group has a process.
     pub(crate) fn activity(&self, subject: &Subject) -> Activity {
         let prefix = match subject {
             Subject::Program { prefix, .. } => Some(Subject::Prefix(*prefix)),
@@ -190,7 +200,21 @@ impl Model {
             .get(subject)
             .or_else(|| self.operations.get(prefix.as_ref()?));
         match pending.map(|pending| &pending.verb) {
-            None => Activity::Idle,
+            None => {
+                let running = &self.sources.running;
+                let running = match subject {
+                    Subject::Prefix(prefix) => running.contains_key(prefix),
+                    Subject::Program { prefix, group } => running
+                        .get(prefix)
+                        .is_some_and(|groups| groups.contains(group)),
+                    _ => false,
+                };
+                if running {
+                    Activity::Running
+                } else {
+                    Activity::Idle
+                }
+            }
             Some(Verb::Launch) => Activity::Launching,
             Some(Verb::Stop) => Activity::Stopping,
             Some(_) => Activity::Busy,

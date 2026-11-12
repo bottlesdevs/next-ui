@@ -219,7 +219,7 @@ impl State {
             return column![].into();
         };
         let id = bottle.id;
-        let idle = model.activity(&Subject::Prefix(id)) == Activity::Idle;
+        let activity = model.activity(&Subject::Prefix(id));
         let tabs = [
             Tab::new(Detail::Programs, "Programs"),
             Tab::new(Detail::Settings, "Settings"),
@@ -239,8 +239,10 @@ impl State {
             }
             let mut stop = PopoverItem::new("Stop bottle").icon(Icon::Stop);
             let mut delete = PopoverItem::new("Delete bottle").icon(Icon::Cross);
-            if idle {
+            if activity == Activity::Running {
                 stop = stop.on_select(Message::Act(Action::Stop(id)));
+            }
+            if activity.is_settled() {
                 delete = delete.on_select(Message::Act(Action::Delete(id)));
             }
             header
@@ -251,10 +253,12 @@ impl State {
                 )
                 .middle(tabs)
         });
-        let status = bottle::status(&bottle);
+        let status = bottle::status(&bottle, activity);
         let content = match self.detail_tab {
             Detail::Programs => bottle::programs(bottle, model),
-            Detail::Settings => bottle::settings(bottle, self.rename.as_deref(), idle),
+            Detail::Settings => {
+                bottle::settings(bottle, self.rename.as_deref(), activity.is_settled())
+            }
             #[cfg(feature = "fvs")]
             Detail::Snapshots => Title::new("Snapshots")
                 .subtitle("Snapshot management is coming later.")

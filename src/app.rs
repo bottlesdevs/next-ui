@@ -104,9 +104,14 @@ impl App {
     }
 
     pub(crate) fn subscription(&self) -> Subscription<Message> {
+        let model = match &self.state {
+            State::Ready { model, .. } => model.subscription().map(Message::Model),
+            State::Loading | State::Failed(_) => Subscription::none(),
+        };
         Subscription::batch([
             chrome::subscription().map(Message::Window),
             iced::system::theme_changes().map(Message::ThemeChanged),
+            model,
         ])
     }
 

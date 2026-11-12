@@ -17,7 +17,7 @@ use std::{future::Future, sync::Arc};
 
 use bottles_core::Core;
 use bottles_plugin_host::Plugins;
-use iced::{Task, futures::future::BoxFuture};
+use iced::{Subscription, Task, futures::future::BoxFuture};
 use tokio_util::task::TaskTracker;
 
 pub(crate) use action::{Action, Change};
@@ -111,6 +111,13 @@ impl Model {
         let watch = Sources::watch(&model.core, &model.plugins).map(Message::Source);
         let prune = model.prune();
         (model, Task::batch([watch, prune]))
+    }
+
+    /// Follows the running programs of every recorded prefix.
+    pub(crate) fn subscription(&self) -> Subscription<Message> {
+        let collection = &self.collection;
+        let recorded = collection.bottles.keys().chain(collection.programs.keys());
+        Sources::follow(&self.core, recorded.copied()).map(Message::Source)
     }
 
     pub(crate) fn update(&mut self, message: Message) -> Task<Message> {
