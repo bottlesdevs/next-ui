@@ -293,22 +293,22 @@ impl State {
                     Message::Back,
                 ));
             }
-            let mut stop = PopoverItem::new("Stop bottle").icon(Icon::Stop);
             let mut run = PopoverItem::new("Run a Program…").icon(Icon::RunProgram);
-            let mut delete = PopoverItem::new("Delete bottle").icon(Icon::Trash);
-            if activity == Activity::Running {
-                stop = stop.on_select(Message::Act(Action::Stop(id)));
-            }
+            let mut delete = PopoverItem::new("Delete Bottle…").icon(Icon::Trash);
             if activity.is_settled() {
                 run = run.on_select(Message::Act(Action::RunProgram(id)));
                 delete = delete.on_select(Message::AskDelete(id));
             }
+            let stop = Message::Act(Action::Stop(id));
             let header = header
                 .start(
                     Popover::new(header_button("Bottle menu", Icon::EllipsisVertical))
                         .item(run)
-                        .item(stop)
                         .item(delete),
+                )
+                .start(
+                    header_button("Stop bottle", Icon::Power)
+                        .on_press_maybe((activity == Activity::Running).then_some(stop)),
                 )
                 .middle(tabs);
             parts::app_controls(header, model, pane, Message::Profiles, Message::Act)
