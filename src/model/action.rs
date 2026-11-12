@@ -1,7 +1,7 @@
 //! Everything the application can be asked to do.
 
 use bottles_core::{
-    AddonRole, Operation, Prefix, PrefixBackend, ProgramSpec, Runner, Umu, WineArch, WineBridge,
+    AddonRole, Operation, Prefix, PrefixBackend, ProgramSpec, Runner, RunnerFlavor, WineArch,
 };
 use bottles_plugin_host::Library;
 use iced::Task;
@@ -153,21 +153,25 @@ impl Model {
     }
 
     fn create_bottle(&mut self, name: String, runner: Uuid) -> Task<Message> {
-        let addons = self.sources.addons.clone();
         let (Some(runner), Some(winebridge)) = (
-            addons.release::<Runner>(runner),
-            addons.releases::<WineBridge>().next(),
+            self.sources.addons.release::<Runner>(runner),
+            self.winebridge(),
         ) else {
             self.notifications
                 .error("A runner and WineBridge are required to create a bottle");
             return Task::none();
+        };
+        // Only Proton runners are launched through UMU.
+        let umu = match runner.flavor() {
+            RunnerFlavor::Proton => self.umu(),
+            RunnerFlavor::Wine => None,
         };
         let operation = self.core.prefixes().create(
             PrefixBackend::Standard,
             WineArch::default(),
             runner,
             winebridge,
-            addons.releases::<Umu>().next(),
+            umu,
         );
         self.operations
             .start(

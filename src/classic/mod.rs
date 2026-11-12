@@ -2,7 +2,6 @@
 
 mod bottle;
 
-use bottles_core::Runner;
 use iced::{
     Element, Fill,
     widget::{column, container},
@@ -97,12 +96,7 @@ impl State {
                 self.creation_open = true;
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
-                    runner: model
-                        .sources
-                        .addons
-                        .releases::<Runner>()
-                        .next()
-                        .map(|runner| runner.id()),
+                    runner: model.default_runner(),
                 });
             }
             Message::Cancel => self.creation_open = false,
@@ -139,12 +133,11 @@ impl State {
     /// Returns whether the open draft names a bottle that can be created.
     fn can_create(&self, model: &Model) -> bool {
         self.creation_open
-            && model.can_create_bottles()
             && self.draft.as_ref().is_some_and(|draft| {
                 !draft.name.trim().is_empty()
-                    && draft.runner.is_some_and(|runner| {
-                        model.sources.addons.release::<Runner>(runner).is_some()
-                    })
+                    && draft
+                        .runner
+                        .is_some_and(|runner| model.can_create_with(runner))
             })
     }
 

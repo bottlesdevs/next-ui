@@ -187,7 +187,7 @@ impl State {
                 group = group.row(InfoRow::new(label).description("Pending"));
             }
         }
-        let action = if model.can_create_bottles() {
+        let action = if model.has_essentials() {
             next_button("Get Started")
                 .on_press(Message::Act(Action::SwitchExperience(self.experience)))
         } else if preparing {
