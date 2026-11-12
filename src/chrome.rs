@@ -1,4 +1,4 @@
-//! Application-owned chrome for the undecorated app and gallery windows.
+//! Chrome for undecorated application windows.
 
 use iced::{
     Background, Border, Element, Fill, Subscription, event, keyboard, widget::container, window,
@@ -11,7 +11,7 @@ use iced::{
     window::Direction,
 };
 
-use next_ui::{
+use crate::{
     Icon, theme,
     widget::{HeaderBar, header, header_button},
 };
@@ -20,11 +20,11 @@ const RESIZE_EDGE: f32 = 6.0;
 const RESIZE_CORNER: f32 = 12.0;
 const PANEL_INSET: [f32; 2] = [6.0, 8.0];
 
-pub(crate) const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
+pub const WINDOW_CONTROL_AT_START: bool = cfg!(target_os = "macos");
 
 /// A semantic window-frame interaction for the application to handle.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Action {
+pub enum Action {
     /// Begin dragging the current window.
     Drag,
     /// Begin resizing the current window from an edge or corner.
@@ -38,7 +38,7 @@ pub(crate) enum Action {
 }
 
 /// Listens for application-window requests and unhandled keyboard traversal.
-pub(crate) fn subscription() -> Subscription<Action> {
+pub fn subscription() -> Subscription<Action> {
     iced::event::listen_with(|event, status, _| subscription_action(event, status))
 }
 
@@ -60,7 +60,7 @@ fn subscription_action(event: iced::Event, status: event::Status) -> Option<Acti
 }
 
 /// An undecorated application frame with resize edges and a close control.
-pub(crate) fn window_frame<'a, Message: Clone + 'a>(
+pub fn window_frame<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
     on_action: impl Fn(Action) -> Message,
 ) -> Element<'a, Message> {
@@ -123,7 +123,7 @@ pub(crate) fn window_frame<'a, Message: Clone + 'a>(
     layers.push(close).into()
 }
 
-pub(crate) fn header<'a, Message: Clone + 'a>(
+pub fn header<'a, Message: Clone + 'a>(
     on_drag: Message,
     owns_window_control: bool,
     build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,

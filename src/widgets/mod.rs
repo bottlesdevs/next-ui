@@ -1,6 +1,6 @@
 pub mod action_tile;
 mod anchored_overlay;
-mod focus;
+pub(crate) mod focus;
 mod focusable_action;
 mod menu;
 mod style;

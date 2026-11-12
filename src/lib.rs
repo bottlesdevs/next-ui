@@ -5,9 +5,12 @@
 //! data and semantic messages; widgets retain only cohesive interaction state
 //! such as focus, disclosure, popup placement, resizing, and animation.
 //!
-//! The supported facade is [`theme`], [`widget`], and [`Icon`].
+//! The supported facade is [`theme`], [`widget`], [`Icon`], the window
+//! [`chrome`], and the adaptive [`layout`].
 
+pub mod chrome;
 mod icons;
+pub mod layout;
 pub mod theme;
 mod widgets;
 
