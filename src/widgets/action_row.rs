@@ -29,6 +29,7 @@ pub struct ActionRow<'a, Message> {
     title: Fragment<'a>,
     description: Fragment<'a>,
     icon: Option<Icon>,
+    title_suffix: Vec<Element<'a, Message>>,
     row: ListRow<'a, Message>,
     state: State<Message>,
     selected: bool,
@@ -40,6 +41,7 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
             title: title.into_fragment(),
             description: "".into_fragment(),
             icon: None,
+            title_suffix: Vec::new(),
             row: ListRow::new(Space::new()),
             state: action.into().map_or(State::Disabled, State::Ready),
             selected: false,
@@ -56,6 +58,15 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
 
     pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
         self.description = description.into_fragment();
+        self
+    }
+
+    /// Adds a widget on the title line after the title, e.g. a version or a
+    /// [`Tag`].
+    ///
+    /// [`Tag`]: super::tag::Tag
+    pub fn title_suffix(mut self, widget: impl Into<Element<'a, Message>>) -> Self {
+        self.title_suffix.push(widget.into());
         self
     }
 
@@ -79,8 +90,8 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
         self
     }
 
-    pub(crate) fn corners(mut self, corners: iced::border::Radius) -> Self {
-        self.row = self.row.corners(corners);
+    pub(crate) fn grouped(mut self, corners: iced::border::Radius) -> Self {
+        self.row = self.row.grouped(corners);
         self
     }
 
@@ -102,9 +113,17 @@ impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Messa
             );
         }
 
+        let has_description = action.icon.is_some() || !action.description.is_empty();
         description = description.push(text(action.description).size(list_row::BODY_SIZE).muted());
 
-        let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
+        let title = row![text(action.title).label().medium()]
+            .extend(action.title_suffix)
+            .spacing(spacing::SM)
+            .align_y(Alignment::Center);
+        let mut labels = column![title].spacing(spacing::XS);
+        if has_description {
+            labels = labels.push(description);
+        }
         let mut row = action.row.body(labels);
         let on_press = match action.state {
             State::Ready(message) => Some(message),

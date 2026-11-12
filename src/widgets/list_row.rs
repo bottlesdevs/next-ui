@@ -75,11 +75,17 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
-    /// Rounds the row's corners as a [`BoxedGroup`] places it.
+    /// Fits the row into a [`BoxedGroup`]: rounded as its place there gives
+    /// it, and tighter, since the group's hairlines already part the rows.
     ///
     /// [`BoxedGroup`]: super::boxed_group::BoxedGroup
-    pub(crate) fn corners(mut self, corners: Radius) -> Self {
+    pub(crate) fn grouped(mut self, corners: Radius) -> Self {
         self.corners = corners;
+        self.padding = Padding {
+            top: spacing::SM,
+            bottom: spacing::SM,
+            ..STANDARD_PADDING
+        };
         self
     }
 

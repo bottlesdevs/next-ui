@@ -30,13 +30,13 @@ pub trait GroupRow<'a, Message> {
 
 impl<'a, Message: 'a> GroupRow<'a, Message> for ListRow<'a, Message> {
     fn into_group_row(self, corners: Radius) -> Element<'a, Message> {
-        self.corners(corners).into()
+        self.grouped(corners).into()
     }
 }
 
 impl<'a, Message: Clone + 'a> GroupRow<'a, Message> for ActionRow<'a, Message> {
     fn into_group_row(self, corners: Radius) -> Element<'a, Message> {
-        self.corners(corners).into()
+        self.grouped(corners).into()
     }
 }
 
