@@ -541,6 +541,13 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         // An open popup continues the row, so the row's bottom corners go.
         if state.open && self.popup {
             header_style.border = Border::default().rounded(iced::border::top(RADIUS));
+            // The row and its popup read as one raised surface, so the row
+            // casts the top of the popup's shadow.
+            header_style.shadow = Shadow {
+                color: iced::Color::BLACK.scale_alpha(0.2),
+                offset: Vector::new(0.0, -2.0),
+                blur_radius: 12.0,
+            };
         }
         renderer.fill_quad(
             renderer::Quad {
