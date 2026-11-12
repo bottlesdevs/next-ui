@@ -2,16 +2,22 @@
 
 use iced::{
     Element, Fill,
-    widget::{Grid, column, container, scrollable},
+    widget::{Grid, column, container, row, scrollable, stack, text},
 };
 use next_ui::{
     Icon, theme,
     widget::{
-        ArtworkCard, Button, CardAction, InfoCard, InfoCardKind, Popover, PopoverItem, spacing,
+        ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, Popover, PopoverItem,
+        ProgressBar, ProgressRing, TextExt as _, spacing,
     },
 };
 
-use crate::model::{Activity, Experience, Listing, Model, Target};
+use next_ui::{layout::PaneContext, widget::HeaderBar};
+
+use crate::{
+    manage_profiles,
+    model::{Action, Activity, Experience, Listing, Model, Target},
+};
 
 /// A card for every program and library entry whose title contains `query`.
 ///
@@ -185,4 +191,75 @@ pub fn app_menu<'a, Message: Clone + 'a>(
         );
     }
     menu.into()
+}
+
+/// Adds the app-wide controls to the end of `header` when `pane` reaches the
+/// window's end edge: Downloads while releases download, then the profile
+/// button.
+pub fn app_controls<'a, Message: Clone + 'a>(
+    header: HeaderBar<'a, Message>,
+    model: &'a Model,
+    pane: PaneContext,
+    profiles: impl Fn(manage_profiles::Message) -> Message + 'a,
+    act: impl Fn(Action) -> Message,
+) -> HeaderBar<'a, Message> {
+    if !pane.is_at_end() {
+        return header;
+    }
+    let header = match downloads(model, act) {
+        Some(downloads) => header.end(downloads),
+        None => header,
+    };
+    header.end(manage_profiles::button(model).map(profiles))
+}
+
+/// The Downloads button and its popover, while any release downloads.
+fn downloads<'a, Message: Clone + 'a>(
+    model: &'a Model,
+    act: impl Fn(Action) -> Message,
+) -> Option<Element<'a, Message>> {
+    let downloads = model.downloads();
+    if downloads.is_empty() {
+        return None;
+    }
+    let overall = downloads
+        .iter()
+        .map(|download| download.progress.unwrap_or(0.0))
+        .sum::<f32>()
+        / downloads.len() as f32;
+    let trigger = Button::custom(stack![
+        ProgressRing::new(overall),
+        container(Icon::Download.view().width(12).height(12)).center(24),
+    ])
+    .kind(ButtonKind::Transparent);
+    let rows = downloads
+        .into_iter()
+        .map(|download| -> Element<'a, Message> {
+            let mut body = column![
+                text(download.name).size(17).medium(),
+                text(download.status).size(14),
+            ]
+            .spacing(4)
+            .width(Fill);
+            if let Some(progress) = download.progress {
+                body = body.push(ProgressBar::new(progress).percentage());
+            }
+            container(
+                row![
+                    body,
+                    next_ui::widget::header_button("Cancel download", Icon::Cross)
+                        .on_press(act(Action::CancelDownload(download.id))),
+                ]
+                .spacing(spacing::SM)
+                .align_y(iced::Alignment::Center),
+            )
+            .padding([spacing::SM, spacing::SM])
+            .into()
+        });
+    Some(
+        Popover::new(trigger)
+            .content(column(rows).spacing(spacing::XS))
+            .width(420.0)
+            .into(),
+    )
 }

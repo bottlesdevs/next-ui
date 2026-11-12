@@ -24,7 +24,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> Element<'_, Message
         model
             .operations
             .iter()
-            .filter_map(|pending| match &pending.verb {
+            .filter_map(|(_, pending)| match &pending.verb {
                 Verb::Create(name) => Some((name, pending.progress.as_ref())),
                 _ => None,
             })
