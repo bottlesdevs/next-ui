@@ -1,5 +1,6 @@
 //! Classic bottle compositions, read from the model.
 
+use bottles_core::WineArch;
 use iced::{
     Center, Element, Fill, Length, Theme,
     widget::{Grid, column, container, responsive, row, text},
@@ -107,9 +108,14 @@ pub(super) fn creation<'a>(
             None,
         )
         .placeholder("Not available yet"),
-        SelectorRow::new("Architecture", &["Win64", "Win32"], None)
-            .icon(Icon::Chip)
-            .placeholder("Not available yet"),
+        SelectorRow::new(
+            "Architecture",
+            &[WineArch::Win64, WineArch::Win32],
+            Some(&draft.arch),
+        )
+        .icon(Icon::Chip)
+        .label(|arch| arch_label(*arch).into())
+        .on_selected(Message::Arch),
         PickerRow::new("Use Recipe").description("Choose the location"),
     ]
     .spacing(spacing::SM);
@@ -271,6 +277,13 @@ pub(super) fn settings<'a>(
     .into()
 }
 
+fn arch_label(arch: WineArch) -> &'static str {
+    match arch {
+        WineArch::Win64 => "Win64",
+        WineArch::Win32 => "Win32",
+    }
+}
+
 pub(super) fn status<'a>(bottle: &Bottle<'a>, activity: Activity) -> LogPanel<'a> {
     let runner = &bottle.state.runner;
     let (label, icon) = match activity {
@@ -281,7 +294,7 @@ pub(super) fn status<'a>(bottle: &Bottle<'a>, activity: Activity) -> LogPanel<'a
     };
     LogPanel::new(
         StatusBar::new(label, icon)
-            .detail(Icon::Chip, "Win64")
+            .detail(Icon::Chip, arch_label(bottle.state.arch))
             .detail(Icon::Run, format!("{} {}", runner.name(), runner.version())),
     )
 }

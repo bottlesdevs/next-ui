@@ -2,7 +2,7 @@
 
 mod bottle;
 
-use bottles_core::PrefixBackend;
+use bottles_core::{PrefixBackend, WineArch};
 use iced::{
     Element, Fill,
     widget::{column, container},
@@ -37,6 +37,7 @@ pub enum Detail {
 struct Draft {
     name: String,
     runner: Option<Uuid>,
+    arch: WineArch,
 }
 
 pub struct State {
@@ -58,6 +59,7 @@ pub enum Message {
     Cancel,
     Name(String),
     Runner(Uuid),
+    Arch(WineArch),
     Create,
     Rename(String),
     SaveName,
@@ -97,6 +99,7 @@ impl State {
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
                     runner: model.default_runner(),
+                    arch: WineArch::default(),
                 });
             }
             Message::Cancel => self.creation_open = false,
@@ -110,11 +113,17 @@ impl State {
                     draft.runner = Some(runner);
                 }
             }
+            Message::Arch(arch) => {
+                if let Some(draft) = &mut self.draft {
+                    draft.arch = arch;
+                }
+            }
             Message::Create => {
                 let draft = self.draft.as_ref().filter(|_| self.can_create(model))?;
                 let action = Action::CreateBottle {
                     name: draft.name.clone(),
                     runner: draft.runner?,
+                    arch: draft.arch,
                 };
                 self.creation_open = false;
                 return Some(Request::Act(action));
@@ -137,7 +146,7 @@ impl State {
                 !draft.name.trim().is_empty()
                     && draft
                         .runner
-                        .is_some_and(|runner| model.can_create_with(runner))
+                        .is_some_and(|runner| model.can_create_with(runner, draft.arch))
             })
     }
 
