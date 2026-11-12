@@ -7,16 +7,19 @@ use iced::{
     },
     keyboard::{self, key},
     touch,
-    widget::{column, container, row, scrollable, text},
+    widget::{Column, column, container, row, scrollable, text},
 };
 
 use crate::icons::Icon;
 
 use super::{
+    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
+    button::{Button, ButtonKind},
     draw_caret,
     focusable_action::Interaction,
     list_row::{self, ListRow},
     menu::{item as menu_item, row_content},
+    progress_bar::ProgressBar,
     spacing,
     text::TextExt as _,
 };
@@ -33,6 +36,39 @@ pub struct SelectorRow<'a, T, Message> {
     on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
     icon: Option<Icon>,
+    available: Vec<AvailableOption<'a, Message>>,
+    popup: bool,
+}
+
+/// An option offered for download in a [`SelectorRow`], listed under the
+/// options that are ready to select.
+pub struct AvailableOption<'a, Message> {
+    label: text::Fragment<'a>,
+    state: AvailableState<'a, Message>,
+}
+
+enum AvailableState<'a, Message> {
+    Download(Message),
+    Progress(f32, &'a str),
+}
+
+impl<'a, Message> AvailableOption<'a, Message> {
+    /// An option with a Download button that publishes `on_download`.
+    pub fn download(label: impl text::IntoFragment<'a>, on_download: Message) -> Self {
+        Self {
+            label: label.into_fragment(),
+            state: AvailableState::Download(on_download),
+        }
+    }
+
+    /// An option that is downloading, with a status line such as
+    /// "Selected when downloaded".
+    pub fn progress(label: impl text::IntoFragment<'a>, progress: f32, status: &'a str) -> Self {
+        Self {
+            label: label.into_fragment(),
+            state: AvailableState::Progress(progress, status),
+        }
+    }
 }
 
 impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
@@ -45,7 +81,27 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
             on_selected: None,
             placeholder: "",
             icon: None,
+            available: Vec::new(),
+            popup: false,
         }
+    }
+
+    /// Lists `available` options under the selectable ones, e.g. releases
+    /// that can be downloaded. The two groups get "Downloaded" and
+    /// "Available" headings.
+    pub fn available(
+        mut self,
+        available: impl IntoIterator<Item = AvailableOption<'a, Message>>,
+    ) -> Self {
+        self.available = available.into_iter().collect();
+        self
+    }
+
+    /// Opens the options over the content below instead of pushing it down,
+    /// e.g. in a two-column settings grid.
+    pub fn popup(mut self) -> Self {
+        self.popup = true;
+        self
     }
 
     pub fn label(mut self, label: impl Fn(&T) -> String + 'a) -> Self {
@@ -95,23 +151,89 @@ where
             )
             .into()
         });
+        let mut list = Column::new().width(Fill);
+        let sectioned = !selector.available.is_empty();
+        if sectioned {
+            list = list.push(section_heading("Downloaded"));
+        }
+        list = list.extend(rows);
+        if sectioned {
+            list = list
+                .push(
+                    container(iced::widget::Space::new().height(1))
+                        .width(Fill)
+                        .padding([spacing::XS, spacing::SM])
+                        .style(|theme| {
+                            container::Style::default()
+                                .background(crate::theme::colors(theme).selection)
+                        }),
+                )
+                .push(section_heading("Available"))
+                .extend(selector.available.into_iter().map(available_row));
+        }
+        let popup = selector.popup;
         let panel = container(
-            scrollable(
-                container(column(rows).width(Fill))
-                    .width(Fill)
-                    .padding(PANEL_PADDING),
-            )
-            .width(Fill)
-            .style(crate::theme::scrollbar),
+            scrollable(container(list).width(Fill).padding(PANEL_PADDING))
+                .width(Fill)
+                .style(crate::theme::scrollbar),
         )
-        .width(Fill);
+        .width(Fill)
+        .style(move |theme| {
+            if popup {
+                let colors = crate::theme::colors(theme);
+                container::Style::default()
+                    .background(colors.border)
+                    .border(Border::default().rounded(iced::border::bottom(RADIUS)))
+                    .shadow(Shadow {
+                        color: iced::Color::BLACK.scale_alpha(0.35),
+                        offset: Vector::new(0.0, 14.0),
+                        blur_radius: 24.0,
+                    })
+            } else {
+                container::Style::default()
+            }
+        });
 
         Element::new(Selector {
             header,
             panel: panel.into(),
             enabled,
+            popup,
         })
     }
+}
+
+fn section_heading<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
+    container(text(label).size(14).muted())
+        .padding([spacing::XS, spacing::MD])
+        .into()
+}
+
+fn available_row<'a, Message: Clone + 'a>(
+    option: AvailableOption<'a, Message>,
+) -> Element<'a, Message> {
+    let body: Element<'a, Message> = match option.state {
+        AvailableState::Download(message) => row![
+            text(option.label).label().muted().width(Fill),
+            Button::new("Download")
+                .trailing_icon(Icon::Download)
+                .icon_size(16.0)
+                .kind(ButtonKind::Secondary)
+                .on_press(message),
+        ]
+        .spacing(spacing::SM)
+        .align_y(Alignment::Center)
+        .into(),
+        AvailableState::Progress(progress, status) => column![
+            text(option.label).label().muted(),
+            text(status).detail().muted(),
+            ProgressBar::new(progress).percentage(),
+        ]
+        .spacing(4)
+        .into(),
+    };
+
+    container(body).padding([spacing::XS, spacing::MD]).into()
 }
 
 fn header<'a, Message: 'a>(
@@ -143,12 +265,15 @@ struct Selector<'a, Message> {
     header: Element<'a, Message>,
     panel: Element<'a, Message>,
     enabled: bool,
+    popup: bool,
 }
 
 #[derive(Debug, Default)]
 struct State {
     open: bool,
     interaction: Interaction,
+    panel_focus: PopupFocusState,
+    restore_focus: bool,
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
@@ -188,7 +313,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             .as_widget_mut()
             .layout(&mut tree.children[0], renderer, &limits);
         let header_size = header.size();
-        let panel = if tree.state.downcast_ref::<State>().open {
+        let panel = if !self.popup && tree.state.downcast_ref::<State>().open {
             self.panel
                 .as_widget_mut()
                 .layout(
@@ -231,7 +356,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                 .as_widget_mut()
                 .operate(&mut tree.children[0], header, renderer, operation);
 
-            if state.open {
+            if state.open && !self.popup {
                 self.panel.as_widget_mut().operate(
                     &mut tree.children[1],
                     panel,
@@ -256,7 +381,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let (header_layout, panel_layout) = layout_parts(layout);
         let state = tree.state.downcast_mut::<State>();
 
-        if state.open {
+        if state.open && !self.popup {
             let mut messages = Vec::new();
             let mut panel_shell = Shell::new(&mut messages);
             self.panel.as_widget_mut().update(
@@ -301,7 +426,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             state.open = !state.open;
             shell.invalidate_layout();
             shell.request_redraw();
-        } else if state.open && dismisses(event, cursor, layout.bounds()) {
+        } else if state.open && !self.popup && dismisses(event, cursor, layout.bounds()) {
             state.open = false;
             shell.invalidate_layout();
             shell.request_redraw();
@@ -326,7 +451,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             renderer,
         );
 
-        if state.open {
+        if state.open && !self.popup {
             interaction = interaction.max(self.panel.as_widget().mouse_interaction(
                 &tree.children[1],
                 panel,
@@ -360,7 +485,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let (header, panel) = layout_parts(layout);
         let colors = crate::theme::colors(theme);
 
-        if state.open {
+        if state.open && !self.popup {
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: layout.bounds(),
@@ -411,7 +536,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             f32::from(state.open),
         );
 
-        if state.open {
+        if state.open && !self.popup {
             self.panel.as_widget().draw(
                 &tree.children[1],
                 renderer,
@@ -444,6 +569,57 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
+        if self.popup {
+            let (header, _) = layout_parts(layout);
+            let (state, children) = (&mut tree.state, &mut tree.children);
+            let State {
+                open,
+                panel_focus,
+                restore_focus,
+                ..
+            } = state.downcast_mut::<State>();
+
+            if !*open {
+                return None;
+            }
+
+            let anchor = Rectangle::new(
+                header.bounds().position() + translation,
+                header.bounds().size(),
+            );
+
+            return Some(overlay::Element::new(Box::new(
+                PopupCore::new(
+                    anchor,
+                    *viewport,
+                    self.panel.as_widget_mut(),
+                    &mut children[1],
+                    0.0,
+                    PopupFocus {
+                        state: panel_focus,
+                        restore_anchor: restore_focus,
+                        targets: &[],
+                    },
+                    move |reason| {
+                        *open = false;
+                        match reason {
+                            DismissReason::FocusLost | DismissReason::OutsidePress => {
+                                DismissOutcome::PassThrough
+                            }
+                            DismissReason::ContentMessage { keyboard: false } => {
+                                DismissOutcome::Captured
+                            }
+                            DismissReason::Escape
+                            | DismissReason::ContentMessage { keyboard: true } => {
+                                DismissOutcome::CapturedAndRestoreFocus
+                            }
+                        }
+                    },
+                )
+                .match_anchor_width(),
+            )));
+        }
+
         let state = tree.state.downcast_ref::<State>();
         let (_, panel) = layout_parts(layout);
 

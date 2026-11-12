@@ -5,13 +5,17 @@ use iced::{
         widget::{Operation, Tree, tree},
     },
     event, keyboard, touch,
-    widget::{container, stack},
+    widget::{Space, column, container, row, stack, text},
     window,
 };
 
 use crate::theme;
 
-use super::focus::{cycle_descendant_focus, event_cursor, focus_first_descendant};
+use super::{
+    button::{Button, ButtonKind},
+    focus::{cycle_descendant_focus, event_cursor, focus_first_descendant},
+    text::TextExt as _,
+};
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
 
@@ -33,6 +37,46 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
                 .style(theme::panel)
                 .into(),
             on_dismiss,
+        }
+    }
+
+    /// Asks before a destructive action started from a menu or one that
+    /// deletes a lot: a title, the consequence, Cancel and a destructive
+    /// confirm. Cancel, Escape and outside presses publish `on_cancel`.
+    pub fn confirm(
+        title: impl text::IntoFragment<'a>,
+        body: impl text::IntoFragment<'a>,
+        confirm: &'a str,
+        on_confirm: Message,
+        on_cancel: Message,
+    ) -> Self
+    where
+        Message: Clone,
+    {
+        let content = column![
+            text(title).size(21).medium(),
+            text(body).size(16).muted(),
+            row![
+                Space::new().width(Fill),
+                Button::new("Cancel")
+                    .kind(ButtonKind::Secondary)
+                    .on_press(on_cancel.clone()),
+                Button::new(confirm)
+                    .kind(ButtonKind::Destructive)
+                    .on_press(on_confirm),
+            ]
+            .spacing(10)
+            .padding(iced::Padding::ZERO.top(10)),
+        ]
+        .spacing(12);
+
+        Self {
+            content: container(content)
+                .max_width(460)
+                .padding(24)
+                .style(theme::panel)
+                .into(),
+            on_dismiss: on_cancel,
         }
     }
 

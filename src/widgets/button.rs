@@ -27,6 +27,10 @@ pub enum ButtonKind {
     Primary,
     Surface,
     Transparent,
+    /// The light accent fill for a page's main action, e.g. Install.
+    Accent,
+    /// The danger fill for confirming a destructive action, e.g. Delete.
+    Destructive,
 }
 
 pub struct Button<'a, Message> {
@@ -342,6 +346,22 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
         ButtonKind::Transparent => Pair {
             color: colors.background,
             text: colors.muted,
+        },
+        ButtonKind::Accent => Pair {
+            color: if pressed || active {
+                colors.accent_muted
+            } else {
+                colors.accent
+            },
+            text: colors.window,
+        },
+        ButtonKind::Destructive => Pair {
+            color: if pressed || active {
+                colors.danger.scale_alpha(0.8)
+            } else {
+                colors.danger
+            },
+            text: colors.text,
         },
     }
 }
