@@ -17,7 +17,7 @@ pub enum AvatarShape {
 
 /// A coloured shape showing an initial, standing in for a picture.
 pub struct Avatar<'a> {
-    initial: &'a str,
+    initial: text::Fragment<'a>,
     size: f32,
     shape: AvatarShape,
     active: bool,
@@ -26,9 +26,9 @@ pub struct Avatar<'a> {
 
 impl<'a> Avatar<'a> {
     /// Creates a 44px circle showing `initial`.
-    pub fn new(initial: &'a str) -> Self {
+    pub fn new(initial: impl text::IntoFragment<'a>) -> Self {
         Self {
-            initial,
+            initial: initial.into_fragment(),
             size: 44.0,
             shape: AvatarShape::Circle,
             active: false,

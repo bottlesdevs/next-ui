@@ -42,6 +42,9 @@ pub(crate) enum Action {
     RenameProfile(Uuid, String),
     DeleteProfile(Uuid),
     Unlink(Uuid),
+    /// Removes a downloaded release from shared storage.
+    RemoveRelease(Uuid),
+    UninstallPlugin(String),
 }
 
 /// A change to how a prefix starts.
@@ -64,6 +67,31 @@ impl Model {
                 self.change_profiles(move |profiles| profiles.rename(id, &name))
             }
             Action::DeleteProfile(id) => self.change_profiles(|profiles| profiles.delete(id)),
+            Action::RemoveRelease(id) => {
+                let core = self.core.clone();
+                let remove = async move {
+                    core.addons()
+                        .remove(id)
+                        .await
+                        .map_err(|error| error.to_string())
+                };
+                self.operations
+                    .perform(Subject::Addon(id), Verb::Delete, remove)
+                    .map(|(subject, event)| Message::Operation(subject, event))
+            }
+            Action::UninstallPlugin(id) => {
+                let plugins = self.plugins.clone();
+                let uninstall = async move {
+                    plugins.uninstall(&id).map_err(|error| error.to_string())?;
+                    for (id, error) in plugins.reload().await.map_err(|error| error.to_string())? {
+                        tracing::warn!(plugin = id, %error, "plugin failed to load");
+                    }
+                    Ok(())
+                };
+                Task::perform(uninstall, |result: Result<(), String>| {
+                    Message::Saved(result)
+                })
+            }
             Action::Unlink(link) => self.change_profiles(|profiles| {
                 profiles.unlink(link);
                 Ok(())
