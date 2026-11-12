@@ -20,6 +20,7 @@ iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-witho
 keyvalues-parser.workspace = true
 next-config.workspace = true
 next-paths.workspace = true
+rfd = "0.18.0"
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
 serde.workspace = true
 tracing.workspace = true
