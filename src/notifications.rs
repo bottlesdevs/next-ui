@@ -2,13 +2,11 @@
 
 use iced::{
     Alignment, Element, Fill,
-    widget::{column, container, responsive, row, scrollable, text},
+    widget::{Space, column, container, mouse_area, responsive, row, scrollable, text},
 };
 use uuid::Uuid;
 
-use next_ui::widget::{
-    Button, ButtonKind, InfoCardKind, Notification as NotificationCard, TextExt as _,
-};
+use next_ui::widget::{InfoCardKind, Notification as NotificationCard};
 
 use crate::{app::Message, model::Action};
 
@@ -172,28 +170,38 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     } else {
         "Show Fewer".to_owned()
     };
-    let button = |label: String, message| {
-        Button::custom(text(label).size(15).muted())
-            .kind(ButtonKind::Transparent)
-            .on_press(message)
+    // Plain labels: a button's hover box would break up the pill.
+    let label = |label: String, message| {
+        mouse_area(text(label).size(15).style(|theme| text::Style {
+            color: Some(next_ui::theme::colors(theme).accent_muted),
+        }))
+        .interaction(iced::mouse::Interaction::Pointer)
+        .on_press(message)
     };
     container(
         row![
-            button(toggle, Message::ExpandNotifications),
-            container(iced::widget::Space::new().width(1).height(18)).style(|theme| {
-                container::Style::default().background(next_ui::theme::colors(theme).border)
+            label(toggle, Message::ExpandNotifications),
+            container(Space::new().width(1).height(18)).style(|theme| {
+                container::Style::default().background(next_ui::theme::colors(theme).selection)
             }),
-            button("Dismiss All".to_owned(), Message::DismissAllNotifications),
+            label("Dismiss All".to_owned(), Message::DismissAllNotifications),
         ]
-        .spacing(4)
+        .spacing(14)
         .align_y(Alignment::Center),
     )
-    .padding([0, 6])
+    .height(40)
+    .padding([0, 16])
+    .align_y(Alignment::Center)
     .style(|theme| {
-        let colors = next_ui::theme::colors(theme);
         container::Style::default()
-            .background(colors.selection)
+            .background(next_ui::theme::colors(theme).border)
             .border(iced::Border::default().rounded(20))
+            // The same lift as the notification cards below it.
+            .shadow(iced::Shadow {
+                color: iced::Color::BLACK.scale_alpha(0.35),
+                offset: iced::Vector::new(0.0, 8.0),
+                blur_radius: 24.0,
+            })
     })
     .into()
 }
