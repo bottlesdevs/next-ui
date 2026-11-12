@@ -6,12 +6,10 @@ use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
 use next_ui::{chrome, theme};
 use uuid::Uuid;
 
-#[cfg(feature = "fvs")]
-use crate::next;
 use crate::{
     classic,
     model::{self, Action, Boot, Experience, Model},
-    notifications, onboarding,
+    next, notifications, onboarding,
 };
 
 pub(crate) struct App {
@@ -29,18 +27,14 @@ enum State {
 enum Screen {
     Onboarding(onboarding::State),
     Classic(classic::State),
-    #[cfg(feature = "fvs")]
     Next(next::State),
 }
 
 impl Screen {
     fn new(experience: Experience) -> Self {
         match experience {
-            Experience::Classic => Self::Classic(classic::State::new()),
-            #[cfg(feature = "fvs")]
-            Experience::Next => Self::Next(next::State::new()),
-            #[cfg(not(feature = "fvs"))]
-            Experience::Next => Self::Classic(classic::State::new()),
+            Experience::Next if experience.is_available() => Self::Next(next::State::new()),
+            Experience::Next | Experience::Classic => Self::Classic(classic::State::new()),
         }
     }
 }
@@ -62,7 +56,6 @@ pub(crate) enum Message {
     ShutdownFinished(Result<(), String>),
     Onboarding(onboarding::Message),
     Classic(classic::Message),
-    #[cfg(feature = "fvs")]
     Next(next::Message),
 }
 
@@ -78,7 +71,6 @@ impl fmt::Debug for Message {
             Self::ShutdownFinished(_) => "ShutdownFinished",
             Self::Onboarding(_) => "Onboarding",
             Self::Classic(_) => "Classic",
-            #[cfg(feature = "fvs")]
             Self::Next(_) => "Next",
         })
     }
@@ -202,7 +194,6 @@ impl App {
                         Screen::Classic(state) => state.update(model, message),
                         _ => None,
                     },
-                    #[cfg(feature = "fvs")]
                     Message::Next(message) => match screen {
                         Screen::Next(state) => state.update(message),
                         _ => None,
@@ -239,7 +230,6 @@ impl App {
                     let content = match screen {
                         Screen::Onboarding(state) => state.view(model).map(Message::Onboarding),
                         Screen::Classic(state) => state.view(model).map(Message::Classic),
-                        #[cfg(feature = "fvs")]
                         Screen::Next(state) => state.view(model).map(Message::Next),
                     };
                     let mut layers = stack![content].width(Fill).height(Fill);

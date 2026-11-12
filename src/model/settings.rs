@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use bottles_core::PrefixBackend;
 use next_config::Config;
 use serde::{Deserialize, Serialize};
 
@@ -17,8 +18,14 @@ pub(crate) enum Experience {
 }
 
 impl Experience {
+    /// Returns whether this build can show the experience.
+    ///
+    /// Next gives every program a prefix of its own, which needs Virgo.
     pub(crate) fn is_available(self) -> bool {
-        self == Self::Classic || cfg!(feature = "fvs")
+        match self {
+            Self::Classic => true,
+            Self::Next => PrefixBackend::Virgo.is_available(),
+        }
     }
 }
 
