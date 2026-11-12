@@ -129,7 +129,11 @@ fn suggestions<'a, Message: Clone + 'a>(
         let art = container(Space::new())
             .width(Fill)
             .height(120)
-            .style(|theme| container::Style::default().background(theme::colors(theme).selection));
+            .style(|theme| {
+                container::Style::default()
+                    .background(theme::colors(theme).selection)
+                    .border(iced::Border::default().rounded(iced::border::top(6)))
+            });
         let footer = row![
             column![
                 text(name).size(18).medium(),
