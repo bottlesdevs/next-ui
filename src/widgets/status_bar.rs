@@ -127,34 +127,23 @@ impl<'a, Message: Clone + 'a> From<StatusBar<'a>> for Element<'a, Message> {
     }
 }
 
-/// A Bottles status recipe with standard architecture and runner details.
+/// A status bar that expands into a resizable log.
 pub struct LogPanel<'a> {
     status: StatusBar<'a>,
-    log: Option<Fragment<'a>>,
+    lines: Vec<Fragment<'a>>,
 }
 
 impl<'a> LogPanel<'a> {
-    pub fn new(
-        architecture: impl IntoFragment<'a>,
-        runner: impl IntoFragment<'a>,
-        status: impl IntoFragment<'a>,
-        status_icon: Icon,
-    ) -> Self {
+    pub fn new(status: StatusBar<'a>) -> Self {
         Self {
-            status: StatusBar::new(status, status_icon)
-                .detail(Icon::Chip, architecture)
-                .detail(Icon::Run, runner),
-            log: None,
+            status,
+            lines: Vec::new(),
         }
     }
 
-    pub fn log(mut self, log: impl IntoFragment<'a>) -> Self {
-        self.log = Some(log.into_fragment());
-        self
-    }
-
-    pub fn danger(mut self) -> Self {
-        self.status = self.status.danger();
+    /// Sets the log lines, oldest first.
+    pub fn lines(mut self, lines: impl IntoIterator<Item = impl IntoFragment<'a>>) -> Self {
+        self.lines = lines.into_iter().map(IntoFragment::into_fragment).collect();
         self
     }
 }
@@ -162,10 +151,17 @@ impl<'a> LogPanel<'a> {
 impl<'a, Message: 'static> From<LogPanel<'a>> for Element<'a, Message> {
     fn from(panel: LogPanel<'a>) -> Self {
         let header = panel.status.header(Some(Local::Toggle));
-        let log: Element<'a, Local> = panel.log.map_or_else(
-            || text("No activity yet").size(TEXT_SIZE).muted().into(),
-            |log| text(log).size(TEXT_SIZE).into(),
-        );
+        let log: Element<'a, Local> = if panel.lines.is_empty() {
+            text("No activity yet").size(TEXT_SIZE).muted().into()
+        } else {
+            column(
+                panel
+                    .lines
+                    .into_iter()
+                    .map(|line| text(line).size(TEXT_SIZE).into()),
+            )
+            .into()
+        };
         let log = container(scrollable(log).height(Fill))
             .padding([spacing::MD, spacing::LG])
             .width(Fill)

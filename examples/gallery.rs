@@ -22,9 +22,17 @@ const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
     ("GOG Galaxy", "Install", Icon::Arrow),
     ("Steam", "Run", Icon::Play),
 ];
-const LOG: &str = "11:42:12 (INFO) Doing runner update for bottle: games\n\
-11:42:12 (INFO) Setting Key Runner=caffe-8.18\n\
-11:42:36 (INFO) Using Wine Registry CLI";
+const LOG: [&str; 3] = [
+    "11:42:12 (INFO) Doing runner update for bottle: games",
+    "11:42:12 (INFO) Setting Key Runner=caffe-8.18",
+    "11:42:36 (INFO) Using Wine Registry CLI",
+];
+
+fn status(label: &str, icon: Icon) -> StatusBar<'_> {
+    StatusBar::new(label, icon)
+        .detail(Icon::Chip, "Win64")
+        .detail(Icon::Run, "soda-7.0.9")
+}
 
 fn main() -> iced::Result {
     iced::application(Gallery::default, Gallery::update, Gallery::view)
@@ -427,11 +435,11 @@ impl Gallery {
             .expander(action_grid_expander("Expander D"));
 
         let status = column![
-            LogPanel::new("Win64", "soda-7.0.9", "Running", Icon::Lightning).log(LOG),
-            LogPanel::new("Win64", "soda-7.0.9", "Stopped", Icon::Power).log(LOG),
-            LogPanel::new("Win64", "soda-7.0.9", "Starting", Icon::Lightning),
-            LogPanel::new("Win64", "soda-7.0.9", "Stopping", Icon::Power),
-            LogPanel::new("Win64", "soda-7.0.9", "Failed", Icon::Cross).danger(),
+            LogPanel::new(status("Running", Icon::Lightning)).lines(LOG),
+            LogPanel::new(status("Stopped", Icon::Power)).lines(LOG),
+            LogPanel::new(status("Starting", Icon::Lightning)),
+            LogPanel::new(status("Stopping", Icon::Power)),
+            LogPanel::new(status("Failed", Icon::Cross).danger()),
             StatusBar::new("Generic status", Icon::Info).detail(Icon::Chip, "Generic detail"),
         ]
         .spacing(18);

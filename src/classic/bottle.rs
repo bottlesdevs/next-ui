@@ -9,7 +9,7 @@ use next_ui::{
     Icon,
     widget::{
         ActionRow, ActionTile, ArtworkCard, CardAction, CycleRow, ExpanderRow, InfoRow, LogPanel,
-        PickerRow, RowGroup, SelectorRow, SwitcherRow, TextExt as _, TextRow, spacing,
+        PickerRow, RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
     },
 };
 use uuid::Uuid;
@@ -287,9 +287,8 @@ pub(super) fn busy(jobs: &Jobs, bottle: Uuid) -> bool {
 pub(super) fn status<'a>(bottle: &Item<'a, Bottle>) -> LogPanel<'a> {
     let runner = &bottle.state.runner;
     LogPanel::new(
-        "Win64",
-        format!("{} {}", runner.name(), runner.version()),
-        "Ready",
-        Icon::Lightning,
+        StatusBar::new("Ready", Icon::Lightning)
+            .detail(Icon::Chip, "Win64")
+            .detail(Icon::Run, format!("{} {}", runner.name(), runner.version())),
     )
 }
