@@ -9,7 +9,9 @@ use uuid::Uuid;
 use crate::{
     classic,
     model::{self, Action, Boot, Experience, Model},
-    next, notifications, onboarding, preferences,
+    next,
+    notifications::{self, Follow},
+    onboarding, preferences,
 };
 
 pub(crate) struct App {
@@ -57,6 +59,10 @@ pub(crate) enum Message {
     Model(model::Message),
     DismissNotification(Uuid),
     CopyNotification(Uuid),
+    /// Runs a notification's action and dismisses it.
+    FollowNotification(Uuid),
+    ExpandNotifications,
+    DismissAllNotifications,
     ShutdownFinished(Result<(), String>),
     Onboarding(onboarding::Message),
     Classic(classic::Message),
@@ -73,6 +79,9 @@ impl fmt::Debug for Message {
             Self::Model(_) => "Model",
             Self::DismissNotification(_) => "DismissNotification",
             Self::CopyNotification(_) => "CopyNotification",
+            Self::FollowNotification(_) => "FollowNotification",
+            Self::ExpandNotifications => "ExpandNotifications",
+            Self::DismissAllNotifications => "DismissAllNotifications",
             Self::ShutdownFinished(_) => "ShutdownFinished",
             Self::Onboarding(_) => "Onboarding",
             Self::Classic(_) => "Classic",
@@ -191,7 +200,30 @@ impl App {
                             None => Task::none(),
                         };
                     }
+                    Message::ExpandNotifications => {
+                        model.notifications.toggle_expanded();
+                        None
+                    }
+                    Message::DismissAllNotifications => {
+                        model.notifications.dismiss_all();
+                        None
+                    }
                     _ if self.closing => None,
+                    Message::FollowNotification(id) => {
+                        let follow = model
+                            .notifications
+                            .get(id)
+                            .and_then(|notification| notification.action.clone());
+                        model.notifications.dismiss(id);
+                        match follow.map(|(_, follow)| follow) {
+                            Some(Follow::Act(action)) => Some(Request::Act(action)),
+                            Some(Follow::Plugins) => {
+                                open_preferences(screen, preferences::Page::Plugins);
+                                None
+                            }
+                            None => None,
+                        }
+                    }
                     Message::Onboarding(message) => match screen {
                         Screen::Onboarding(state) => state.update(message),
                         _ => None,
@@ -225,10 +257,7 @@ impl App {
                         return model.perform(action).map(Message::Model);
                     }
                     Some(Request::OpenPreferences) => {
-                        let back =
-                            std::mem::replace(screen, Screen::Classic(classic::State::new()));
-                        *screen =
-                            Screen::Preferences(preferences::State::default(), Box::new(back));
+                        open_preferences(screen, preferences::Page::default());
                     }
                     Some(Request::ClosePreferences) => {
                         if let Screen::Preferences(_, back) =
@@ -270,6 +299,18 @@ impl App {
             }
         };
         chrome::window_frame(body, Message::Window)
+    }
+}
+
+/// Shows Preferences at `page`, over the current screen unless it's already
+/// open.
+fn open_preferences(screen: &mut Screen, page: preferences::Page) {
+    match screen {
+        Screen::Preferences(state, _) => *state = preferences::State::at(page),
+        screen => {
+            let back = std::mem::replace(screen, Screen::Classic(classic::State::new()));
+            *screen = Screen::Preferences(preferences::State::at(page), Box::new(back));
+        }
     }
 }
 

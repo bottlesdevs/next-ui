@@ -28,8 +28,12 @@ pub(crate) use operations::{Operations, Subject, Verb};
 pub(crate) use settings::Experience;
 pub(crate) use sources::{Listing, Sources};
 
-use crate::{notifications::Notifications, profiles::Profiles};
+use crate::{
+    notifications::{Follow, Notification, Notifications},
+    profiles::Profiles,
+};
 use collection::Collection;
+use next_ui::widget::InfoCardKind;
 use operations::Outcome;
 use records::Saved;
 use settings::Settings;
@@ -72,6 +76,8 @@ pub(crate) struct Boot {
     settings: Settings,
     collection: Collection,
     profiles: Profiles,
+    /// The installed plugins that failed to load, with why.
+    plugin_failures: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug)]
@@ -92,8 +98,10 @@ impl Model {
             .map_err(|error| error.to_string())?;
         let result = async {
             let plugins = Plugins::new().map_err(|error| error.to_string())?;
+            let mut plugin_failures = Vec::new();
             for (id, error) in plugins.reload().await.map_err(|error| error.to_string())? {
                 tracing::warn!(plugin = id, %error, "plugin failed to load");
+                plugin_failures.push((id, error.to_string()));
             }
             Ok(Boot {
                 settings: records::load(&Settings::path()).await?,
@@ -101,6 +109,7 @@ impl Model {
                 profiles: Profiles::load().await?,
                 core: core.clone(),
                 plugins: Arc::new(plugins),
+                plugin_failures,
             })
         }
         .await;
@@ -125,6 +134,16 @@ impl Model {
             plugins: boot.plugins,
             tracker,
         };
+        for (id, error) in boot.plugin_failures {
+            model.notifications.push(
+                Notification::new(
+                    InfoCardKind::Warning,
+                    "A plugin couldn’t load",
+                    format!("{id}: {error}"),
+                )
+                .action("Open Plugins", Follow::Plugins),
+            );
+        }
         let watch = Sources::watch(&model.core, &model.plugins).map(Message::Source);
         let prune = model.prune();
         (model, Task::batch([watch, prune]))
@@ -150,14 +169,36 @@ impl Model {
                 Some((Verb::Create(name), Ok(Outcome::Created(id)))) => {
                     return self.record_bottle(id, name);
                 }
-                Some((
-                    Verb::Fetch {
-                        then_select: Some(prefix),
-                    },
-                    Ok(_),
-                )) => {
-                    if let Subject::Addon(release) = subject {
-                        return self.perform(Action::UseComponent { prefix, release });
+                Some((Verb::Fetch { then_select }, result)) => {
+                    let Subject::Addon(release) = subject else {
+                        return Task::none();
+                    };
+                    let name = self.release_name(release);
+                    match (result, then_select) {
+                        (Ok(_), Some(prefix)) => {
+                            self.notifications.success(
+                                format!("{name} downloaded"),
+                                "It’s selected in the bottle.",
+                            );
+                            return self.perform(Action::UseComponent { prefix, release });
+                        }
+                        // Essentials show their progress where they were
+                        // started, so finishing needs no notification.
+                        (Ok(_), None) => {}
+                        (Err(error), _) => {
+                            let retry = match then_select {
+                                Some(prefix) => Action::FetchComponent { prefix, release },
+                                None => Action::FetchEssentials,
+                            };
+                            self.notifications.push(
+                                Notification::new(
+                                    InfoCardKind::Error,
+                                    "Error",
+                                    format!("Couldn’t download {name}. {error}"),
+                                )
+                                .action("Retry", Follow::Act(retry)),
+                            );
+                        }
                     }
                 }
                 Some((_, Err(error))) => self.notifications.error(error),
@@ -277,6 +318,17 @@ impl Model {
                 (title, rows)
             })
             .collect()
+    }
+
+    /// A catalog release's name and version, e.g. "DXVK 2.6".
+    fn release_name(&self, id: uuid::Uuid) -> String {
+        self.sources
+            .catalogs
+            .entry::<bottles_core::AddonRole>(id)
+            .map_or_else(
+                || "the release".to_owned(),
+                |entry| format!("{} {}", entry.name(), entry.version()),
+            )
     }
 
     /// The releases being downloaded, by name.
