@@ -37,6 +37,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> Element<'_, Message
             ActionRow::new(bottle.name, Message::Select(bottle.id))
                 .description(bottle.state.runner.name())
                 .icon(Icon::Bottles)
+                .trailing(Icon::Arrow.view().rotation(std::f32::consts::PI))
                 .selected(selected == Some(bottle.id))
                 .into()
         });

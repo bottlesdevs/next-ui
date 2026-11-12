@@ -1,7 +1,7 @@
 use iced::{
     Alignment, Element,
     widget::{
-        column, row, text,
+        Space, column, row, text,
         text::{Fragment, IntoFragment},
     },
 };
@@ -21,29 +21,32 @@ enum State<Message> {
     Progress(f32),
 }
 
+/// A row that activates as a whole, like `AdwActionRow`: a title and
+/// description between any number of leading and trailing widgets.
+///
+/// Presses on a leading or trailing control go to that control, not the row.
 pub struct ActionRow<'a, Message> {
     title: Fragment<'a>,
     description: Fragment<'a>,
     icon: Option<Icon>,
-    leading: Option<Element<'a, Message>>,
-    trailing: Option<Element<'a, Message>>,
+    row: ListRow<'a, Message>,
     state: State<Message>,
     selected: bool,
 }
 
-impl<'a, Message> ActionRow<'a, Message> {
+impl<'a, Message: 'a> ActionRow<'a, Message> {
     pub fn new(title: impl IntoFragment<'a>, action: impl Into<Option<Message>>) -> Self {
         Self {
             title: title.into_fragment(),
             description: "".into_fragment(),
             icon: None,
-            leading: None,
-            trailing: None,
+            row: ListRow::new(Space::new()),
             state: action.into().map_or(State::Disabled, State::Ready),
             selected: false,
         }
     }
 
+    /// A row showing `progress` in a ring after its trailing widgets.
     pub fn progress(title: impl IntoFragment<'a>, progress: f32) -> Self {
         Self {
             state: State::Progress(progress),
@@ -61,18 +64,18 @@ impl<'a, Message> ActionRow<'a, Message> {
         self
     }
 
-    /// Leads the row with `leading`, e.g. an [`Avatar`].
+    /// Adds a widget before the title, e.g. an [`Avatar`].
     ///
     /// [`Avatar`]: super::avatar::Avatar
-    pub fn leading(mut self, leading: impl Into<Element<'a, Message>>) -> Self {
-        self.leading = Some(leading.into());
+    pub fn leading(mut self, control: impl Into<Element<'a, Message>>) -> Self {
+        self.row = self.row.leading(control);
         self
     }
 
-    /// Ends the row with `trailing` instead of the arrow, e.g. a delete
-    /// button.
-    pub fn trailing(mut self, trailing: impl Into<Element<'a, Message>>) -> Self {
-        self.trailing = Some(trailing.into());
+    /// Adds a widget after the title, e.g. a button or a chevron for a row
+    /// that navigates.
+    pub fn trailing(mut self, control: impl Into<Element<'a, Message>>) -> Self {
+        self.row = self.row.trailing(control);
         self
     }
 
@@ -84,15 +87,9 @@ impl<'a, Message> ActionRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
-        action.lower()
-    }
-}
-
-impl<'a, Message: Clone + 'a> ActionRow<'a, Message> {
-    fn lower(self) -> Element<'a, Message> {
         let mut description = row![].spacing(spacing::SM).align_y(Alignment::Center);
 
-        if let Some(icon) = self.icon {
+        if let Some(icon) = action.icon {
             description = description.push(
                 icon.view()
                     .width(list_row::BODY_SIZE)
@@ -100,24 +97,19 @@ impl<'a, Message: Clone + 'a> ActionRow<'a, Message> {
             );
         }
 
-        description = description.push(text(self.description).size(list_row::BODY_SIZE).muted());
+        description = description.push(text(action.description).size(list_row::BODY_SIZE).muted());
 
-        let labels = column![text(self.title).label().medium(), description].spacing(spacing::XS);
-        let (arrow, action): (Element<'a, Message>, _) = match self.state {
-            State::Ready(message) => (
-                Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
-                Some(message),
-            ),
-            State::Disabled => (
-                Icon::Arrow.view().rotation(std::f32::consts::PI).into(),
-                None,
-            ),
-            State::Progress(progress) => (ProgressRing::new(progress).into(), None),
+        let labels = column![text(action.title).label().medium(), description].spacing(spacing::XS);
+        let mut row = action.row.body(labels);
+        let on_press = match action.state {
+            State::Ready(message) => Some(message),
+            State::Disabled => None,
+            State::Progress(progress) => {
+                row = row.trailing(ProgressRing::new(progress));
+                None
+            }
         };
-        let mut row = ListRow::new(labels).trailing(self.trailing.unwrap_or(arrow));
-        if let Some(leading) = self.leading {
-            row = row.leading(leading);
-        }
-        list_row::action(row, action, self.selected)
+
+        list_row::action(row, on_press, action.selected)
     }
 }

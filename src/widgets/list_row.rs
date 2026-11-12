@@ -64,6 +64,11 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
+    pub(crate) fn body(mut self, body: impl Into<Element<'a, Message>>) -> Self {
+        self.body = body.into();
+        self
+    }
+
     pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
         self
