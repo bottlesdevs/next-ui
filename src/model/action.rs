@@ -29,6 +29,7 @@ pub(crate) enum Action {
     CreateBottle {
         name: String,
         runner: Uuid,
+        arch: WineArch,
     },
     Rename(Uuid, String),
     Edit(Uuid, Change),
@@ -68,7 +69,7 @@ impl Model {
                 let operation = self.core.prefixes().delete(id);
                 self.start(Subject::Prefix(id), Verb::Delete, operation)
             }
-            Action::CreateBottle { name, runner } => self.create_bottle(name, runner),
+            Action::CreateBottle { name, runner, arch } => self.create_bottle(name, runner, arch),
             Action::Rename(id, name) => self.change_collection(move |collection| {
                 if let Some(bottle) = collection.bottles.get_mut(&id) {
                     bottle.name = name;
@@ -152,7 +153,7 @@ impl Model {
         }
     }
 
-    fn create_bottle(&mut self, name: String, runner: Uuid) -> Task<Message> {
+    fn create_bottle(&mut self, name: String, runner: Uuid, arch: WineArch) -> Task<Message> {
         let (Some(runner), Some(winebridge)) = (
             self.sources.addons.release::<Runner>(runner),
             self.winebridge(),
@@ -166,13 +167,10 @@ impl Model {
             RunnerFlavor::Proton => self.umu(),
             RunnerFlavor::Wine => None,
         };
-        let operation = self.core.prefixes().create(
-            PrefixBackend::Standard,
-            WineArch::default(),
-            runner,
-            winebridge,
-            umu,
-        );
+        let operation =
+            self.core
+                .prefixes()
+                .create(PrefixBackend::Standard, arch, runner, winebridge, umu);
         self.operations
             .start(
                 Subject::Creation(Uuid::new_v4()),

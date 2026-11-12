@@ -5,7 +5,8 @@
 //! other.
 
 use bottles_core::{
-    Addon, AddonRole, CatalogEntry, Component, Runner, RunnerFlavor, Slot, Umu, WineBridge,
+    Addon, AddonRole, CatalogEntry, Component, Runner, RunnerFlavor, Slot, Umu, WineArch,
+    WineBridge,
 };
 use uuid::Uuid;
 
@@ -72,15 +73,20 @@ impl Model {
         })
     }
 
-    /// Returns whether a bottle can be created with the installed `runner`.
+    /// Returns whether a bottle of `arch` can be created with the installed
+    /// `runner`.
     ///
-    /// Every bottle needs `WineBridge`, and a Proton runner also needs UMU.
-    pub(crate) fn can_create_with(&self, runner: Uuid) -> bool {
+    /// Every bottle needs `WineBridge`. A Proton runner also needs UMU and
+    /// only makes 64-bit bottles.
+    pub(crate) fn can_create_with(&self, runner: Uuid, arch: WineArch) -> bool {
         let Some(runner) = self.sources.addons.release::<Runner>(runner) else {
             return false;
         };
         self.winebridge().is_some()
-            && (runner.flavor() == RunnerFlavor::Wine || self.umu().is_some())
+            && match runner.flavor() {
+                RunnerFlavor::Wine => true,
+                RunnerFlavor::Proton => self.umu().is_some() && arch == WineArch::Win64,
+            }
     }
 
     /// Installed runners, ordered by series and newest first within each.
