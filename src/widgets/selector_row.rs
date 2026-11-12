@@ -167,8 +167,7 @@ where
             if current {
                 content = content.push(Icon::Checkmark.view().width(16).height(16));
             }
-            menu_item(content, message, current)
-            .into()
+            menu_item(content, message, current).into()
         });
         let mut list = Column::new().width(Fill);
         let sectioned = !selector.available.is_empty();
@@ -215,10 +214,13 @@ where
                 container::Style::default()
                     .background(colors.border)
                     .border(Border::default().rounded(iced::border::bottom(RADIUS)))
+                    // Offset by as much as it blurs, so the shadow fades out
+                    // before the row: the popup continues the row rather
+                    // than floating over it.
                     .shadow(Shadow {
                         color: iced::Color::BLACK.scale_alpha(0.35),
-                        offset: Vector::new(0.0, 14.0),
-                        blur_radius: 24.0,
+                        offset: Vector::new(0.0, 16.0),
+                        blur_radius: 16.0,
                     })
             } else {
                 container::Style::default()
@@ -541,13 +543,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         // An open popup continues the row, so the row's bottom corners go.
         if state.open && self.popup {
             header_style.border = Border::default().rounded(iced::border::top(RADIUS));
-            // The row and its popup read as one raised surface, so the row
-            // casts the top of the popup's shadow.
-            header_style.shadow = Shadow {
-                color: iced::Color::BLACK.scale_alpha(0.2),
-                offset: Vector::new(0.0, -2.0),
-                blur_radius: 12.0,
-            };
         }
         renderer.fill_quad(
             renderer::Quad {
