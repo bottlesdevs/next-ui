@@ -85,7 +85,7 @@ impl State {
             } else {
                 header
             };
-            let header = if pane.owns_window_control() {
+            let header = if pane.is_at_end() {
                 header.end(manage_profiles::button(model).map(Message::Profiles))
             } else {
                 header
@@ -128,7 +128,7 @@ impl State {
             } else {
                 header
             };
-            let header = if pane.owns_window_control() {
+            let header = if pane.is_at_end() {
                 header.end(manage_profiles::button(model).map(Message::Profiles))
             } else {
                 header
