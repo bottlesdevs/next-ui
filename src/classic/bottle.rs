@@ -295,24 +295,19 @@ pub(super) fn settings<'a>(
     .into()
 }
 
-/// What a component slot can hold: nothing, or a downloaded release.
+/// A downloaded release a picker offers, with its label.
 #[derive(Clone, PartialEq)]
-enum Choice {
-    Off,
-    Release(Uuid, String),
-}
+struct Choice(Uuid, String);
 
 impl std::fmt::Display for Choice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Off => f.write_str("Off"),
-            Self::Release(_, label) => f.write_str(label),
-        }
+        f.write_str(&self.1)
     }
 }
 
-/// A picker for the release in `slot`: Off, the downloaded releases, and the
-/// newest ones the catalogs offer, which are selected once downloaded.
+/// A row for `slot`: its switch turns the component on or off, and its
+/// options pick the downloaded release, or download one of the newest the
+/// catalogs offer, which is selected once downloaded.
 fn component<'a>(
     model: &'a Model,
     bottle: Bottle<'a>,
@@ -321,31 +316,52 @@ fn component<'a>(
     editable: bool,
 ) -> Element<'a, Message> {
     let prefix = bottle.id;
-    let options = std::iter::once(Choice::Off)
-        .chain(
-            model
-                .component_releases(slot)
-                .into_iter()
-                .map(|(id, label)| Choice::Release(id, label)),
-        )
+    let options = model
+        .component_releases(slot)
+        .into_iter()
+        .map(|(id, label)| Choice(id, label))
         .collect::<Vec<_>>();
-    let selected = bottle
-        .state
-        .component(slot)
-        .map_or(Choice::Off, |installed| {
-            let addon = &installed.addon;
-            Choice::Release(addon.id(), format!("{} {}", addon.name(), addon.version()))
+    let selected = bottle.state.component(slot).map(|installed| {
+        let addon = &installed.addon;
+        Choice(addon.id(), format!("{} {}", addon.name(), addon.version()))
+    });
+    let on = selected.is_some();
+    let available = model.available_components(slot);
+    // Turning it on uses the newest downloaded release, or downloads the
+    // newest one; with neither, the switch stays off.
+    let turn_on = options
+        .first()
+        .map(|choice| Action::UseRelease {
+            prefix,
+            release: choice.0,
+        })
+        .or_else(|| {
+            available
+                .iter()
+                .find(|release| release.download.is_none())
+                .map(|release| Action::FetchRelease {
+                    prefix,
+                    release: release.id,
+                })
         });
-    let available = available_options(model.available_components(slot), prefix);
-    let mut row = SelectorRow::new(title, &options, Some(selected))
+    let toggle = if on {
+        Some(Action::RemoveComponent { prefix, slot })
+    } else {
+        turn_on
+    };
+    let mut row = SelectorRow::new(title, &options, selected)
+        .placeholder("Off")
         .popup()
-        .available(available);
+        .available(available_options(available, prefix))
+        .switch(
+            on,
+            toggle
+                .filter(|_| editable)
+                .map(|action| move |_| Message::Act(action.clone())),
+        );
     if editable {
-        row = row.on_selected(move |choice| {
-            Message::Act(match choice {
-                Choice::Off => Action::RemoveComponent { prefix, slot },
-                Choice::Release(release, _) => Action::UseRelease { prefix, release },
-            })
+        row = row.on_selected(move |Choice(release, _)| {
+            Message::Act(Action::UseRelease { prefix, release })
         });
     }
     row.into()
@@ -356,14 +372,14 @@ fn component<'a>(
 fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'a, Message> {
     let prefix = bottle.id;
     let current = &bottle.state.runner;
-    let selected = Choice::Release(
+    let selected = Choice(
         current.id(),
         format!("{} {}", current.name(), current.version()),
     );
     let mut options = model
         .runner_releases(bottle.state.arch)
         .into_iter()
-        .map(|(id, label)| Choice::Release(id, label))
+        .map(|(id, label)| Choice(id, label))
         .collect::<Vec<_>>();
     // The runner in use stays listed even if it was removed since.
     if !options.contains(&selected) {
@@ -375,9 +391,8 @@ fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'
         .popup()
         .available(available);
     if editable {
-        row = row.on_selected(move |choice| match choice {
-            Choice::Release(release, _) => Message::Act(Action::UseRelease { prefix, release }),
-            Choice::Off => unreachable!("a bottle always has a runner"),
+        row = row.on_selected(move |Choice(release, _)| {
+            Message::Act(Action::UseRelease { prefix, release })
         });
     }
     row.into()

@@ -50,6 +50,8 @@ pub(super) struct PopupCore<'a, Message> {
     tree: &'a mut Tree,
     viewport_inset: f32,
     match_anchor_width: bool,
+    /// Space between the anchor and the content.
+    gap: f32,
     focus: PopupFocus<'a>,
     on_dismiss: Box<dyn FnMut(DismissReason) -> DismissOutcome + 'a>,
 }
@@ -71,6 +73,7 @@ impl<'a, Message> PopupCore<'a, Message> {
             tree,
             viewport_inset,
             match_anchor_width: false,
+            gap: spacing::XS,
             focus,
             on_dismiss: Box::new(on_dismiss),
         }
@@ -78,6 +81,13 @@ impl<'a, Message> PopupCore<'a, Message> {
 
     pub(super) fn match_anchor_width(mut self) -> Self {
         self.match_anchor_width = true;
+        self
+    }
+
+    /// Places the content flush against the anchor, so the two read as one
+    /// surface.
+    pub(super) fn attached(mut self) -> Self {
+        self.gap = 0.0;
         self
     }
 
@@ -111,6 +121,7 @@ struct Geometry {
     above: f32,
     inset: f32,
     viewport: Rectangle,
+    gap: f32,
 }
 
 fn geometry(anchor: Rectangle, viewport: Rectangle, inset: f32) -> Geometry {
@@ -125,6 +136,7 @@ fn geometry(anchor: Rectangle, viewport: Rectangle, inset: f32) -> Geometry {
         above,
         inset,
         viewport,
+        gap,
     }
 }
 
@@ -146,7 +158,7 @@ fn dismissal(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> Option<
 
 impl Geometry {
     fn position(self, anchor: Point, target_height: f32, width: f32, height: f32) -> Point {
-        let gap = spacing::XS;
+        let gap = self.gap;
         let open_below = self.below >= height || self.below >= self.above;
         let y = if open_below {
             anchor.y + target_height + gap
@@ -174,7 +186,8 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
         let bounds = Rectangle::with_size(bounds);
         let viewport = self.viewport.intersection(&bounds).unwrap_or(bounds);
-        let geometry = geometry(self.anchor, viewport, self.viewport_inset);
+        let mut geometry = geometry(self.anchor, viewport, self.viewport_inset);
+        geometry.gap = self.gap;
         let max_height = geometry.below.max(geometry.above).max(0.0);
         let width = self.anchor.width.min(geometry.max_width);
         let min = Size::new(if self.match_anchor_width { width } else { 0.0 }, 0.0);
