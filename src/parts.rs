@@ -8,7 +8,7 @@ use next_ui::{
     Icon, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, Popover, PopoverItem,
-        ProgressBar, ProgressRing, TextExt as _, spacing,
+        ProgressBar, ProgressRing, StatusPage, TextExt as _, spacing,
     },
 };
 
@@ -19,15 +19,32 @@ use crate::{
     model::{Action, Activity, Experience, Listing, Model, Target},
 };
 
-/// A card for every program and library entry whose title contains `query`.
+/// A page body: content that scrolls, or a status page that fills the panel.
+pub type Body<'a, Message> = Result<Element<'a, Message>, Element<'a, Message>>;
+
+/// Builds a page from `body`, scrolling content or a centred status page.
+pub fn body_page<'a, Message: Clone + 'a>(
+    header: impl Into<Element<'a, Message>>,
+    body: Body<'a, Message>,
+) -> Element<'a, Message> {
+    match body {
+        Ok(content) => page(header, content),
+        Err(status) => status_page(header, status),
+    }
+}
+
+/// A card for every program and library entry whose title contains `query`,
+/// or a status page when there are none.
 ///
 /// A card has a details button when `on_details` returns a message for it.
+/// `on_add` adds a program from the computer.
 pub fn library_grid<'a, Message: Clone + 'a>(
     model: &'a Model,
     query: &str,
     on_launch: impl Fn(Target) -> Message,
     on_details: impl Fn(&Target) -> Option<Message>,
-) -> Element<'a, Message> {
+    on_add: Message,
+) -> Body<'a, Message> {
     let query = query.to_lowercase();
     let mut notices = column![].spacing(spacing::SM);
     for (plugin, listing) in &model.sources.listings {
@@ -81,26 +98,34 @@ pub fn library_grid<'a, Message: Clone + 'a>(
         .collect::<Vec<_>>();
 
     if cards.is_empty() {
-        notices
-            .push(InfoCard::new(
-                InfoCardKind::Hint,
-                "Nothing here yet",
-                if query.is_empty() {
-                    "Registered programs and linked storefront games will show up here."
-                } else {
-                    "No library titles match your search."
-                },
-            ))
-            .into()
+        // Suggested installs need the recipe repository (`Model::suggestions`),
+        // so an empty library offers only adding a program.
+        let status = if query.is_empty() {
+            StatusPage::new("Your library is empty")
+                .description(
+                    "Search for software and games to install them, or add a program you \
+                     already have.",
+                )
+                .child(
+                    Button::new("Add a Program")
+                        .icon(Icon::Folder)
+                        .kind(ButtonKind::Accent)
+                        .on_press(on_add),
+                )
+        } else {
+            StatusPage::new("No results")
+                .description("Nothing in your library matches your search.")
+        };
+        Err(column![notices, status].height(Fill).into())
     } else {
-        notices
+        Ok(notices
             .push(
                 Grid::with_children(cards)
                     .fluid(400.0)
                     .spacing(spacing::SM)
                     .height(iced::widget::grid::aspect_ratio(3.0, 2.0)),
             )
-            .into()
+            .into())
     }
 }
 

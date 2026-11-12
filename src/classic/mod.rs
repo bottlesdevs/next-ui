@@ -197,16 +197,22 @@ impl State {
             Message::Tab,
         )
         .height(Fill);
+        let has_bottles = !model.bottles().is_empty();
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             let header = parts::app_controls(header, model, pane, Message::Profiles, Message::Act);
-            header
-                .start(parts::app_menu(
-                    Experience::Classic,
-                    Message::OpenPreferences,
-                    |experience| Message::Act(Action::SwitchExperience(experience)),
-                ))
-                .start(parts::header_button("Add bottle", Icon::Plus, Message::New))
-                .middle(tabs)
+            let header = header.start(parts::app_menu(
+                Experience::Classic,
+                Message::OpenPreferences,
+                |experience| Message::Act(Action::SwitchExperience(experience)),
+            ));
+            // With no bottles, the status page's New Bottle button is the one
+            // way to create one.
+            let header = if has_bottles {
+                header.start(parts::header_button("Add bottle", Icon::Plus, Message::New))
+            } else {
+                header
+            };
+            header.middle(tabs)
         });
         let body = match self.tab {
             TabKind::Bottles => bottle::rows(model, self.selected),
@@ -215,9 +221,10 @@ impl State {
                 "",
                 |target| Message::Act(Action::Launch(target)),
                 |_| None,
+                Message::Act(Action::AddProgram),
             ),
         };
-        parts::page(header, body)
+        parts::body_page(header, body)
     }
 
     fn creation_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
