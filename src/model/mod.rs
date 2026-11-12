@@ -45,6 +45,15 @@ pub(crate) struct Model {
     tracker: TaskTracker,
 }
 
+/// A release being downloaded.
+pub(crate) struct Download {
+    pub(crate) id: uuid::Uuid,
+    pub(crate) name: String,
+    /// What the download is doing, e.g. "412 of 640 MB" or "Extracting".
+    pub(crate) status: String,
+    pub(crate) progress: Option<f32>,
+}
+
 /// A plugin installed on this computer.
 pub(crate) struct InstalledPlugin {
     pub(crate) id: String,
@@ -253,6 +262,50 @@ impl Model {
                 (title, rows)
             })
             .collect()
+    }
+
+    /// The releases being downloaded, by name.
+    pub(crate) fn downloads(&self) -> Vec<Download> {
+        let mut downloads: Vec<_> = self
+            .operations
+            .iter()
+            .filter_map(|(subject, pending)| {
+                let (Subject::Addon(id), Verb::Fetch) = (subject, &pending.verb) else {
+                    return None;
+                };
+                let name = self
+                    .sources
+                    .catalogs
+                    .entry::<bottles_core::AddonRole>(*id)
+                    .map_or_else(
+                        || "Release".to_owned(),
+                        |entry| format!("{} {}", entry.name(), entry.version()),
+                    );
+                let status = pending.progress.as_ref().map_or_else(
+                    || "Waiting".to_owned(),
+                    |progress| match progress.transfer {
+                        Some(bottles_core::Transfer {
+                            current,
+                            total: Some(total),
+                        }) if total > 0 => {
+                            format!("{} of {} MB", current / 1_000_000, total / 1_000_000)
+                        }
+                        _ => progress.stage.to_string(),
+                    },
+                );
+                Some(Download {
+                    id: *id,
+                    name,
+                    status,
+                    progress: pending
+                        .progress
+                        .as_ref()
+                        .and_then(bottles_core::Progress::fraction),
+                })
+            })
+            .collect();
+        downloads.sort_by(|left, right| left.name.cmp(&right.name));
+        downloads
     }
 
     /// Names the bottles that use release `id`, so Preferences can say

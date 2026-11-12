@@ -92,11 +92,7 @@ impl State {
             } else {
                 header
             };
-            let header = if pane.is_at_end() {
-                header.end(manage_profiles::button(model).map(Message::Profiles))
-            } else {
-                header
-            };
+            let header = parts::app_controls(header, model, pane, Message::Profiles, Message::Act);
             header.middle(
                 iced::widget::container(Search::new(
                     "Search library",
@@ -135,15 +131,11 @@ impl State {
             } else {
                 header
             };
-            let header = if pane.is_at_end() {
-                header.end(manage_profiles::button(model).map(Message::Profiles))
-            } else {
-                header
-            };
-            header.middle(text(program.name)).end(
+            let header = header.middle(text(program.name)).end(
                 parts::header_button("Stop program", Icon::Power, stop.clone())
                     .on_press_maybe(running.then_some(stop)),
-            )
+            );
+            parts::app_controls(header, model, pane, Message::Profiles, Message::Act)
         });
         parts::page(
             header,

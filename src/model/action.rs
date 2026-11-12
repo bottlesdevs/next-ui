@@ -45,6 +45,8 @@ pub(crate) enum Action {
     /// Removes a downloaded release from shared storage.
     RemoveRelease(Uuid),
     UninstallPlugin(String),
+    /// Stops downloading a release.
+    CancelDownload(Uuid),
 }
 
 /// A change to how a prefix starts.
@@ -91,6 +93,10 @@ impl Model {
                 Task::perform(uninstall, |result: Result<(), String>| {
                     Message::Saved(result)
                 })
+            }
+            Action::CancelDownload(id) => {
+                self.operations.cancel(&Subject::Addon(id));
+                Task::none()
             }
             Action::Unlink(link) => self.change_profiles(|profiles| {
                 profiles.unlink(link);

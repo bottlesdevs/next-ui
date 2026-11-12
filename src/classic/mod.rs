@@ -198,11 +198,7 @@ impl State {
         )
         .height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
-            let header = if pane.is_at_end() {
-                header.end(manage_profiles::button(model).map(Message::Profiles))
-            } else {
-                header
-            };
+            let header = parts::app_controls(header, model, pane, Message::Profiles, Message::Act);
             header
                 .start(parts::app_menu(
                     Experience::Classic,
@@ -285,11 +281,7 @@ impl State {
                         .item(delete),
                 )
                 .middle(tabs);
-            if pane.is_at_end() {
-                header.end(manage_profiles::button(model).map(Message::Profiles))
-            } else {
-                header
-            }
+            parts::app_controls(header, model, pane, Message::Profiles, Message::Act)
         });
         let status = bottle::status(&bottle, activity);
         let content = match self.detail_tab {

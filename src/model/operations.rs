@@ -81,8 +81,8 @@ impl Operations {
         self.pending.get(subject)
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Pending> {
-        self.pending.values()
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&Subject, &Pending)> {
+        self.pending.iter()
     }
 
     /// Starts `operation` on `subject`, unless the subject already has one.
