@@ -317,7 +317,7 @@ impl State {
         let content = match self.detail_tab {
             Detail::Programs => bottle::programs(bottle, model),
             Detail::Settings => {
-                bottle::settings(bottle, self.rename.as_deref(), activity.is_settled())
+                bottle::settings(bottle, model, self.rename.as_deref(), activity.is_settled())
             }
             Detail::Snapshots => Title::new("Snapshots")
                 .subtitle("Snapshot management is coming later.")

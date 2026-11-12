@@ -32,7 +32,10 @@ pub(crate) enum Subject {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Verb {
     Refresh,
-    Fetch,
+    /// Downloads a release, then selects it in bottle `then_select` when set.
+    Fetch {
+        then_select: Option<Uuid>,
+    },
     /// Creates a bottle with this name.
     Create(String),
     Edit,

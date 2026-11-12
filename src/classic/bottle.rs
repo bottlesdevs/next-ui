@@ -1,6 +1,6 @@
 //! Classic bottle compositions, read from the model.
 
-use bottles_core::WineArch;
+use bottles_core::{Slot, WineArch};
 use iced::{
     Center, Element, Fill, Length, Theme,
     widget::{Grid, column, container, responsive, row, text},
@@ -8,8 +8,8 @@ use iced::{
 use next_ui::{
     Icon,
     widget::{
-        ActionRow, ActionTile, ArtworkCard, CardAction, CycleRow, ExpanderRow, InfoRow, LogPanel,
-        PickerRow, RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
+        ActionRow, ActionTile, ArtworkCard, AvailableOption, CardAction, CycleRow, ExpanderRow,
+        InfoRow, LogPanel, PickerRow, RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
     },
 };
 use uuid::Uuid;
@@ -93,7 +93,7 @@ pub(super) fn creation<'a>(
 ) -> Element<'a, Message> {
     let labels = model.runners();
     let runners = labels.iter().map(|runner| runner.id()).collect::<Vec<_>>();
-    let runner = SelectorRow::new("Runner", &runners, draft.runner.as_ref())
+    let runner = SelectorRow::new("Runner", &runners, draft.runner)
         .icon(Icon::Run)
         .placeholder(if runners.is_empty() {
             "No runners installed"
@@ -123,7 +123,7 @@ pub(super) fn creation<'a>(
         SelectorRow::new(
             "Architecture",
             &[WineArch::Win64, WineArch::Win32],
-            Some(&draft.arch),
+            Some(draft.arch),
         )
         .icon(Icon::Chip)
         .label(|arch| arch_label(*arch).into())
@@ -201,6 +201,7 @@ fn new_program<'a>() -> ActionTile<'a, Message> {
 /// The settings of `bottle`, editable unless an operation on it is in flight.
 pub(super) fn settings<'a>(
     bottle: Bottle<'a>,
+    model: &'a Model,
     rename: Option<&'a str>,
     editable: bool,
 ) -> Element<'a, Message> {
@@ -249,6 +250,15 @@ pub(super) fn settings<'a>(
         let graphics = RowGroup::new()
             .title("Graphics")
             .columns(columns)
+            .row(component(model, bottle, Slot::Dxvk, "DXVK", editable))
+            .row(component(model, bottle, Slot::Vkd3d, "VKD3D-Proton", editable))
+            .row(component(
+                model,
+                bottle,
+                Slot::LatencyFlex,
+                "LatencyFlex",
+                editable,
+            ))
             .row(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
             .row(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
             .row(
@@ -287,6 +297,78 @@ pub(super) fn settings<'a>(
     })
     .height(Length::Shrink)
     .into()
+}
+
+/// What a component slot can hold: nothing, or a downloaded release.
+#[derive(Clone, PartialEq)]
+enum Choice {
+    Off,
+    Release(Uuid, String),
+}
+
+impl std::fmt::Display for Choice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Off => f.write_str("Off"),
+            Self::Release(_, label) => f.write_str(label),
+        }
+    }
+}
+
+/// A picker for the release in `slot`: Off, the downloaded releases, and the
+/// newest ones the catalogs offer, which are selected once downloaded.
+fn component<'a>(
+    model: &'a Model,
+    bottle: Bottle<'a>,
+    slot: Slot,
+    title: &'a str,
+    editable: bool,
+) -> Element<'a, Message> {
+    let prefix = bottle.id;
+    let options = std::iter::once(Choice::Off)
+        .chain(
+            model
+                .component_releases(slot)
+                .into_iter()
+                .map(|(id, label)| Choice::Release(id, label)),
+        )
+        .collect::<Vec<_>>();
+    let selected = bottle.state.component(slot).map_or(Choice::Off, |installed| {
+        let addon = &installed.addon;
+        Choice::Release(addon.id(), format!("{} {}", addon.name(), addon.version()))
+    });
+    let available = model.available_components(slot).into_iter().map(|release| {
+        match release.download {
+            Some(download) => AvailableOption::progress(
+                release.label,
+                download.progress.unwrap_or(0.0),
+                if download.then_select == Some(prefix) {
+                    "Selected when downloaded"
+                } else {
+                    "Downloading"
+                },
+            ),
+            None => AvailableOption::download(
+                release.label,
+                Message::Act(Action::FetchComponent {
+                    prefix,
+                    release: release.id,
+                }),
+            ),
+        }
+    });
+    let mut row = SelectorRow::new(title, &options, Some(selected))
+        .popup()
+        .available(available);
+    if editable {
+        row = row.on_selected(move |choice| {
+            Message::Act(match choice {
+                Choice::Off => Action::RemoveComponent { prefix, slot },
+                Choice::Release(release, _) => Action::UseComponent { prefix, release },
+            })
+        });
+    }
+    row.into()
 }
 
 fn arch_label(arch: WineArch) -> &'static str {

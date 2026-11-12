@@ -296,7 +296,7 @@ impl Gallery {
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
-            SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected)
+            SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected.copied())
                 .on_selected(Message::OptionSelected)
                 .placeholder("Placeholder")
                 .icon(Icon::Person),

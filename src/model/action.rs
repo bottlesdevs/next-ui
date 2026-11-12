@@ -1,6 +1,8 @@
 //! Everything the application can be asked to do.
 
-use bottles_core::{AddonRole, Operation, Prefix, ProgramSpec, Runner, RunnerFlavor, WineArch};
+use bottles_core::{
+    AddonRole, Component, Operation, Prefix, ProgramSpec, Runner, RunnerFlavor, Slot, WineArch,
+};
 use bottles_plugin_host::Library;
 use iced::Task;
 use std::path::{Path, PathBuf};
@@ -32,6 +34,21 @@ pub(crate) enum Action {
         arch: WineArch,
     },
     Rename(Uuid, String),
+    /// Selects downloaded component `release` in bottle `prefix`.
+    UseComponent {
+        prefix: Uuid,
+        release: Uuid,
+    },
+    /// Empties `slot` in bottle `prefix`.
+    RemoveComponent {
+        prefix: Uuid,
+        slot: Slot,
+    },
+    /// Downloads component `release`, then selects it in bottle `prefix`.
+    FetchComponent {
+        prefix: Uuid,
+        release: Uuid,
+    },
     Edit(Uuid, Change),
     AddProgram,
     /// Asks for an executable, then runs it once in a bottle.
@@ -134,6 +151,42 @@ impl Model {
                     bottle.name = name;
                 }
             }),
+            Action::UseComponent { prefix, release } => {
+                // Read from core rather than the published snapshot, which
+                // may not have caught up with a download that just finished.
+                let Some(component) = self.core.addons().state().release::<Component>(release)
+                else {
+                    self.notifications.error("This release is no longer downloaded");
+                    return Task::none();
+                };
+                self.on_prefix(prefix, Verb::Edit, move |handle| {
+                    handle.edit(move |edit| {
+                        edit.set_component(component);
+                        Ok(())
+                    })
+                })
+            }
+            Action::RemoveComponent { prefix, slot } => {
+                let occupied = self
+                    .bottle(prefix)
+                    .is_some_and(|bottle| bottle.state.component(slot).is_some());
+                if !occupied {
+                    return Task::none();
+                }
+                self.on_prefix(prefix, Verb::Edit, move |handle| {
+                    handle.edit(move |edit| edit.remove_component(slot))
+                })
+            }
+            Action::FetchComponent { prefix, release } => {
+                let operation = self.core.catalogs().fetch::<AddonRole>(release);
+                self.start(
+                    Subject::Addon(release),
+                    Verb::Fetch {
+                        then_select: Some(prefix),
+                    },
+                    operation,
+                )
+            }
             Action::Edit(id, change) => self.on_prefix(id, Verb::Edit, move |prefix| {
                 prefix.edit(move |edit| {
                     match change {
@@ -186,7 +239,11 @@ impl Model {
                     .collect::<Vec<_>>();
                 Task::batch(pending.into_iter().map(|entry| {
                     let operation = self.core.catalogs().fetch::<AddonRole>(entry.id());
-                    self.start(Subject::Addon(entry.id()), Verb::Fetch, operation)
+                    self.start(
+                        Subject::Addon(entry.id()),
+                        Verb::Fetch { then_select: None },
+                        operation,
+                    )
                 }))
             }
             Action::CancelEssentials => {

@@ -6,6 +6,7 @@
 
 mod action;
 mod collection;
+mod components;
 mod defaults;
 mod library;
 mod operations;
@@ -149,6 +150,11 @@ impl Model {
                 Some((Verb::Create(name), Ok(Outcome::Created(id)))) => {
                     return self.record_bottle(id, name);
                 }
+                Some((Verb::Fetch { then_select: Some(prefix) }, Ok(_))) => {
+                    if let Subject::Addon(release) = subject {
+                        return self.perform(Action::UseComponent { prefix, release });
+                    }
+                }
                 Some((_, Err(error))) => self.notifications.error(error),
                 Some((_, Ok(_))) | None => {}
             },
@@ -274,7 +280,7 @@ impl Model {
             .operations
             .iter()
             .filter_map(|(subject, pending)| {
-                let (Subject::Addon(id), Verb::Fetch) = (subject, &pending.verb) else {
+                let (Subject::Addon(id), Verb::Fetch { .. }) = (subject, &pending.verb) else {
                     return None;
                 };
                 let name = self
