@@ -78,6 +78,8 @@ pub(crate) enum Message {
     Source(sources::Update),
     Operation(Subject, operations::Event),
     Saved(Result<(), String>),
+    /// An action chosen in a system dialog, or `None` when it was dismissed.
+    Chosen(Option<action::Action>),
 }
 
 impl Model {
@@ -155,6 +157,8 @@ impl Model {
                     self.notifications.error(error);
                 }
             }
+            Message::Chosen(Some(action)) => return self.perform(action),
+            Message::Chosen(None) => {}
         }
         Task::none()
     }
@@ -312,6 +316,13 @@ impl Model {
     #[allow(dead_code)]
     pub(crate) fn suggestions(&self) -> Vec<String> {
         todo!("the repository of bottle recipes doesn't exist yet")
+    }
+
+    /// The shortcuts a one-off program created in bottle `prefix`, so they
+    /// can be added to it as programs.
+    #[allow(dead_code)]
+    pub(crate) fn new_shortcuts(&self, _prefix: uuid::Uuid) -> Vec<String> {
+        todo!("core doesn't report the shortcuts a program creates")
     }
 
     /// Names the bottles that use release `id`, so Preferences can say

@@ -3,6 +3,7 @@
 use bottles_core::{AddonRole, Operation, Prefix, ProgramSpec, Runner, RunnerFlavor, WineArch};
 use bottles_plugin_host::Library;
 use iced::Task;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::{
@@ -33,6 +34,13 @@ pub(crate) enum Action {
     Rename(Uuid, String),
     Edit(Uuid, Change),
     AddProgram,
+    /// Asks for an executable, then runs it once in a bottle.
+    RunProgram(Uuid),
+    /// Runs `executable`, a host path, once in bottle `prefix`.
+    Run {
+        prefix: Uuid,
+        executable: PathBuf,
+    },
     FetchEssentials,
     CancelEssentials,
     RefreshCatalog,
@@ -135,6 +143,36 @@ impl Model {
                     Ok(())
                 })
             }),
+            Action::RunProgram(prefix) => Task::perform(
+                rfd::AsyncFileDialog::new()
+                    .set_title("Run a Program")
+                    .add_filter("Windows programs", &["exe"])
+                    .pick_file(),
+                move |file| {
+                    Message::Chosen(file.map(|file| Action::Run {
+                        prefix,
+                        executable: file.path().to_owned(),
+                    }))
+                },
+            ),
+            Action::Run { prefix, executable } => match self.core.prefixes().open(prefix) {
+                // A one-off run gets its own process group and no record;
+                // the shortcuts it creates are what become programs
+                // (`Model::new_shortcuts`).
+                Ok(handle) => {
+                    let group = Uuid::new_v4();
+                    let spec = ProgramSpec::new(wine_path(&executable));
+                    self.start(
+                        Subject::Program { prefix, group },
+                        Verb::Launch,
+                        handle.launch(group, spec),
+                    )
+                }
+                Err(error) => {
+                    self.notifications.error(error.to_string());
+                    Task::none()
+                }
+            },
             Action::AddProgram => {
                 self.notifications
                     .info("Program installation is not available yet");
@@ -280,4 +318,10 @@ impl Model {
             .start(subject, verb, operation, |_| Outcome::Done)
             .map(|(subject, event)| Message::Operation(subject, event))
     }
+}
+
+/// The path Wine reaches host path `path` by, through the `Z:` drive that
+/// maps the host root.
+fn wine_path(path: &Path) -> String {
+    format!("Z:{}", path.display()).replace('/', "\\")
 }
