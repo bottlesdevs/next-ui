@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     app::Request,
     manage_profiles,
-    model::{Action, Activity, Model, Program},
+    model::{Action, Activity, Experience, Model, Program},
     parts,
 };
 
@@ -29,6 +29,7 @@ pub enum Message {
     Act(Action),
     Window(chrome::Action),
     Profiles(manage_profiles::Message),
+    OpenPreferences,
 }
 
 impl State {
@@ -44,6 +45,7 @@ impl State {
         match message {
             Message::Profiles(message) => return self.profiles.update(model, message),
             Message::Window(action) => return Some(Request::Window(action)),
+            Message::OpenPreferences => return Some(Request::OpenPreferences),
             Message::Act(action) => return Some(Request::Act(action)),
             Message::QueryChanged(query) => self.query = query,
             Message::Select(id) => self.selected = Some(id),
@@ -76,6 +78,11 @@ impl State {
         selected: bool,
     ) -> Element<'a, Message> {
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+            let header = header.start(parts::app_menu(
+                Experience::Next,
+                Message::OpenPreferences,
+                |experience| Message::Act(Action::SwitchExperience(experience)),
+            ));
             let header = if selected {
                 header.start(parts::header_button(
                     "Back to library",

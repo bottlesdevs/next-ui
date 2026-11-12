@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     classic,
     model::{self, Action, Boot, Experience, Model},
-    next, notifications, onboarding,
+    next, notifications, onboarding, preferences,
 };
 
 pub(crate) struct App {
@@ -28,6 +28,8 @@ enum Screen {
     Onboarding(onboarding::State),
     Classic(classic::State),
     Next(next::State),
+    /// Preferences, and the screen to return to.
+    Preferences(preferences::State, Box<Screen>),
 }
 
 impl Screen {
@@ -43,6 +45,8 @@ impl Screen {
 pub(crate) enum Request {
     Act(Action),
     Window(chrome::Action),
+    OpenPreferences,
+    ClosePreferences,
 }
 
 #[derive(Clone)]
@@ -57,6 +61,7 @@ pub(crate) enum Message {
     Onboarding(onboarding::Message),
     Classic(classic::Message),
     Next(next::Message),
+    Preferences(preferences::Message),
 }
 
 impl fmt::Debug for Message {
@@ -72,6 +77,7 @@ impl fmt::Debug for Message {
             Self::Onboarding(_) => "Onboarding",
             Self::Classic(_) => "Classic",
             Self::Next(_) => "Next",
+            Self::Preferences(_) => "Preferences",
         })
     }
 }
@@ -198,6 +204,10 @@ impl App {
                         Screen::Next(state) => state.update(model, message),
                         _ => None,
                     },
+                    Message::Preferences(message) => match screen {
+                        Screen::Preferences(state, _) => state.update(message),
+                        _ => None,
+                    },
                     Message::Booted(_)
                     | Message::ThemeChanged(_)
                     | Message::Window(_)
@@ -207,9 +217,25 @@ impl App {
                     Some(Request::Window(action)) => return Task::done(Message::Window(action)),
                     Some(Request::Act(action)) => {
                         if let Action::SwitchExperience(experience) = action {
-                            *screen = Screen::new(experience);
+                            match screen {
+                                Screen::Preferences(_, back) => **back = Screen::new(experience),
+                                screen => *screen = Screen::new(experience),
+                            }
                         }
                         return model.perform(action).map(Message::Model);
+                    }
+                    Some(Request::OpenPreferences) => {
+                        let back =
+                            std::mem::replace(screen, Screen::Classic(classic::State::new()));
+                        *screen =
+                            Screen::Preferences(preferences::State::default(), Box::new(back));
+                    }
+                    Some(Request::ClosePreferences) => {
+                        if let Screen::Preferences(_, back) =
+                            std::mem::replace(screen, Screen::Classic(classic::State::new()))
+                        {
+                            *screen = *back;
+                        }
                     }
                     None => {}
                 }
@@ -231,6 +257,9 @@ impl App {
                         Screen::Onboarding(state) => state.view(model).map(Message::Onboarding),
                         Screen::Classic(state) => state.view(model).map(Message::Classic),
                         Screen::Next(state) => state.view(model).map(Message::Next),
+                        Screen::Preferences(state, _) => {
+                            state.view(model).map(Message::Preferences)
+                        }
                     };
                     let mut layers = stack![content].width(Fill).height(Fill);
                     if !model.notifications.is_empty() {
