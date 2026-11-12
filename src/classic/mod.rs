@@ -11,7 +11,7 @@ use next_ui::{
     Icon, chrome,
     layout::{PaneContext, Side, navigation_split, side_panel},
     theme,
-    widget::{Popover, PopoverItem, Tab, Tabs, Title, header_button},
+    widget::{Dialog, Popover, PopoverItem, Tab, Tabs, Title, WindowModal, header_button},
 };
 use uuid::Uuid;
 
@@ -48,6 +48,8 @@ pub struct State {
     draft: Option<Draft>,
     creation_open: bool,
     rename: Option<String>,
+    /// The bottle a delete confirmation is open for.
+    deleting: Option<Uuid>,
     profiles: manage_profiles::State,
 }
 
@@ -65,6 +67,10 @@ pub enum Message {
     Create,
     Rename(String),
     SaveName,
+    /// Asks before deleting a bottle.
+    AskDelete(Uuid),
+    Delete,
+    Dismiss,
     Act(Action),
     Window(chrome::Action),
     Profiles(manage_profiles::Message),
@@ -80,6 +86,7 @@ impl State {
             draft: None,
             creation_open: false,
             rename: None,
+            deleting: None,
             profiles: manage_profiles::State::default(),
         }
     }
@@ -139,6 +146,9 @@ impl State {
                 let name = self.rename.take()?;
                 return Some(Request::Act(Action::Rename(self.selected?, name)));
             }
+            Message::AskDelete(id) => self.deleting = Some(id),
+            Message::Delete => return Some(Request::Act(Action::Delete(self.deleting.take()?))),
+            Message::Dismiss => self.deleting = None,
             Message::Act(action) => return Some(Request::Act(action)),
             Message::Window(action) => return Some(Request::Window(action)),
             Message::OpenPreferences => return Some(Request::OpenPreferences),
@@ -162,12 +172,22 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
-        side_panel(
+        let base = side_panel(
             Side::End,
             self.profiles.is_open(),
             move |_| self.screen(model),
             move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
-        )
+        );
+        let dialog = self.deleting.and_then(|id| model.bottle(id)).map(|bottle| {
+            Dialog::confirm(
+                format!("Delete {}?", bottle.name),
+                "Its programs, saved games and settings are deleted with it. This can’t be undone.",
+                "Delete Bottle",
+                Message::Delete,
+                Message::Dismiss,
+            )
+        });
+        WindowModal::new(base).dialog(dialog).into()
     }
 
     fn screen<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
@@ -274,12 +294,12 @@ impl State {
                 ));
             }
             let mut stop = PopoverItem::new("Stop bottle").icon(Icon::Stop);
-            let mut delete = PopoverItem::new("Delete bottle").icon(Icon::Cross);
+            let mut delete = PopoverItem::new("Delete bottle").icon(Icon::Trash);
             if activity == Activity::Running {
                 stop = stop.on_select(Message::Act(Action::Stop(id)));
             }
             if activity.is_settled() {
-                delete = delete.on_select(Message::Act(Action::Delete(id)));
+                delete = delete.on_select(Message::AskDelete(id));
             }
             let header = header
                 .start(
