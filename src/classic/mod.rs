@@ -2,7 +2,7 @@
 
 mod bottle;
 
-use bottles_core::{Operation, PrefixBackend, Runner, Umu, WineBridge};
+use bottles_core::{PrefixBackend, Runner, Umu, WineBridge};
 use iced::{
     Element, Fill, Task,
     widget::{column, container},
@@ -175,10 +175,7 @@ impl State {
             Message::LaunchLibrary(entry) => return ctx.launch(entry),
             Message::Stop(id) => match ctx.core.prefixes().open(id) {
                 Ok(prefix) => {
-                    return ctx.jobs.start(
-                        Kind::Stop(id),
-                        Operation::new(move |_| async move { prefix.stop().await }),
-                    );
+                    return ctx.jobs.start(Kind::Stop(id), prefix.stop());
                 }
                 Err(error) => ctx.notifications.error(error.to_string()),
             },
