@@ -1,4 +1,4 @@
-//! Classic bottle compositions derived from the session snapshots and jobs.
+//! Classic bottle compositions, read from the model.
 
 use bottles_core::{Runner, WineBridge};
 use iced::{
@@ -15,58 +15,47 @@ use next_ui::{
 use uuid::Uuid;
 
 use super::{Draft, Message};
-use crate::{
-    collection::{Bottle, Item},
-    jobs::{Jobs, Kind},
-    library::Entry,
-    store::Store,
-};
+use crate::model::{Action, Activity, Bottle, Change, Model, Verb};
 
-pub(super) fn rows<'a>(
-    bottles: Vec<Item<'a, Bottle>>,
-    jobs: &'a Jobs,
-    selected: Option<Uuid>,
-) -> Element<'a, Message> {
-    if bottles.is_empty()
-        && !jobs
-            .map
-            .values()
-            .any(|job| matches!(job.kind, Kind::CreateBottle(_)))
-    {
+/// A row for every bottle and for every bottle being created.
+pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> Element<'_, Message> {
+    let bottles = model.bottles();
+    let creating = || {
+        model
+            .operations
+            .iter()
+            .filter_map(|pending| match &pending.verb {
+                Verb::Create(name) => Some((name, pending.progress.as_ref())),
+                _ => None,
+            })
+    };
+    if bottles.is_empty() && creating().next().is_none() {
         return text("No bottles yet. Add a bottle to get started.").into();
     }
     responsive(move |size| {
         let bottles = bottles.iter().map(|bottle| {
-            ActionRow::new(&bottle.record.name, Message::Select(bottle.id))
+            ActionRow::new(bottle.name, Message::Select(bottle.id))
                 .description(bottle.state.runner.name())
                 .icon(Icon::Bottles)
                 .selected(selected == Some(bottle.id))
                 .into()
         });
-        let creating = jobs.map.values().filter_map(|job| {
-            let Kind::CreateBottle(name) = &job.kind else {
-                return None;
-            };
-            Some(
-                ActionRow::progress(
-                    name,
-                    job.progress
-                        .as_ref()
-                        .and_then(bottles_core::Progress::fraction)
-                        .unwrap_or(0.0),
-                )
-                .description(
-                    job.progress
-                        .as_ref()
-                        .map_or_else(|| "Preparing".into(), |progress| progress.stage.to_string()),
-                )
-                .icon(Icon::Bottles)
-                .into(),
+        let creating = creating().map(|(name, progress)| {
+            ActionRow::progress(
+                name,
+                progress
+                    .and_then(bottles_core::Progress::fraction)
+                    .unwrap_or(0.0),
             )
+            .description(
+                progress.map_or_else(|| "Preparing".into(), |progress| progress.stage.to_string()),
+            )
+            .icon(Icon::Bottles)
+            .into()
         });
         let rows = bottles
             .chain(creating)
-            .collect::<Vec<Element<'a, Message>>>();
+            .collect::<Vec<Element<'_, Message>>>();
         let max_width = 600.0 + spacing::SM;
         let columns = ((size.width + spacing::SM) / (max_width + spacing::SM)).ceil();
         let occupied_columns = (rows.len() as f32).min(columns);
@@ -87,10 +76,11 @@ pub(super) fn rows<'a>(
 
 pub(super) fn creation<'a>(
     draft: &'a Draft,
-    store: &'a Store,
+    model: &'a Model,
     can_create: bool,
 ) -> Element<'a, Message> {
-    let labels: Vec<_> = store.addons.releases::<Runner>().collect();
+    let addons = &model.sources.addons;
+    let labels: Vec<_> = addons.releases::<Runner>().collect();
     let runners = labels.iter().map(|runner| runner.id()).collect::<Vec<_>>();
     let runner = SelectorRow::new("Runner", &runners, draft.runner.as_ref())
         .icon(Icon::Run)
@@ -125,17 +115,18 @@ pub(super) fn creation<'a>(
         PickerRow::new("Use Recipe").description("Choose the location"),
     ]
     .spacing(spacing::SM);
-    if store.addons.releases::<WineBridge>().next().is_none() {
+    if addons.releases::<WineBridge>().next().is_none() {
         content = content.push(InfoRow::new("WineBridge is required to create a bottle"));
     }
     content.into()
 }
 
-pub(super) fn programs<'a>(bottle: Item<'a, Bottle>, jobs: &'a Jobs) -> Element<'a, Message> {
-    let cards = bottle.record.programs.iter().map(move |(&id, program)| {
-        let launching = jobs.running(&Kind::Launch(Entry::Bottle(bottle.id, id)));
+pub(super) fn programs<'a>(bottle: Bottle<'a>, model: &'a Model) -> Element<'a, Message> {
+    let cards = bottle.programs().map(move |program| {
+        let activity = model.activity(&program.target().subject());
+        let launching = activity == Activity::Launching;
         ArtworkCard::new(
-            &program.name,
+            program.name,
             if launching {
                 "Launching…"
             } else {
@@ -145,12 +136,10 @@ pub(super) fn programs<'a>(bottle: Item<'a, Bottle>, jobs: &'a Jobs) -> Element<
         .primary(
             CardAction::new("Play", Icon::Play)
                 .loading(launching)
-                .on_press_maybe((!launching && !busy(jobs, bottle.id)).then_some(
-                    Message::LaunchProgram {
-                        bottle: bottle.id,
-                        program: id,
-                    },
-                )),
+                .on_press_maybe(
+                    (activity == Activity::Idle)
+                        .then(|| Message::Act(Action::Launch(program.target()))),
+                ),
         )
         .into()
     });
@@ -181,21 +170,22 @@ fn new_program<'a>() -> ActionTile<'a, Message> {
         container(row![icon, labels].spacing(16).align_y(Center))
             .center_x(Fill)
             .center_y(Fill),
-        Message::NewProgram,
+        Message::Act(Action::AddProgram),
     )
     .width(Fill)
     .height(Fill)
     .padding(spacing::LG)
 }
 
+/// The settings of `bottle`, editable while nothing else is happening to it.
 pub(super) fn settings<'a>(
-    bottle: Item<'a, Bottle>,
+    bottle: Bottle<'a>,
     rename: Option<&'a str>,
-    jobs: &Jobs,
+    idle: bool,
 ) -> Element<'a, Message> {
     const SETTINGS_TRACK_MIN_WIDTH: f32 = 300.0;
-    let editing = busy(jobs, bottle.id);
-    let (id, name, state) = (bottle.id, &bottle.record.name, bottle.state);
+    let editing = !idle;
+    let (id, name, state) = (bottle.id, bottle.name, bottle.state);
     responsive(move |size| {
         let columns = usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
         let value = rename.unwrap_or(name);
@@ -254,9 +244,9 @@ pub(super) fn settings<'a>(
             .row(
                 SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                     .description("Use the SteamOS compositor")
-                    .on_toggle_maybe(
-                        (!editing).then_some(move |enabled| Message::ToggleGamescope(id, enabled)),
-                    ),
+                    .on_toggle_maybe((!editing).then_some(move |enabled| {
+                        Message::Act(Action::Edit(id, Change::Gamescope(enabled)))
+                    })),
             )
             .expander(
                 ExpanderRow::with_header(
@@ -268,9 +258,9 @@ pub(super) fn settings<'a>(
             .row(
                 SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                     .description("Show a performance overlay")
-                    .on_toggle_maybe(
-                        (!editing).then_some(move |enabled| Message::ToggleMangoHud(id, enabled)),
-                    ),
+                    .on_toggle_maybe((!editing).then_some(move |enabled| {
+                        Message::Act(Action::Edit(id, Change::MangoHud(enabled)))
+                    })),
             );
         column![bottle_group, graphics].spacing(spacing::SM).into()
     })
@@ -278,13 +268,7 @@ pub(super) fn settings<'a>(
     .into()
 }
 
-pub(super) fn busy(jobs: &Jobs, bottle: Uuid) -> bool {
-    [Kind::Edit(bottle), Kind::Stop(bottle), Kind::Delete(bottle)]
-        .iter()
-        .any(|kind| jobs.running(kind))
-}
-
-pub(super) fn status<'a>(bottle: &Item<'a, Bottle>) -> LogPanel<'a> {
+pub(super) fn status<'a>(bottle: &Bottle<'a>) -> LogPanel<'a> {
     let runner = &bottle.state.runner;
     LogPanel::new(
         StatusBar::new("Ready", Icon::Lightning)

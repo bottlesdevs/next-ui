@@ -6,10 +6,9 @@ use iced::{
 };
 use uuid::Uuid;
 
-use crate::{
-    app::Message,
-    widget::{InfoCardKind, Notification as NotificationCard},
-};
+use next_ui::widget::{InfoCardKind, Notification as NotificationCard};
+
+use crate::app::Message;
 
 pub(crate) struct Notification {
     pub(crate) id: Uuid,

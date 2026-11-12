@@ -1,21 +1,17 @@
 //! The Next experience: standalone programs and their launch controls.
 
-use iced::{Element, Fill, Task, widget::text};
+use iced::{Element, Fill, widget::text};
+use next_ui::{
+    Icon, chrome,
+    layout::{self, PaneContext},
+    widget::{ArtworkCard, CardAction, InfoCard, InfoCardKind, InfoRow, RowGroup, Search, spacing},
+};
 use uuid::Uuid;
 
 use crate::{
-    Icon,
-    jobs::Kind,
-    layout::{self, PaneContext},
-    library::Entry,
-    widget::{ArtworkCard, CardAction, InfoRow, RowGroup, Search, spacing},
-};
-use crate::{
-    app, chrome,
-    collection::{self, Item},
-    context::Context,
-    views,
-    widget::{InfoCard, InfoCardKind},
+    app::Request,
+    model::{Action, Activity, Model, Program},
+    parts,
 };
 
 pub struct State {
@@ -28,8 +24,7 @@ pub enum Message {
     QueryChanged(String),
     Select(Uuid),
     Back,
-    Launch(Uuid),
-    Stop(Uuid),
+    Act(Action),
     Window(chrome::Action),
 }
 
@@ -41,42 +36,36 @@ impl State {
         }
     }
 
-    pub fn update(&mut self, ctx: &mut Context, message: Message) -> Task<app::Message> {
+    pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
-            Message::Window(action) => return Task::done(app::Message::Window(action)),
+            Message::Window(action) => return Some(Request::Window(action)),
+            Message::Act(action) => return Some(Request::Act(action)),
             Message::QueryChanged(query) => self.query = query,
             Message::Select(id) => self.selected = Some(id),
             Message::Back => self.selected = None,
-            Message::Launch(id) => return ctx.launch(Entry::Program(id)),
-            Message::Stop(id) => match ctx.core.prefixes().open(id) {
-                Ok(prefix) => {
-                    return ctx.jobs.start(Kind::Stop(id), prefix.stop(false));
-                }
-                Err(error) => ctx.notifications.error(error.to_string()),
-            },
         }
-        Task::none()
+        None
     }
 
-    pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
-        let selected = self.selected(ctx);
+    pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
+        let selected = self.selected(model);
         layout::navigation_split(
             PaneContext::root(),
             selected.is_some(),
-            move |pane| self.programs_view(ctx, pane, selected.is_some()),
-            move |pane| self.detail_view(ctx, pane),
+            move |pane| self.programs_view(model, pane, selected.is_some()),
+            move |pane| self.detail_view(model, pane),
         )
     }
 
     fn programs_view<'a>(
         &'a self,
-        ctx: &'a Context,
+        model: &'a Model,
         pane: PaneContext,
         selected: bool,
     ) -> Element<'a, Message> {
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             let header = if selected {
-                header.start(views::header_button(
+                header.start(parts::header_button(
                     "Back to programs",
                     Icon::Arrow,
                     Message::Back,
@@ -95,32 +84,31 @@ impl State {
             )
         });
         let query = self.query.to_lowercase();
-        let cards = ctx
-            .collection
-            .programs(&ctx.store)
+        let cards = model
+            .programs()
             .into_iter()
-            .filter(|program| program.record.name.to_lowercase().contains(&query))
+            .filter(|program| program.name.to_lowercase().contains(&query))
             .map(|program| {
-                let id = program.id;
-                let busy = busy(ctx, id);
+                let activity = model.activity(&program.target().subject());
                 ArtworkCard::new(
-                    &program.record.name,
-                    if ctx.jobs.running(&Kind::Stop(id)) {
-                        "Stopping…"
-                    } else if busy {
-                        "Launching…"
-                    } else {
-                        "Installed program"
+                    program.name,
+                    match activity {
+                        Activity::Stopping => "Stopping…",
+                        Activity::Launching => "Launching…",
+                        Activity::Idle | Activity::Busy => "Installed program",
                     },
                 )
                 .menu(
                     CardAction::new("Program details", Icon::EllipsisVertical)
-                        .on_press(Message::Select(id)),
+                        .on_press(Message::Select(program.prefix)),
                 )
                 .primary(
                     CardAction::new("Play", Icon::Play)
-                        .loading(busy)
-                        .on_press_maybe((!busy).then_some(Message::Launch(id))),
+                        .loading(activity != Activity::Idle)
+                        .on_press_maybe(
+                            (activity == Activity::Idle)
+                                .then(|| Message::Act(Action::Launch(program.target()))),
+                        ),
                 )
                 .into()
             })
@@ -143,20 +131,21 @@ impl State {
                 .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
                 .into()
         };
-        views::page(header, body)
+        parts::page(header, body)
     }
 
-    fn detail_view<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
-        let Some(program) = self.selected(ctx) else {
-            return views::page(
+    fn detail_view<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
+        let Some(program) = self.selected(model) else {
+            return parts::page(
                 pane.header(Message::Window(chrome::Action::Drag), |header| header),
                 text("No program selected"),
             );
         };
-        let id = program.id;
+        let stop = Message::Act(Action::Stop(program.prefix));
+        let idle = model.activity(&program.target().subject()) == Activity::Idle;
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             let header = if pane.is_standalone() {
-                header.start(views::header_button(
+                header.start(parts::header_button(
                     "Back to programs",
                     Icon::Arrow,
                     Message::Back,
@@ -164,27 +153,20 @@ impl State {
             } else {
                 header
             };
-            header.middle(text(&program.record.name)).end(
-                views::header_button("Stop program", Icon::Power, Message::Stop(id))
-                    .on_press_maybe((!busy(ctx, id)).then_some(Message::Stop(id))),
+            header.middle(text(program.name)).end(
+                parts::header_button("Stop program", Icon::Power, stop.clone())
+                    .on_press_maybe(idle.then_some(stop)),
             )
         });
-        views::page(
+        parts::page(
             header,
             RowGroup::new()
-                .row(InfoRow::new("Executable").description(program.record.spec.executable()))
+                .row(InfoRow::new("Executable").description(program.spec.executable()))
                 .row(InfoRow::new("Runner").description(program.state.runner.name())),
         )
     }
 
-    fn selected<'a>(&self, ctx: &'a Context) -> Option<Item<'a, collection::Program>> {
-        ctx.collection
-            .programs(&ctx.store)
-            .into_iter()
-            .find(|program| Some(program.id) == self.selected)
+    fn selected<'a>(&self, model: &'a Model) -> Option<Program<'a>> {
+        model.program(self.selected?)
     }
-}
-
-fn busy(ctx: &Context, id: Uuid) -> bool {
-    ctx.jobs.running(&Kind::Launch(Entry::Program(id))) || ctx.jobs.running(&Kind::Stop(id))
 }

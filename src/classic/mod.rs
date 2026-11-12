@@ -1,26 +1,24 @@
-//! Classic view state. Snapshots and operations belong to the application context.
+//! Classic view state. Everything else is read from the model.
 
 mod bottle;
 
-use bottles_core::{PrefixBackend, Runner, Umu, WineArch, WineBridge};
+use bottles_core::Runner;
 use iced::{
-    Element, Fill, Task,
+    Element, Fill,
     widget::{column, container},
 };
 use next_ui::{
-    Icon,
+    Icon, chrome,
+    layout::{PaneContext, Side, navigation_split, side_panel},
+    theme,
     widget::{Popover, PopoverItem, Tab, Tabs, Title, header_button},
 };
 use uuid::Uuid;
 
 use crate::{
-    app, chrome,
-    collection::{self, Item},
-    context::Context,
-    jobs::Kind,
-    layout::{PaneContext, Side, navigation_split, side_panel},
-    library::Entry,
-    theme, views,
+    app::Request,
+    model::{Action, Activity, Bottle, Model, Subject},
+    parts,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,13 +62,7 @@ pub enum Message {
     Create,
     Rename(String),
     SaveName,
-    LaunchProgram { bottle: Uuid, program: Uuid },
-    LaunchLibrary(Entry),
-    Stop(Uuid),
-    Delete(Uuid),
-    ToggleGamescope(Uuid, bool),
-    ToggleMangoHud(Uuid, bool),
-    NewProgram,
+    Act(Action),
     Window(chrome::Action),
 }
 
@@ -86,7 +78,7 @@ impl State {
         }
     }
 
-    pub fn update(&mut self, ctx: &mut Context, message: Message) -> Task<app::Message> {
+    pub fn update(&mut self, model: &Model, message: Message) -> Option<Request> {
         match message {
             Message::Tab(tab) => self.tab = tab,
             Message::Select(id) => {
@@ -105,8 +97,8 @@ impl State {
                 self.creation_open = true;
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
-                    runner: ctx
-                        .store
+                    runner: model
+                        .sources
                         .addons
                         .releases::<Runner>()
                         .next()
@@ -125,119 +117,59 @@ impl State {
                 }
             }
             Message::Create => {
-                let Some(draft) = self.draft.as_ref().filter(|_| self.creation_open) else {
-                    return Task::none();
+                let draft = self.draft.as_ref().filter(|_| self.can_create(model))?;
+                let action = Action::CreateBottle {
+                    name: draft.name.clone(),
+                    runner: draft.runner?,
                 };
-                let runner = ctx
-                    .store
-                    .addons
-                    .releases::<Runner>()
-                    .find(|runner| Some(runner.id()) == draft.runner);
-                let Some(runner) = runner else {
-                    return Task::none();
-                };
-                let Some(winebridge) = ctx.store.addons.releases::<WineBridge>().next() else {
-                    return Task::none();
-                };
-                let name = draft.name.clone();
-                let operation = ctx.core.prefixes().create(
-                    PrefixBackend::Standard,
-                    WineArch::default(),
-                    runner,
-                    winebridge,
-                    ctx.store.addons.releases::<Umu>().next(),
-                );
                 self.creation_open = false;
-                return ctx.jobs.start_then(
-                    Kind::CreateBottle(name.clone()),
-                    operation,
-                    |prefix| {
-                        Some(app::Message::Collection(collection::Change::AddBottle(
-                            prefix.id(),
-                            name,
-                        )))
-                    },
-                );
+                return Some(Request::Act(action));
             }
             Message::Rename(name) => self.rename = Some(name),
             Message::SaveName => {
-                let (Some(id), Some(name)) = (self.selected, self.rename.take()) else {
-                    return Task::none();
-                };
-                if let Some(bottle) = ctx.collection.bottles.get_mut(&id) {
-                    bottle.name = name;
-                    return ctx.save_collection();
-                }
+                let name = self.rename.take()?;
+                return Some(Request::Act(Action::Rename(self.selected?, name)));
             }
-            Message::LaunchProgram {
-                bottle: id,
-                program,
-            } => return ctx.launch(Entry::Bottle(id, program)),
-            Message::LaunchLibrary(entry) => return ctx.launch(entry),
-            Message::Stop(id) => match ctx.core.prefixes().open(id) {
-                Ok(prefix) => {
-                    return ctx.jobs.start(Kind::Stop(id), prefix.stop(false));
-                }
-                Err(error) => ctx.notifications.error(error.to_string()),
-            },
-            Message::Delete(id) => {
-                let operation = ctx.core.prefixes().delete(id);
-                return ctx.jobs.start_then(Kind::Delete(id), operation, move |()| {
-                    Some(app::Message::Collection(collection::Change::Remove(id)))
-                });
-            }
-            Message::ToggleGamescope(id, enabled) | Message::ToggleMangoHud(id, enabled) => {
-                let gamescope = matches!(message, Message::ToggleGamescope(..));
-                match ctx.core.prefixes().open(id) {
-                    Ok(prefix) => {
-                        return ctx.jobs.start(
-                            Kind::Edit(id),
-                            prefix.edit(move |edit| {
-                                if gamescope {
-                                    edit.wrappers().gamescope.enabled = enabled;
-                                } else {
-                                    edit.wrappers().mangohud.enabled = enabled;
-                                }
-                                Ok(())
-                            }),
-                        );
-                    }
-                    Err(error) => ctx.notifications.error(error.to_string()),
-                }
-            }
-            Message::NewProgram => ctx
-                .notifications
-                .info("Program installation is not available yet"),
-            Message::Window(action) => return Task::done(app::Message::Window(action)),
+            Message::Act(action) => return Some(Request::Act(action)),
+            Message::Window(action) => return Some(Request::Window(action)),
         }
-        Task::none()
+        None
     }
 
-    fn selected<'a>(&self, ctx: &'a Context) -> Option<Item<'a, collection::Bottle>> {
-        ctx.collection
-            .bottles(&ctx.store)
-            .into_iter()
-            .find(|bottle| Some(bottle.id) == self.selected)
+    /// Returns whether the open draft names a bottle that can be created.
+    fn can_create(&self, model: &Model) -> bool {
+        self.creation_open
+            && model.can_create_bottles()
+            && self.draft.as_ref().is_some_and(|draft| {
+                !draft.name.trim().is_empty()
+                    && draft.runner.is_some_and(|runner| {
+                        model.sources.addons.release::<Runner>(runner).is_some()
+                    })
+            })
     }
 
-    pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
+    fn selected<'a>(&self, model: &'a Model) -> Option<Bottle<'a>> {
+        model.bottle(self.selected?)
+    }
+
+    pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
         side_panel(
             Side::Start,
             self.creation_open,
             move |pane| match self.tab {
                 TabKind::Bottles => navigation_split(
                     pane,
-                    self.selected(ctx).is_some(),
-                    move |pane| self.primary_page(ctx, pane),
-                    move |pane| self.detail_page(ctx, pane),
+                    self.selected(model).is_some(),
+                    move |pane| self.primary_page(model, pane),
+                    move |pane| self.detail_page(model, pane),
                 ),
-                TabKind::Library => self.primary_page(ctx, pane),
+                TabKind::Library => self.primary_page(model, pane),
             },
-            move |pane| self.creation_page(ctx, pane),
+            move |pane| self.creation_page(model, pane),
         )
     }
 
-    fn primary_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
+    fn primary_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
         let tabs = Tabs::new(
             [
                 Tab::new(TabKind::Bottles, "Bottles"),
@@ -249,52 +181,45 @@ impl State {
         .height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
-                .start(views::header_button("Add bottle", Icon::Plus, Message::New))
+                .start(parts::header_button("Add bottle", Icon::Plus, Message::New))
                 .middle(tabs)
         });
         let body = match self.tab {
-            TabKind::Bottles => {
-                bottle::rows(ctx.collection.bottles(&ctx.store), &ctx.jobs, self.selected)
+            TabKind::Bottles => bottle::rows(model, self.selected),
+            TabKind::Library => {
+                parts::library_grid(model, "", |target| Message::Act(Action::Launch(target)))
             }
-            TabKind::Library => views::library_grid(ctx, "", Message::LaunchLibrary),
         };
-        views::page(header, body)
+        parts::page(header, body)
     }
 
-    fn creation_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
+    fn creation_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
         let Some(draft) = &self.draft else {
             return column![].into();
         };
-        let can_create = self.creation_open
-            && !draft.name.trim().is_empty()
-            && ctx
-                .store
-                .addons
-                .releases::<Runner>()
-                .any(|runner| Some(runner.id()) == draft.runner)
-            && ctx.store.addons.releases::<WineBridge>().next().is_some();
+        let can_create = self.can_create(model);
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
-                .start(views::header_button(
+                .start(parts::header_button(
                     "Cancel creation",
                     Icon::Arrow,
                     Message::Cancel,
                 ))
                 .middle(Title::new("New Bottle").subtitle("Creating a new bottle."))
                 .end(
-                    views::header_button("Create bottle", Icon::Checkmark, Message::Create)
+                    parts::header_button("Create bottle", Icon::Checkmark, Message::Create)
                         .on_press_maybe(can_create.then_some(Message::Create)),
                 )
         });
-        views::page(header, bottle::creation(draft, &ctx.store, can_create))
+        parts::page(header, bottle::creation(draft, model, can_create))
     }
 
-    fn detail_page<'a>(&'a self, ctx: &'a Context, pane: PaneContext) -> Element<'a, Message> {
-        let Some(bottle) = self.selected(ctx) else {
+    fn detail_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
+        let Some(bottle) = self.selected(model) else {
             return column![].into();
         };
         let id = bottle.id;
-        let busy = bottle::busy(&ctx.jobs, id);
+        let idle = model.activity(&Subject::Prefix(id)) == Activity::Idle;
         let tabs = [
             Tab::new(Detail::Programs, "Programs"),
             Tab::new(Detail::Settings, "Settings"),
@@ -306,7 +231,7 @@ impl State {
         let tabs = Tabs::new(tabs, Some(self.detail_tab), Message::Detail).height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |mut header| {
             if pane.is_standalone() {
-                header = header.start(views::header_button(
+                header = header.start(parts::header_button(
                     "Back to bottles",
                     Icon::Arrow,
                     Message::Back,
@@ -314,9 +239,9 @@ impl State {
             }
             let mut stop = PopoverItem::new("Stop bottle").icon(Icon::Stop);
             let mut delete = PopoverItem::new("Delete bottle").icon(Icon::Cross);
-            if !busy {
-                stop = stop.on_select(Message::Stop(id));
-                delete = delete.on_select(Message::Delete(id));
+            if idle {
+                stop = stop.on_select(Message::Act(Action::Stop(id)));
+                delete = delete.on_select(Message::Act(Action::Delete(id)));
             }
             header
                 .start(
@@ -328,15 +253,15 @@ impl State {
         });
         let status = bottle::status(&bottle);
         let content = match self.detail_tab {
-            Detail::Programs => bottle::programs(bottle, &ctx.jobs),
-            Detail::Settings => bottle::settings(bottle, self.rename.as_deref(), &ctx.jobs),
+            Detail::Programs => bottle::programs(bottle, model),
+            Detail::Settings => bottle::settings(bottle, self.rename.as_deref(), idle),
             #[cfg(feature = "fvs")]
             Detail::Snapshots => Title::new("Snapshots")
                 .subtitle("Snapshot management is coming later.")
                 .into(),
         };
         let body = container(
-            column![views::scroll_content(content), status]
+            column![parts::scroll_content(content), status]
                 .width(Fill)
                 .height(Fill),
         )
