@@ -431,6 +431,18 @@ impl Model {
         todo!("plugin manifests have no description or author yet")
     }
 
+    /// The newer version of plugin `id` the catalog offers, if any.
+    #[allow(dead_code)]
+    pub(crate) fn plugin_update(&self, _id: &str) -> Option<String> {
+        todo!("the plugin catalog doesn't exist yet")
+    }
+
+    /// The bytes of private data plugin `id` keeps, for its Storage row.
+    #[allow(dead_code)]
+    pub(crate) fn plugin_storage(&self, _id: &str) -> u64 {
+        todo!("the plugin host doesn't report the size of a plugin's data")
+    }
+
     fn write(&self, save: BoxFuture<'static, Result<(), String>>) -> Task<Message> {
         // Register now: shutdown must also wait for writes not yet polled by Iced.
         Task::perform(self.tracker.track_future(save), Message::Saved)
