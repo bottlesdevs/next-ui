@@ -50,7 +50,7 @@ impl State {
             Message::Launch(id) => return ctx.launch(Entry::Program(id)),
             Message::Stop(id) => match ctx.core.prefixes().open(id) {
                 Ok(prefix) => {
-                    return ctx.jobs.start(Kind::Stop(id), prefix.stop());
+                    return ctx.jobs.start(Kind::Stop(id), prefix.stop(false));
                 }
                 Err(error) => ctx.notifications.error(error.to_string()),
             },
