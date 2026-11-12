@@ -115,6 +115,25 @@ pub fn page<'a, Message: Clone + 'a>(
     .into()
 }
 
+/// A page whose body fills the panel without scrolling, e.g. a
+/// [`StatusPage`](next_ui::widget::StatusPage) that centres itself.
+pub fn status_page<'a, Message: Clone + 'a>(
+    header: impl Into<Element<'a, Message>>,
+    body: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    column![
+        header.into(),
+        container(body)
+            .width(Fill)
+            .height(Fill)
+            .style(theme::panel)
+            .clip(true),
+    ]
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
+
 pub fn scroll_content<'a, Message: 'a>(
     body: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {

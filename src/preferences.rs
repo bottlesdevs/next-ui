@@ -74,15 +74,18 @@ impl State {
                 .middle(tabs)
         });
         let body = match self.page {
-            Page::General => general(model),
+            Page::General => Ok(general(model)),
             Page::Addons => addons(model),
             Page::Plugins => plugins(model),
-            Page::About => about(),
+            Page::About => Ok(about()),
         };
-        parts::page(
-            header,
-            container(container(body).max_width(880)).center_x(Fill),
-        )
+        match body {
+            Ok(body) => parts::page(
+                header,
+                container(container(body).max_width(880)).center_x(Fill),
+            ),
+            Err(empty) => parts::status_page(header, empty),
+        }
     }
 }
 
@@ -123,16 +126,19 @@ fn general(model: &Model) -> Element<'_, Message> {
         .into()
 }
 
-fn addons(model: &Model) -> Element<'_, Message> {
+/// A tab's scrolling content, or the status page shown when it has none.
+type Body<'a> = Result<Element<'a, Message>, Element<'a, Message>>;
+
+fn addons(model: &Model) -> Body<'_> {
     let groups = model.release_groups();
     if groups.is_empty() {
-        return StatusPage::new("Nothing downloaded")
+        return Err(StatusPage::new("Nothing downloaded")
             .description("Runners and components you download appear here.")
-            .into();
+            .into());
     }
     // Whether a bottle uses a release isn't known yet (`Model::release_users`),
     // so every release offers Remove.
-    groups
+    Ok(groups
         .into_iter()
         .fold(column![].spacing(spacing::LG), |page, (title, releases)| {
             page.push(releases.into_iter().fold(
@@ -151,18 +157,18 @@ fn addons(model: &Model) -> Element<'_, Message> {
                 },
             ))
         })
-        .into()
+        .into())
 }
 
-fn plugins(model: &Model) -> Element<'_, Message> {
+fn plugins(model: &Model) -> Body<'_> {
     let installed = model.installed_plugins();
     // Adding from a file needs a file picker, and the catalog of available
     // plugins doesn't exist yet (`Model::plugin_about` has no description or
     // author either), so the page lists installed plugins only.
     if installed.is_empty() {
-        return StatusPage::new("No plugins installed")
+        return Err(StatusPage::new("No plugins installed")
             .description("Plugins add storefront accounts and libraries.")
-            .into();
+            .into());
     }
     let rows = installed.into_iter().map(|plugin| -> Element<'_, Message> {
         let initial: String = plugin.name.chars().take(1).collect();
@@ -190,8 +196,9 @@ fn plugins(model: &Model) -> Element<'_, Message> {
             ))
             .into()
     });
-    rows.fold(RowGroup::new().title("Installed"), RowGroup::row)
-        .into()
+    Ok(rows
+        .fold(RowGroup::new().title("Installed"), RowGroup::row)
+        .into())
 }
 
 fn about<'a>() -> Element<'a, Message> {
