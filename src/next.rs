@@ -203,9 +203,9 @@ fn component_switch<'a>(
     let action = if on {
         Some(Action::RemoveComponent { prefix, slot })
     } else if let Some(release) = downloaded {
-        Some(Action::UseComponent { prefix, release })
+        Some(Action::UseRelease { prefix, release })
     } else if downloading.is_none() {
-        newest.map(|release| Action::FetchComponent {
+        newest.map(|release| Action::FetchRelease {
             prefix,
             release: release.id,
         })

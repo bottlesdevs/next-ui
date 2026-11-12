@@ -34,8 +34,9 @@ pub(crate) enum Action {
         arch: WineArch,
     },
     Rename(Uuid, String),
-    /// Selects downloaded component `release` in bottle `prefix`.
-    UseComponent {
+    /// Selects downloaded `release`, a runner or a component, in bottle
+    /// `prefix`.
+    UseRelease {
         prefix: Uuid,
         release: Uuid,
     },
@@ -44,8 +45,8 @@ pub(crate) enum Action {
         prefix: Uuid,
         slot: Slot,
     },
-    /// Downloads component `release`, then selects it in bottle `prefix`.
-    FetchComponent {
+    /// Downloads `release`, then selects it in bottle `prefix`.
+    FetchRelease {
         prefix: Uuid,
         release: Uuid,
     },
@@ -151,18 +152,39 @@ impl Model {
                     bottle.name = name;
                 }
             }),
-            Action::UseComponent { prefix, release } => {
+            Action::UseRelease { prefix, release } => {
                 // Read from core rather than the published snapshot, which
                 // may not have caught up with a download that just finished.
-                let Some(component) = self.core.addons().state().release::<Component>(release)
-                else {
+                let releases = self.core.addons().state();
+                if let Some(component) = releases.release::<Component>(release) {
+                    return self.on_prefix(prefix, Verb::Edit, move |handle| {
+                        handle.edit(move |edit| {
+                            edit.set_component(component);
+                            Ok(())
+                        })
+                    });
+                }
+                let Some(runner) = releases.release::<Runner>(release) else {
                     self.notifications
                         .error("This release is no longer downloaded");
                     return Task::none();
                 };
+                // Only Proton runners are launched through UMU, as at creation.
+                let umu = match runner.flavor() {
+                    RunnerFlavor::Proton => match self.umu() {
+                        Some(umu) => Some(umu),
+                        None => {
+                            self.notifications
+                                .error("Proton runners need UMU, which isn't downloaded");
+                            return Task::none();
+                        }
+                    },
+                    RunnerFlavor::Wine => None,
+                };
                 self.on_prefix(prefix, Verb::Edit, move |handle| {
                     handle.edit(move |edit| {
-                        edit.set_component(component);
+                        edit.set_runner(runner);
+                        edit.set_umu(umu);
                         Ok(())
                     })
                 })
@@ -178,7 +200,7 @@ impl Model {
                     handle.edit(move |edit| edit.remove_component(slot))
                 })
             }
-            Action::FetchComponent { prefix, release } => {
+            Action::FetchRelease { prefix, release } => {
                 let operation = self.core.catalogs().fetch::<AddonRole>(release);
                 self.start(
                     Subject::Addon(release),
