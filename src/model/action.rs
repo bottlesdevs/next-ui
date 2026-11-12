@@ -52,6 +52,8 @@ pub(crate) enum Action {
     },
     Edit(Uuid, Change),
     AddProgram,
+    /// Installs a suggested program from its bottle recipe.
+    InstallSuggestion(&'static str),
     /// Asks for an executable, then runs it once in a bottle.
     RunProgram(Uuid),
     /// Runs `executable`, a host path, once in bottle `prefix`.
@@ -249,6 +251,12 @@ impl Model {
                     Task::none()
                 }
             },
+            Action::InstallSuggestion(name) => {
+                self.notifications.info(format!(
+                    "Installing {name} needs bottle recipes, which aren’t available yet"
+                ));
+                Task::none()
+            }
             Action::AddProgram => {
                 self.notifications
                     .info("Program installation is not available yet");

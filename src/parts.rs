@@ -2,7 +2,7 @@
 
 use iced::{
     Element, Fill,
-    widget::{Grid, column, container, row, scrollable, stack, text},
+    widget::{Grid, Space, column, container, row, scrollable, stack, text},
 };
 use next_ui::{
     Icon, theme,
@@ -44,6 +44,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
     on_launch: impl Fn(Target) -> Message,
     on_details: impl Fn(&Target) -> Option<Message>,
     on_add: Message,
+    on_install: impl Fn(&'static str) -> Message,
 ) -> Body<'a, Message> {
     let query = query.to_lowercase();
     let mut notices = column![].spacing(spacing::SM);
@@ -98,25 +99,14 @@ pub fn library_grid<'a, Message: Clone + 'a>(
         .collect::<Vec<_>>();
 
     if cards.is_empty() {
-        // Suggested installs need the recipe repository (`Model::suggestions`),
-        // so an empty library offers only adding a program.
-        let status = if query.is_empty() {
-            StatusPage::new("Your library is empty")
-                .description(
-                    "Search for software and games to install them, or add a program you \
-                     already have.",
-                )
-                .child(
-                    Button::new("Add a Program")
-                        .icon(Icon::Folder)
-                        .kind(ButtonKind::Accent)
-                        .on_press(on_add),
-                )
+        let empty: Element<'a, Message> = if query.is_empty() {
+            suggestions(model, on_install, on_add)
         } else {
             StatusPage::new("No results")
                 .description("Nothing in your library matches your search.")
+                .into()
         };
-        Err(column![notices, status].height(Fill).into())
+        Err(column![notices, empty].height(Fill).into())
     } else {
         Ok(notices
             .push(
@@ -127,6 +117,59 @@ pub fn library_grid<'a, Message: Clone + 'a>(
             )
             .into())
     }
+}
+
+/// An empty library: programs to install, then adding one from the computer.
+fn suggestions<'a, Message: Clone + 'a>(
+    model: &Model,
+    on_install: impl Fn(&'static str) -> Message,
+    on_add: Message,
+) -> Element<'a, Message> {
+    let cards = model.suggestions().iter().map(|&(name, description)| {
+        let art = container(Space::new())
+            .width(Fill)
+            .height(120)
+            .style(|theme| container::Style::default().background(theme::colors(theme).selection));
+        let footer = row![
+            column![
+                text(name).size(18).medium(),
+                text(description).size(15).muted()
+            ]
+            .spacing(4)
+            .width(Fill),
+            Button::new("Install")
+                .trailing_icon(Icon::ChevronRight)
+                .icon_size(16.0)
+                .kind(ButtonKind::Secondary)
+                .on_press(on_install(name)),
+        ]
+        .spacing(spacing::SM)
+        .align_y(iced::Alignment::Center);
+        container(column![art, container(footer).padding([18, 22])])
+            .width(Fill)
+            .clip(true)
+            .style(|theme| {
+                container::Style::default()
+                    .background(theme::colors(theme).surface)
+                    .border(iced::Border::default().rounded(6))
+            })
+            .into()
+    });
+    let add = Button::new("Add a program from your computer")
+        .icon(Icon::Folder)
+        .kind(ButtonKind::Transparent)
+        .on_press(on_add);
+    let content = column![
+        text("Your library is empty").size(26).medium(),
+        text("Install something to get started, or search for anything above.")
+            .size(17)
+            .muted(),
+        row(cards).spacing(16),
+        add,
+    ]
+    .spacing(spacing::MD)
+    .max_width(820);
+    container(content).center(Fill).padding(24).into()
 }
 
 pub fn page<'a, Message: Clone + 'a>(
