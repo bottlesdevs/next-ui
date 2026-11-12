@@ -18,7 +18,7 @@ use super::{
     draw_caret,
     focusable_action::Interaction,
     list_row::{self, ListRow},
-    menu::{item as menu_item, row_content},
+    menu::{self, item as menu_item, row_content},
     progress_bar::ProgressBar,
     spacing,
     switcher::Switcher,
@@ -27,6 +27,8 @@ use super::{
 
 const PANEL_PADDING: [f32; 2] = [spacing::MD, spacing::SM];
 const RADIUS: f32 = 6.0;
+/// The free corners of a popup panel, rounder than the row it hangs from.
+const PANEL_RADIUS: f32 = 8.0;
 
 /// An in-flow row that selects one value from a connected option panel.
 pub struct SelectorRow<'a, T, Message> {
@@ -40,6 +42,7 @@ pub struct SelectorRow<'a, T, Message> {
     available: Vec<AvailableOption<'a, Message>>,
     popup: bool,
     switch: Option<Switcher<'a, Message>>,
+    downloads: bool,
 }
 
 /// An option offered for download in a [`SelectorRow`], listed under the
@@ -86,6 +89,7 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
             available: Vec::new(),
             popup: false,
             switch: None,
+            downloads: false,
         }
     }
 
@@ -96,6 +100,7 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
         mut self,
         available: impl IntoIterator<Item = AvailableOption<'a, Message>>,
     ) -> Self {
+        self.downloads = true;
         self.available = available.into_iter().collect();
         self
     }
@@ -170,22 +175,15 @@ where
             menu_item(content, message, current).into()
         });
         let mut list = Column::new().width(Fill);
-        let sectioned = !selector.available.is_empty();
-        if sectioned {
+        // A selector that can download names what's already downloaded,
+        // whether or not anything is on offer right now.
+        if selector.downloads {
             list = list.push(section_heading("Downloaded"));
         }
         list = list.extend(rows);
-        if sectioned {
+        if !selector.available.is_empty() {
             list = list
-                .push(
-                    container(iced::widget::Space::new().height(1))
-                        .width(Fill)
-                        .padding([spacing::XS, spacing::SM])
-                        .style(|theme| {
-                            container::Style::default()
-                                .background(crate::theme::colors(theme).selection)
-                        }),
-                )
+                .push(menu::separator())
                 .push(section_heading("Available"))
                 .extend(selector.available.into_iter().map(available_row));
         }
@@ -213,7 +211,7 @@ where
                 let colors = crate::theme::colors(theme);
                 container::Style::default()
                     .background(colors.border)
-                    .border(Border::default().rounded(iced::border::bottom(RADIUS)))
+                    .border(Border::default().rounded(iced::border::bottom(PANEL_RADIUS)))
                     // Offset by as much as it blurs, so the shadow fades out
                     // before the row: the popup continues the row rather
                     // than floating over it.

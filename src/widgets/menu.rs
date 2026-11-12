@@ -1,6 +1,6 @@
 use iced::{
     Alignment, Background, Border, Element, Fill, Theme,
-    widget::{Space, button, column, row, text, text::Fragment},
+    widget::{Space, button, column, container, row, text, text::Fragment},
 };
 
 use crate::icons::Icon;
@@ -93,4 +93,18 @@ pub(super) fn row_style(theme: &Theme, state: ActionState) -> button::Style {
         border: Border::default().rounded(6),
         ..button::Style::default()
     }
+}
+
+/// A hairline between groups of rows.
+pub(super) fn separator<'a, Message: 'a>() -> Element<'a, Message> {
+    container(
+        container(iced::widget::Space::new())
+            .width(Fill)
+            .height(1)
+            .style(|theme| {
+                container::Style::default().background(crate::theme::colors(theme).selection)
+            }),
+    )
+    .padding([spacing::XS, spacing::SM])
+    .into()
 }

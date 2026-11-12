@@ -45,6 +45,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
     on_details: impl Fn(&Target) -> Option<Message>,
     on_add: Message,
     on_install: impl Fn(&'static str) -> Message,
+    searchable: bool,
 ) -> Body<'a, Message> {
     let query = query.to_lowercase();
     let mut notices = column![].spacing(spacing::SM);
@@ -100,7 +101,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
 
     if cards.is_empty() {
         let empty: Element<'a, Message> = if query.is_empty() {
-            suggestions(model, on_install, on_add)
+            suggestions(model, on_install, on_add, searchable)
         } else {
             StatusPage::new("No results")
                 .description("Nothing in your library matches your search.")
@@ -124,6 +125,7 @@ fn suggestions<'a, Message: Clone + 'a>(
     model: &Model,
     on_install: impl Fn(&'static str) -> Message,
     on_add: Message,
+    searchable: bool,
 ) -> Element<'a, Message> {
     let cards = model.suggestions().iter().map(|&(name, description)| {
         let art = container(Space::new())
@@ -165,9 +167,13 @@ fn suggestions<'a, Message: Clone + 'a>(
         .on_press(on_add);
     let content = column![
         text("Your library is empty").size(26).medium(),
-        text("Install something to get started, or search for anything above.")
-            .size(17)
-            .muted(),
+        text(if searchable {
+            "Install something to get started, or search for anything above."
+        } else {
+            "Install something to get started, or add a program you already have."
+        })
+        .size(17)
+        .muted(),
         row(cards).spacing(16),
         add,
     ]
