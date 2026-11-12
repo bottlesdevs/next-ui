@@ -51,6 +51,7 @@ fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, exp
 pub mod action_row;
 pub mod artwork_card;
 pub mod avatar;
+pub mod boxed_group;
 pub mod button;
 pub mod card;
 pub mod cycle_row;

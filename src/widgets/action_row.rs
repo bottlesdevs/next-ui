@@ -79,6 +79,11 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
         self
     }
 
+    pub(crate) fn corners(mut self, corners: iced::border::Radius) -> Self {
+        self.row = self.row.corners(corners);
+        self
+    }
+
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
