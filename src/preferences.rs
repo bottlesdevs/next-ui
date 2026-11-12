@@ -7,16 +7,16 @@ use iced::{
 };
 use next_ui::{
     Icon, chrome,
-    layout::PaneContext,
+    layout::{PaneContext, Side, side_panel},
     widget::{
-        ActionRow, Avatar, AvatarShape, Button, ListRow, Popover, RowGroup, StatusPage, Tab, Tabs,
-        Tag, TextExt as _, spacing,
+        ActionRow, Avatar, AvatarShape, Button, ButtonKind, ListRow, Popover, RowGroup, StatusPage,
+        Tab, Tabs, Tag, TextExt as _, Title, spacing,
     },
 };
 
 use crate::{
     app::Request,
-    model::{Action, Experience, Model},
+    model::{Action, Experience, InstalledPlugin, Listing, Model},
     parts,
 };
 
@@ -32,6 +32,8 @@ pub enum Page {
 #[derive(Default)]
 pub struct State {
     page: Page,
+    /// The plugin whose details are open beside the Plugins page.
+    plugin: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,20 +43,33 @@ pub enum Message {
     Act(Action),
     /// Closes a confirmation without doing anything.
     Dismiss,
+    OpenPlugin(String),
+    ClosePlugin,
     Window(chrome::Action),
 }
 
 impl State {
     /// Opens Preferences at `page`.
     pub fn at(page: Page) -> Self {
-        Self { page }
+        Self { page, plugin: None }
     }
 
     pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
-            Message::Page(page) => self.page = page,
+            Message::Page(page) => {
+                self.page = page;
+                self.plugin = None;
+            }
             Message::Back => return Some(Request::ClosePreferences),
-            Message::Act(action) => return Some(Request::Act(action)),
+            Message::Act(action) => {
+                if matches!(&action, Action::UninstallPlugin(id) if self.plugin.as_ref() == Some(id))
+                {
+                    self.plugin = None;
+                }
+                return Some(Request::Act(action));
+            }
+            Message::OpenPlugin(id) => self.plugin = Some(id),
+            Message::ClosePlugin => self.plugin = None,
             Message::Dismiss => {}
             Message::Window(action) => return Some(Request::Window(action)),
         }
@@ -62,6 +77,15 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
+        side_panel(
+            Side::End,
+            self.plugin.is_some(),
+            move |pane| self.main(model, pane),
+            move |pane| self.plugin_pane(model, pane),
+        )
+    }
+
+    fn main<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
         let tabs = Tabs::new(
             [
                 Tab::new(Page::General, "General"),
@@ -73,7 +97,7 @@ impl State {
             Message::Page,
         )
         .height(Fill);
-        let header = PaneContext::root().header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             header
                 .start(parts::header_button("Back", Icon::Arrow, Message::Back))
                 .middle(tabs)
@@ -81,7 +105,7 @@ impl State {
         let body = match self.page {
             Page::General => Ok(general(model)),
             Page::Addons => addons(model),
-            Page::Plugins => plugins(model),
+            Page::Plugins => plugins(model, self.plugin.as_deref()),
             Page::About => Ok(about()),
         };
         match body {
@@ -92,6 +116,101 @@ impl State {
             Err(empty) => parts::status_page(header, empty),
         }
     }
+
+    /// The open plugin: what it adds to Bottles, and Uninstall.
+    fn plugin_pane<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
+        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+            header
+                .start(parts::header_button(
+                    "Close plugin",
+                    Icon::Arrow,
+                    Message::ClosePlugin,
+                ))
+                .middle(Title::new("Plugin"))
+        });
+        let plugin = self.plugin.as_ref().and_then(|id| {
+            model
+                .installed_plugins()
+                .into_iter()
+                .find(|plugin| &plugin.id == id)
+        });
+        let Some(plugin) = plugin else {
+            return parts::page(header, column![]);
+        };
+        // An update banner, the description, the author and the size of the
+        // plugin's data have no source yet (`Model::plugin_update`,
+        // `Model::plugin_about`, `Model::plugin_storage`).
+        let hero = column![
+            Avatar::new(initial(&plugin.name))
+                .size(64.0)
+                .shape(AvatarShape::Rounded),
+            text(plugin.name.clone()).size(24).medium(),
+            text(plugin.version.clone()).size(15).muted(),
+            tags(&plugin),
+        ]
+        .spacing(spacing::SM)
+        .align_x(Alignment::Center);
+
+        let mut adds = RowGroup::new().title("What it adds");
+        if plugin.account {
+            adds = adds.row(
+                ActionRow::new(format!("{} account", plugin.name), None)
+                    .description("Link it in Manage Profiles")
+                    .leading(icon_tile(Icon::People)),
+            );
+        }
+        if plugin.library {
+            let summary = match model.sources.listings.get(&plugin.id) {
+                Some(Listing::Loaded(entries)) => match entries.len() {
+                    1 => "1 title in your library".to_owned(),
+                    count => format!("{count} titles in your library"),
+                },
+                Some(Listing::Failed(error)) => error.clone(),
+                Some(Listing::Loading) | None => "Loading…".to_owned(),
+            };
+            adds = adds.row(
+                ActionRow::new(format!("{} library", plugin.name), None)
+                    .description(summary)
+                    .leading(icon_tile(Icon::Library)),
+            );
+        }
+
+        let uninstall = Popover::confirm(
+            Button::new(format!("Uninstall {}", plugin.name))
+                .icon(Icon::Trash)
+                .kind(ButtonKind::Destructive),
+            format!("Uninstall {}?", plugin.name),
+            "You can install it again later.",
+            "Uninstall",
+            Message::Act(Action::UninstallPlugin(plugin.id.clone())),
+            Message::Dismiss,
+        );
+        parts::page(
+            header,
+            column![
+                container(hero).center_x(Fill).padding([spacing::MD, 0.0]),
+                adds,
+                container(uninstall).center_x(Fill),
+            ]
+            .spacing(spacing::LG),
+        )
+    }
+}
+
+fn initial(name: &str) -> String {
+    name.chars().take(1).collect()
+}
+
+/// Tags for what `plugin` provides.
+fn tags<'a>(plugin: &InstalledPlugin) -> Element<'a, Message> {
+    let mut tags = row![].spacing(6);
+    if plugin.account {
+        tags = tags.push(Tag::new("Account"));
+    }
+    if plugin.library {
+        tags = tags.push(Tag::new("Library"));
+    }
+    tags.into()
 }
 
 fn general(model: &Model) -> Element<'_, Message> {
@@ -165,7 +284,7 @@ fn addons(model: &Model) -> Body<'_> {
         .into())
 }
 
-fn plugins(model: &Model) -> Body<'_> {
+fn plugins<'a>(model: &'a Model, open: Option<&str>) -> Body<'a> {
     let installed = model.installed_plugins();
     // Adding from a file needs a file picker, and the catalog of available
     // plugins doesn't exist yet (`Model::plugin_about` has no description or
@@ -175,22 +294,12 @@ fn plugins(model: &Model) -> Body<'_> {
             .description("Plugins add storefront accounts and libraries.")
             .into());
     }
-    let rows = installed.into_iter().map(|plugin| -> Element<'_, Message> {
-        let initial: String = plugin.name.chars().take(1).collect();
-        let mut title = row![
-            text(plugin.name.clone()).label().medium(),
-            text(plugin.version).size(14).muted(),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-        if plugin.account {
-            title = title.push(Tag::new("Account"));
-        }
-        if plugin.library {
-            title = title.push(Tag::new("Library"));
-        }
-        ListRow::new(title)
-            .leading(Avatar::new(initial).shape(AvatarShape::Rounded))
+    let rows = installed.into_iter().map(|plugin| -> Element<'a, Message> {
+        ActionRow::new(plugin.name.clone(), Message::OpenPlugin(plugin.id.clone()))
+            .description(plugin.version.clone())
+            .leading(Avatar::new(initial(&plugin.name)).shape(AvatarShape::Rounded))
+            .trailing(tags(&plugin))
+            .selected(open == Some(plugin.id.as_str()))
             .trailing(Popover::confirm(
                 Button::new("Uninstall").icon(Icon::Trash),
                 format!("Uninstall {}?", plugin.name),
