@@ -150,7 +150,12 @@ impl Model {
                 Some((Verb::Create(name), Ok(Outcome::Created(id)))) => {
                     return self.record_bottle(id, name);
                 }
-                Some((Verb::Fetch { then_select: Some(prefix) }, Ok(_))) => {
+                Some((
+                    Verb::Fetch {
+                        then_select: Some(prefix),
+                    },
+                    Ok(_),
+                )) => {
                     if let Subject::Addon(release) = subject {
                         return self.perform(Action::UseComponent { prefix, release });
                     }

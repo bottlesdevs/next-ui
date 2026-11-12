@@ -1,4 +1,7 @@
-use iced::Element;
+use iced::{
+    Element,
+    widget::text::{Fragment, IntoFragment},
+};
 
 use super::{
     list_row::{ListRow, labels},
@@ -7,7 +10,7 @@ use super::{
 
 pub struct SwitcherRow<'a, Message> {
     title: &'a str,
-    description: &'a str,
+    description: Fragment<'a>,
     value: bool,
     on_toggle: Option<Box<dyn Fn(bool) -> Message + 'a>>,
     accessory: Option<Element<'a, Message>>,
@@ -17,15 +20,15 @@ impl<'a, Message> SwitcherRow<'a, Message> {
     pub fn new(title: &'a str, value: bool) -> Self {
         Self {
             title,
-            description: "",
+            description: Fragment::Borrowed(""),
             value,
             on_toggle: None,
             accessory: None,
         }
     }
 
-    pub fn description(mut self, description: &'a str) -> Self {
-        self.description = description;
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.description = description.into_fragment();
         self
     }
 

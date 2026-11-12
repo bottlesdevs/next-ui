@@ -9,7 +9,8 @@ use next_ui::{
     Icon,
     widget::{
         ActionRow, ActionTile, ArtworkCard, AvailableOption, CardAction, CycleRow, ExpanderRow,
-        InfoRow, LogPanel, PickerRow, RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _, TextRow, spacing,
+        InfoRow, LogPanel, PickerRow, RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _,
+        TextRow, spacing,
     },
 };
 use uuid::Uuid;
@@ -251,7 +252,13 @@ pub(super) fn settings<'a>(
             .title("Graphics")
             .columns(columns)
             .row(component(model, bottle, Slot::Dxvk, "DXVK", editable))
-            .row(component(model, bottle, Slot::Vkd3d, "VKD3D-Proton", editable))
+            .row(component(
+                model,
+                bottle,
+                Slot::Vkd3d,
+                "VKD3D-Proton",
+                editable,
+            ))
             .row(component(
                 model,
                 bottle,
@@ -333,30 +340,35 @@ fn component<'a>(
                 .map(|(id, label)| Choice::Release(id, label)),
         )
         .collect::<Vec<_>>();
-    let selected = bottle.state.component(slot).map_or(Choice::Off, |installed| {
-        let addon = &installed.addon;
-        Choice::Release(addon.id(), format!("{} {}", addon.name(), addon.version()))
-    });
-    let available = model.available_components(slot).into_iter().map(|release| {
-        match release.download {
-            Some(download) => AvailableOption::progress(
-                release.label,
-                download.progress.unwrap_or(0.0),
-                if download.then_select == Some(prefix) {
-                    "Selected when downloaded"
-                } else {
-                    "Downloading"
-                },
-            ),
-            None => AvailableOption::download(
-                release.label,
-                Message::Act(Action::FetchComponent {
-                    prefix,
-                    release: release.id,
-                }),
-            ),
-        }
-    });
+    let selected = bottle
+        .state
+        .component(slot)
+        .map_or(Choice::Off, |installed| {
+            let addon = &installed.addon;
+            Choice::Release(addon.id(), format!("{} {}", addon.name(), addon.version()))
+        });
+    let available =
+        model
+            .available_components(slot)
+            .into_iter()
+            .map(|release| match release.download {
+                Some(download) => AvailableOption::progress(
+                    release.label,
+                    download.progress.unwrap_or(0.0),
+                    if download.then_select == Some(prefix) {
+                        "Selected when downloaded"
+                    } else {
+                        "Downloading"
+                    },
+                ),
+                None => AvailableOption::download(
+                    release.label,
+                    Message::Act(Action::FetchComponent {
+                        prefix,
+                        release: release.id,
+                    }),
+                ),
+            });
     let mut row = SelectorRow::new(title, &options, Some(selected))
         .popup()
         .available(available);
