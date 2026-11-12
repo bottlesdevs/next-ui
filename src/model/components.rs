@@ -1,6 +1,6 @@
-//! The component releases a bottle can use in each slot.
+//! The runner and component releases a bottle can use.
 
-use bottles_core::{AddonRole, Component, Slot, compare_versions};
+use bottles_core::{AddonRole, Component, Slot, WineArch, compare_versions};
 use uuid::Uuid;
 
 use super::{
@@ -47,15 +47,40 @@ impl Model {
             .collect()
     }
 
+    /// The downloaded runners a bottle of `arch` can use, with their labels,
+    /// by series and newest first.
+    pub(crate) fn runner_releases(&self, arch: WineArch) -> Vec<(Uuid, String)> {
+        self.runners()
+            .into_iter()
+            .filter(|runner| self.can_create_with(runner.id(), arch))
+            .map(|runner| {
+                (
+                    runner.id(),
+                    format!("{} {}", runner.name(), runner.version()),
+                )
+            })
+            .collect()
+    }
+
     /// The newest supported releases for `slot` the catalogs offer that
     /// aren't downloaded, with any download in flight.
     pub(crate) fn available_components(&self, slot: Slot) -> Vec<AvailableRelease> {
         let role = AddonRole::Component(Component { slot });
+        self.available(|candidate| candidate == role)
+    }
+
+    /// The newest supported runners the catalogs offer that aren't
+    /// downloaded, with any download in flight.
+    pub(crate) fn available_runners(&self) -> Vec<AvailableRelease> {
+        self.available(|role| matches!(role, AddonRole::Runner(_)))
+    }
+
+    fn available(&self, role: impl Fn(AddonRole) -> bool) -> Vec<AvailableRelease> {
         let mut entries = self
             .sources
             .catalogs
             .entries::<AddonRole>()
-            .filter(|entry| entry.role() == role && entry.is_supported() && !self.installed(entry))
+            .filter(|entry| role(entry.role()) && entry.is_supported() && !self.installed(entry))
             .collect::<Vec<_>>();
         entries.sort_by(|left, right| compare_versions(right.version(), left.version()));
         entries

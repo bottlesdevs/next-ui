@@ -22,6 +22,7 @@ use iced::{Subscription, Task, futures::future::BoxFuture};
 use tokio_util::task::TaskTracker;
 
 pub(crate) use action::{Action, Change};
+pub(crate) use components::AvailableRelease;
 pub(crate) use defaults::{REQUIRED, required_available};
 pub(crate) use library::{Activity, Bottle, Program, Target};
 pub(crate) use operations::{Operations, Subject, Verb};
@@ -180,14 +181,14 @@ impl Model {
                                 format!("{name} downloaded"),
                                 "It’s selected in the bottle.",
                             );
-                            return self.perform(Action::UseComponent { prefix, release });
+                            return self.perform(Action::UseRelease { prefix, release });
                         }
                         // Essentials show their progress where they were
                         // started, so finishing needs no notification.
                         (Ok(_), None) => {}
                         (Err(error), _) => {
                             let retry = match then_select {
-                                Some(prefix) => Action::FetchComponent { prefix, release },
+                                Some(prefix) => Action::FetchRelease { prefix, release },
                                 None => Action::FetchEssentials,
                             };
                             self.notifications.push(

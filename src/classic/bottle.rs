@@ -16,7 +16,7 @@ use next_ui::{
 use uuid::Uuid;
 
 use super::{Draft, Message};
-use crate::model::{Action, Activity, Bottle, Change, Model, Verb};
+use crate::model::{Action, Activity, AvailableRelease, Bottle, Change, Model, Verb};
 
 /// A row for every bottle and for every bottle being created.
 pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<'_, Message> {
@@ -225,18 +225,7 @@ pub(super) fn settings<'a>(
             .title("Bottle")
             .columns(columns)
             .row(name)
-            .expander(
-                ExpanderRow::with_header(
-                    InfoRow::new("Runner")
-                        .description(format!(
-                            "{} {}",
-                            state.runner.name(),
-                            state.runner.version()
-                        ))
-                        .icon(Icon::Run),
-                )
-                .row(unavailable()),
-            )
+            .row(runner(model, bottle, editable))
             .expander(
                 ExpanderRow::new("Dependencies")
                     .description("Install fonts, codecs, libraries...")
@@ -347,28 +336,7 @@ fn component<'a>(
             let addon = &installed.addon;
             Choice::Release(addon.id(), format!("{} {}", addon.name(), addon.version()))
         });
-    let available =
-        model
-            .available_components(slot)
-            .into_iter()
-            .map(|release| match release.download {
-                Some(download) => AvailableOption::progress(
-                    release.label,
-                    download.progress.unwrap_or(0.0),
-                    if download.then_select == Some(prefix) {
-                        "Selected when downloaded"
-                    } else {
-                        "Downloading"
-                    },
-                ),
-                None => AvailableOption::download(
-                    release.label,
-                    Message::Act(Action::FetchComponent {
-                        prefix,
-                        release: release.id,
-                    }),
-                ),
-            });
+    let available = available_options(model.available_components(slot), prefix);
     let mut row = SelectorRow::new(title, &options, Some(selected))
         .popup()
         .available(available);
@@ -376,11 +344,70 @@ fn component<'a>(
         row = row.on_selected(move |choice| {
             Message::Act(match choice {
                 Choice::Off => Action::RemoveComponent { prefix, slot },
-                Choice::Release(release, _) => Action::UseComponent { prefix, release },
+                Choice::Release(release, _) => Action::UseRelease { prefix, release },
             })
         });
     }
     row.into()
+}
+
+/// A picker for the bottle's runner: the downloaded runners it can use and
+/// the newest ones the catalogs offer, which are selected once downloaded.
+fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'a, Message> {
+    let prefix = bottle.id;
+    let current = &bottle.state.runner;
+    let selected = Choice::Release(
+        current.id(),
+        format!("{} {}", current.name(), current.version()),
+    );
+    let mut options = model
+        .runner_releases(bottle.state.arch)
+        .into_iter()
+        .map(|(id, label)| Choice::Release(id, label))
+        .collect::<Vec<_>>();
+    // The runner in use stays listed even if it was removed since.
+    if !options.contains(&selected) {
+        options.insert(0, selected.clone());
+    }
+    let available = available_options(model.available_runners(), prefix);
+    let mut row = SelectorRow::new("Runner", &options, Some(selected))
+        .icon(Icon::Run)
+        .popup()
+        .available(available);
+    if editable {
+        row = row.on_selected(move |choice| match choice {
+            Choice::Release(release, _) => Message::Act(Action::UseRelease { prefix, release }),
+            Choice::Off => unreachable!("a bottle always has a runner"),
+        });
+    }
+    row.into()
+}
+
+/// The releases a picker offers to download, or shows downloading.
+fn available_options<'a>(
+    releases: Vec<AvailableRelease>,
+    prefix: Uuid,
+) -> impl Iterator<Item = AvailableOption<'a, Message>> {
+    releases
+        .into_iter()
+        .map(move |release| match release.download {
+            Some(download) => AvailableOption::progress(
+                release.label,
+                download.progress.unwrap_or(0.0),
+                if download.then_select == Some(prefix) {
+                    "Selected when downloaded"
+                } else {
+                    "Downloading"
+                },
+            ),
+            None => AvailableOption::download(
+                release.label,
+                Message::Act(Action::FetchRelease {
+                    prefix,
+                    release: release.id,
+                }),
+            ),
+        })
 }
 
 fn arch_label(arch: WineArch) -> &'static str {
