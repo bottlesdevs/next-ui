@@ -45,6 +45,15 @@ pub(crate) struct Model {
     tracker: TaskTracker,
 }
 
+/// A plugin installed on this computer.
+pub(crate) struct InstalledPlugin {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) version: String,
+    pub(crate) account: bool,
+    pub(crate) library: bool,
+}
+
 /// Everything loaded before the model exists.
 #[derive(Clone)]
 pub(crate) struct Boot {
@@ -195,6 +204,98 @@ impl Model {
                     }),
             )
             .collect()
+    }
+
+    /// Downloaded releases in the groups Preferences lists them in, each
+    /// newest first: runners, then each component slot, then WineBridge and
+    /// UMU, then dependencies.
+    pub(crate) fn release_groups(&self) -> Vec<(&'static str, Vec<(uuid::Uuid, String)>)> {
+        use bottles_core::{AddonRole, Slot};
+        let mut groups: Vec<(&'static str, Vec<bottles_core::Addon<AddonRole>>)> = vec![
+            ("Runners", Vec::new()),
+            ("DXVK", Vec::new()),
+            ("VKD3D-Proton", Vec::new()),
+            ("DXVK-NVAPI", Vec::new()),
+            ("LatencyFlex", Vec::new()),
+            ("WineBridge and UMU", Vec::new()),
+            ("Dependencies", Vec::new()),
+        ];
+        for release in self.sources.addons.releases::<AddonRole>() {
+            let group = match release.role() {
+                AddonRole::Runner(_) => 0,
+                AddonRole::Component(component) => match component.slot {
+                    Slot::Dxvk => 1,
+                    Slot::Vkd3d => 2,
+                    Slot::Nvapi => 3,
+                    Slot::LatencyFlex => 4,
+                },
+                AddonRole::WineBridge(_) | AddonRole::Umu(_) => 5,
+                AddonRole::Dependency(_) => 6,
+            };
+            groups[group].1.push(release);
+        }
+        groups
+            .into_iter()
+            .filter(|(_, releases)| !releases.is_empty())
+            .map(|(title, mut releases)| {
+                releases.sort_by(|left, right| {
+                    bottles_core::compare_versions(right.version(), left.version())
+                });
+                let rows = releases
+                    .iter()
+                    .map(|release| {
+                        (
+                            release.id(),
+                            format!("{} {}", release.name(), release.version()),
+                        )
+                    })
+                    .collect();
+                (title, rows)
+            })
+            .collect()
+    }
+
+    /// Names the bottles that use release `id`, so Preferences can say
+    /// "In use" instead of offering Remove.
+    #[allow(dead_code)]
+    pub(crate) fn release_users(&self, _id: uuid::Uuid) -> Vec<String> {
+        todo!("core doesn't report which prefixes use a release")
+    }
+
+    /// The installed plugins, by name, with whether each provides an account
+    /// and a library.
+    pub(crate) fn installed_plugins(&self) -> Vec<InstalledPlugin> {
+        let manifests = match self.plugins.list() {
+            Ok(manifests) => manifests,
+            Err(error) => {
+                tracing::warn!(%error, "failed to list plugins");
+                return Vec::new();
+            }
+        };
+        let mut plugins: Vec<_> = manifests
+            .into_iter()
+            .map(|manifest| InstalledPlugin {
+                account: self
+                    .plugins
+                    .get::<bottles_plugin_host::Account>(&manifest.id)
+                    .is_some(),
+                library: self
+                    .plugins
+                    .get::<bottles_plugin_host::Library>(&manifest.id)
+                    .is_some(),
+                id: manifest.id,
+                name: manifest.name,
+                version: manifest.version,
+            })
+            .collect();
+        plugins.sort_by(|left, right| left.name.cmp(&right.name));
+        plugins
+    }
+
+    /// What a plugin says it does, and who made it.
+    #[allow(dead_code)]
+    pub(crate) fn plugin_about(&self, _id: &str) -> (String, String) {
+        todo!("plugin manifests have no description or author yet")
     }
 
     fn write(&self, save: BoxFuture<'static, Result<(), String>>) -> Task<Message> {
