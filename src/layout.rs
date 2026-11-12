@@ -39,6 +39,12 @@ impl PaneContext {
         self.standalone
     }
 
+    /// Whether this pane's header holds the window control, i.e. it is the
+    /// pane at the window's control edge.
+    pub fn owns_window_control(self) -> bool {
+        self.owns_window_control
+    }
+
     pub fn header<'a, Message: Clone + 'a>(
         self,
         on_drag: Message,
