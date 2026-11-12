@@ -111,6 +111,7 @@ impl State {
             |target| target.standalone().map(Message::Select),
             Message::Act(Action::AddProgram),
             |name| Message::Act(Action::InstallSuggestion(name)),
+            true,
         );
         parts::body_page(header, body)
     }

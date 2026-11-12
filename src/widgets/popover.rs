@@ -16,7 +16,7 @@ use super::text::TextExt as _;
 use super::{
     anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    menu::{item as menu_item, row_content_with},
+    menu::{self, item as menu_item, row_content_with},
     picker_row::PickerRow,
     spacing,
 };
@@ -34,7 +34,7 @@ pub struct Popover<'a, Message> {
 }
 
 enum Body<'a, Message> {
-    Items(Vec<PopoverItem<'a, Message>>),
+    Items(Vec<Entry<'a, Message>>),
     Content(Element<'a, Message>, Vec<Id>),
 }
 
@@ -55,10 +55,20 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         }
     }
 
-    pub fn item(mut self, item: PopoverItem<'a, Message>) -> Self {
+    pub fn item(self, item: PopoverItem<'a, Message>) -> Self {
+        self.entry(Entry::Item(item))
+    }
+
+    /// Adds a line between the items before and after it, e.g. to set a
+    /// destructive item apart.
+    pub fn separator(self) -> Self {
+        self.entry(Entry::Separator)
+    }
+
+    fn entry(mut self, entry: Entry<'a, Message>) -> Self {
         match &mut self.body {
-            Body::Items(items) => items.push(item),
-            Body::Content(..) => self.body = Body::Items(vec![item]),
+            Body::Items(entries) => entries.push(entry),
+            Body::Content(..) => self.body = Body::Items(vec![entry]),
         }
         self
     }
@@ -118,9 +128,10 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
         let mut focus_targets = Vec::new();
         let body: Element<'a, Message> = match popover.body {
             Body::Items(items) => {
-                let rows = items
-                    .into_iter()
-                    .map(|item| item_row(item, &mut focus_targets));
+                let rows = items.into_iter().map(|entry| match entry {
+                    Entry::Item(item) => item_row(item, &mut focus_targets),
+                    Entry::Separator => menu::separator(),
+                });
                 scrollable(container(column(rows).width(Fill)).width(Fill)).into()
             }
             Body::Content(content, targets) => {
@@ -138,6 +149,11 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
             focus_targets,
         })
     }
+}
+
+enum Entry<'a, Message> {
+    Item(PopoverItem<'a, Message>),
+    Separator,
 }
 
 /// A row in a [`Popover`], optionally containing a trailing action.

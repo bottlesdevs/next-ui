@@ -243,6 +243,7 @@ impl State {
                 |_| None,
                 Message::Act(Action::AddProgram),
                 |name| Message::Act(Action::InstallSuggestion(name)),
+                false,
             ),
         };
         parts::body_page(header, body)
@@ -305,6 +306,7 @@ impl State {
                 .start(
                     Popover::new(header_button("Bottle menu", Icon::EllipsisVertical))
                         .item(run)
+                        .separator()
                         .item(delete),
                 )
                 .start(
