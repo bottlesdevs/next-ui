@@ -64,8 +64,10 @@ impl Model {
             .map(|entry| AvailableRelease {
                 id: entry.id(),
                 label: format!("{} {}", entry.name(), entry.version()),
-                download: self.operations.get(&Subject::Addon(entry.id())).and_then(
-                    |pending| match pending.verb {
+                download: self
+                    .operations
+                    .get(&Subject::Addon(entry.id()))
+                    .and_then(|pending| match pending.verb {
                         Verb::Fetch { then_select } => Some(ReleaseDownload {
                             progress: pending
                                 .progress
@@ -74,8 +76,7 @@ impl Model {
                             then_select,
                         }),
                         _ => None,
-                    },
-                ),
+                    }),
             })
             .collect()
     }

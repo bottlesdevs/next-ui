@@ -156,7 +156,8 @@ impl Model {
                 // may not have caught up with a download that just finished.
                 let Some(component) = self.core.addons().state().release::<Component>(release)
                 else {
-                    self.notifications.error("This release is no longer downloaded");
+                    self.notifications
+                        .error("This release is no longer downloaded");
                     return Task::none();
                 };
                 self.on_prefix(prefix, Verb::Edit, move |handle| {
