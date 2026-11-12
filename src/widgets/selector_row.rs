@@ -31,7 +31,7 @@ const RADIUS: f32 = 6.0;
 pub struct SelectorRow<'a, T, Message> {
     title: &'a str,
     options: Vec<T>,
-    selected: Option<&'a T>,
+    selected: Option<T>,
     label: Box<dyn Fn(&T) -> String + 'a>,
     on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
@@ -72,7 +72,7 @@ impl<'a, Message> AvailableOption<'a, Message> {
 }
 
 impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
-    pub fn new(title: &'a str, options: &[T], selected: Option<&'a T>) -> Self {
+    pub fn new(title: &'a str, options: &[T], selected: Option<T>) -> Self {
         Self {
             title,
             options: options.to_vec(),
@@ -133,6 +133,7 @@ where
     fn from(selector: SelectorRow<'a, T, Message>) -> Self {
         let selected = selector
             .selected
+            .as_ref()
             .filter(|selected| selector.options.contains(selected));
         let label = &selector.label;
         let value = selected.map_or_else(|| selector.placeholder.to_owned(), label);
