@@ -1,20 +1,12 @@
 mod app;
 mod classic;
-mod collection;
-mod context;
-mod jobs;
-mod library;
+mod model;
 #[cfg(feature = "fvs")]
 mod next;
 mod notifications;
 mod onboarding;
+mod parts;
 mod profiles;
-mod settings;
-mod store;
-mod views;
-
-pub(crate) use next_ui::{Icon, chrome, layout, theme, widget};
-pub(crate) use settings::Experience;
 
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
@@ -24,7 +16,7 @@ fn main() -> iced::Result {
         .title("Bottles Next")
         .theme(app::App::theme)
         .subscription(app::App::subscription)
-        .style(|_, theme| theme::application(theme))
+        .style(|_, theme| next_ui::theme::application(theme))
         .window(iced::window::Settings {
             size: iced::Size::new(1600.0, 1000.0),
             position: iced::window::Position::Centered,

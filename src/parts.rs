@@ -1,51 +1,27 @@
-//! Shared screen compositions over session snapshots.
+//! Compositions shared by the screens.
 
 use iced::{
     Element, Fill,
     widget::{Grid, column, container, scrollable},
 };
-
-use crate::{
-    Icon,
-    context::Context,
-    jobs::Kind,
-    library::{Entry, Listing},
-    theme,
+use next_ui::{
+    Icon, theme,
     widget::{ArtworkCard, Button, CardAction, InfoCard, InfoCardKind, spacing},
 };
 
+use crate::model::{Activity, Listing, Model, Target};
+
+/// A card for every program and library entry whose title contains `query`.
 pub fn library_grid<'a, Message: Clone + 'a>(
-    ctx: &'a Context,
+    model: &'a Model,
     query: &str,
-    on_launch: impl Fn(Entry) -> Message,
+    on_launch: impl Fn(Target) -> Message,
 ) -> Element<'a, Message> {
     let query = query.to_lowercase();
-    let mut entries: Vec<(&str, &str, Entry)> = Vec::new();
-    for bottle in ctx.collection.bottles(&ctx.store) {
-        for (id, program) in &bottle.record.programs {
-            entries.push((
-                &program.name,
-                &bottle.record.name,
-                Entry::Bottle(bottle.id, *id),
-            ));
-        }
-    }
-    #[cfg(feature = "fvs")]
-    for program in ctx.collection.programs(&ctx.store) {
-        entries.push((&program.record.name, "Program", Entry::Program(program.id)));
-    }
     let mut notices = column![].spacing(spacing::SM);
-    for (plugin, listing) in &ctx.store.plugins {
+    for (plugin, listing) in &model.sources.listings {
         match listing {
-            Listing::Loaded(listed) => {
-                for entry in listed {
-                    entries.push((
-                        &entry.title,
-                        plugin,
-                        Entry::Plugin(plugin.clone(), entry.id.clone()),
-                    ));
-                }
-            }
+            Listing::Loaded(_) => {}
             Listing::Loading => {
                 notices = notices.push(InfoCard::new(
                     InfoCardKind::Hint,
@@ -62,20 +38,28 @@ pub fn library_grid<'a, Message: Clone + 'a>(
             }
         }
     }
-    entries.retain(|(title, _, _)| title.to_lowercase().contains(&query));
-    entries.sort_by(|left, right| (left.0, left.1).cmp(&(right.0, right.1)));
 
-    let cards = entries
+    let cards = model
+        .entries()
         .into_iter()
-        .map(|(title, source, entry)| {
-            let launching = ctx.jobs.running(&Kind::Launch(entry.clone()));
-            ArtworkCard::new(title, if launching { "Launching…" } else { source })
-                .primary(
-                    CardAction::new("Play", Icon::Play)
-                        .loading(launching)
-                        .on_press_maybe((!launching).then(|| on_launch(entry))),
-                )
-                .into()
+        .filter(|entry| entry.title.to_lowercase().contains(&query))
+        .map(|entry| {
+            let activity = model.activity(&entry.target.subject());
+            let launching = activity == Activity::Launching;
+            ArtworkCard::new(
+                entry.title,
+                if launching {
+                    "Launching…"
+                } else {
+                    entry.source
+                },
+            )
+            .primary(
+                CardAction::new("Play", Icon::Play)
+                    .loading(launching)
+                    .on_press_maybe((activity == Activity::Idle).then(|| on_launch(entry.target))),
+            )
+            .into()
         })
         .collect::<Vec<_>>();
 
@@ -137,5 +121,5 @@ pub fn scroll_content<'a, Message: 'a>(
 }
 
 pub fn header_button<Message>(label: &str, icon: Icon, message: Message) -> Button<'_, Message> {
-    crate::widget::header_button(label, icon).on_press(message)
+    next_ui::widget::header_button(label, icon).on_press(message)
 }

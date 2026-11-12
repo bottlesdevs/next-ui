@@ -1,23 +1,17 @@
-use std::{fmt, sync::Arc};
+//! The application shell: lifecycle, window, overlays, and the shown screen.
 
-use bottles_core::Core;
-use bottles_plugin_host::Plugins;
+use std::fmt;
+
 use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
+use next_ui::{chrome, theme};
 use uuid::Uuid;
 
 #[cfg(feature = "fvs")]
 use crate::next;
 use crate::{
-    chrome, classic,
-    collection::{self, Collection},
-    context::Context,
-    jobs::{self, Jobs},
-    notifications::{self, Notifications},
-    onboarding,
-    profiles::Profiles,
-    settings::{Experience, Settings},
-    store::{self, Store},
-    theme,
+    classic,
+    model::{self, Action, Boot, Experience, Model},
+    notifications, onboarding,
 };
 
 pub(crate) struct App {
@@ -29,10 +23,10 @@ pub(crate) struct App {
 enum State {
     Loading,
     Failed(String),
-    Ready { ctx: Box<Context>, screen: Screen },
+    Ready { model: Box<Model>, screen: Screen },
 }
 
-pub(crate) enum Screen {
+enum Screen {
     Onboarding(onboarding::State),
     Classic(classic::State),
     #[cfg(feature = "fvs")]
@@ -51,13 +45,10 @@ impl Screen {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct Boot {
-    settings: Settings,
-    collection: Collection,
-    core: Arc<Core>,
-    plugins: Arc<Plugins>,
-    profiles: Profiles,
+/// What a screen asks of the shell.
+pub(crate) enum Request {
+    Act(Action),
+    Window(chrome::Action),
 }
 
 #[derive(Clone)]
@@ -65,10 +56,7 @@ pub(crate) enum Message {
     Booted(Result<Boot, String>),
     ThemeChanged(ThemeMode),
     Window(chrome::Action),
-    Store(store::Update),
-    Job(Uuid, jobs::Event),
-    Collection(collection::Change),
-    SwitchExperience(Experience),
+    Model(model::Message),
     DismissNotification(Uuid),
     CopyNotification(Uuid),
     ShutdownFinished(Result<(), String>),
@@ -84,10 +72,7 @@ impl fmt::Debug for Message {
             Self::Booted(_) => "Booted",
             Self::ThemeChanged(_) => "ThemeChanged",
             Self::Window(_) => "Window",
-            Self::Store(_) => "Store",
-            Self::Job(_, _) => "Job",
-            Self::Collection(_) => "Collection",
-            Self::SwitchExperience(_) => "SwitchExperience",
+            Self::Model(_) => "Model",
             Self::DismissNotification(_) => "DismissNotification",
             Self::CopyNotification(_) => "CopyNotification",
             Self::ShutdownFinished(_) => "ShutdownFinished",
@@ -108,7 +93,7 @@ impl App {
                 closing: false,
             },
             Task::batch([
-                Task::perform(boot(), Message::Booted),
+                Task::perform(Model::boot(), Message::Booted),
                 iced::system::theme().map(Message::ThemeChanged),
             ]),
         )
@@ -136,7 +121,7 @@ impl App {
                 match &self.state {
                     State::Loading => {}
                     State::Failed(_) => return iced::exit(),
-                    State::Ready { ctx, .. } => return shutdown(ctx),
+                    State::Ready { model, .. } => return shutdown(model),
                 }
             }
             Message::Window(action) => {
@@ -152,32 +137,22 @@ impl App {
             }
             Message::Booted(result) => match result {
                 Ok(boot) => {
-                    let watches = Store::watch(&boot.core, &boot.plugins);
-                    let ctx = Context {
-                        store: Store::new(&boot.core, &boot.plugins),
-                        jobs: Jobs::default(),
-                        notifications: Notifications::default(),
-                        settings: boot.settings,
-                        collection: boot.collection,
-                        core: boot.core,
-                        plugins: boot.plugins,
-                        profiles: boot.profiles,
-                    };
-                    let screen = ctx
+                    let (model, watch) = Model::new(boot);
+                    let screen = model
                         .settings
                         .experience
                         .map(Screen::new)
                         .unwrap_or_else(|| Screen::Onboarding(onboarding::State::new()));
                     let close = if self.closing {
-                        shutdown(&ctx)
+                        shutdown(&model)
                     } else {
                         Task::none()
                     };
                     self.state = State::Ready {
-                        ctx: Box::new(ctx),
+                        model: Box::new(model),
                         screen,
                     };
-                    return Task::batch([watches, close]);
+                    return Task::batch([watch.map(Message::Model), close]);
                 }
                 Err(error) => {
                     self.state = State::Failed(error);
@@ -193,56 +168,54 @@ impl App {
                 return iced::exit();
             }
             message => {
-                let State::Ready { ctx, screen } = &mut self.state else {
+                let State::Ready { model, screen } = &mut self.state else {
                     return Task::none();
                 };
-                match message {
-                    Message::Store(update) => ctx.store.update(update),
-                    Message::Job(id, event) => match ctx.jobs.update(id, event) {
-                        Ok(Some(message)) => return Task::done(*message),
-                        Ok(None) => {}
-                        Err(error) => ctx.notifications.error(error),
-                    },
-                    Message::Collection(change) => {
-                        ctx.collection.apply(change);
-                        return ctx.save_collection();
+                let request = match message {
+                    Message::Model(message) => {
+                        return model.update(message).map(Message::Model);
                     }
-                    Message::DismissNotification(id) => ctx.notifications.dismiss(id),
+                    Message::DismissNotification(id) => {
+                        model.notifications.dismiss(id);
+                        None
+                    }
                     Message::CopyNotification(id) => {
-                        if let Some(notification) = ctx.notifications.get(id) {
-                            return iced::clipboard::write(format!(
+                        return match model.notifications.get(id) {
+                            Some(notification) => iced::clipboard::write(format!(
                                 "{}\n\n{}",
                                 notification.title, notification.message
-                            ));
-                        }
+                            )),
+                            None => Task::none(),
+                        };
                     }
-                    _ if self.closing => {}
-                    Message::SwitchExperience(experience) => {
-                        ctx.settings.experience = Some(experience);
-                        *screen = Screen::new(experience);
-                        let save = ctx.settings.clone().save();
-                        return ctx.jobs.save(save);
-                    }
-                    Message::Onboarding(message) => {
-                        if let Screen::Onboarding(state) = screen {
-                            return state.update(ctx, message);
-                        }
-                    }
-                    Message::Classic(message) => {
-                        if let Screen::Classic(state) = screen {
-                            return state.update(ctx, message);
-                        }
-                    }
+                    _ if self.closing => None,
+                    Message::Onboarding(message) => match screen {
+                        Screen::Onboarding(state) => state.update(message),
+                        _ => None,
+                    },
+                    Message::Classic(message) => match screen {
+                        Screen::Classic(state) => state.update(model, message),
+                        _ => None,
+                    },
                     #[cfg(feature = "fvs")]
-                    Message::Next(message) => {
-                        if let Screen::Next(state) = screen {
-                            return state.update(ctx, message);
-                        }
-                    }
+                    Message::Next(message) => match screen {
+                        Screen::Next(state) => state.update(message),
+                        _ => None,
+                    },
                     Message::Booted(_)
                     | Message::ThemeChanged(_)
                     | Message::Window(_)
                     | Message::ShutdownFinished(_) => unreachable!(),
+                };
+                match request {
+                    Some(Request::Window(action)) => return Task::done(Message::Window(action)),
+                    Some(Request::Act(action)) => {
+                        if let Action::SwitchExperience(experience) = action {
+                            *screen = Screen::new(experience);
+                        }
+                        return model.perform(action).map(Message::Model);
+                    }
+                    None => {}
                 }
             }
         }
@@ -257,16 +230,16 @@ impl App {
             match &self.state {
                 State::Loading => status("Bottles Next", "Loading…"),
                 State::Failed(error) => status("Could not start Bottles", error),
-                State::Ready { ctx, screen } => {
+                State::Ready { model, screen } => {
                     let content = match screen {
-                        Screen::Onboarding(state) => state.view(ctx).map(Message::Onboarding),
-                        Screen::Classic(state) => state.view(ctx).map(Message::Classic),
+                        Screen::Onboarding(state) => state.view(model).map(Message::Onboarding),
+                        Screen::Classic(state) => state.view(model).map(Message::Classic),
                         #[cfg(feature = "fvs")]
-                        Screen::Next(state) => state.view(ctx).map(Message::Next),
+                        Screen::Next(state) => state.view(model).map(Message::Next),
                     };
                     let mut layers = stack![content].width(Fill).height(Fill);
-                    if !ctx.notifications.is_empty() {
-                        layers = layers.push(notifications::layer(&ctx.notifications));
+                    if !model.notifications.is_empty() {
+                        layers = layers.push(notifications::layer(&model.notifications));
                     }
                     layers.into()
                 }
@@ -276,47 +249,8 @@ impl App {
     }
 }
 
-async fn boot() -> Result<Boot, String> {
-    let core = Core::builder()
-        .build()
-        .await
-        .map(Arc::new)
-        .map_err(|error| error.to_string())?;
-    let result = async {
-        let plugins = Plugins::new().map_err(|error| error.to_string())?;
-        for (id, error) in plugins.reload().await.map_err(|error| error.to_string())? {
-            tracing::warn!(plugin = id, %error, "plugin failed to load");
-        }
-        let settings = Settings::load().await?;
-        let profiles = Profiles::load().await?;
-        let collection = Collection::load().await?;
-        Ok(Boot {
-            settings,
-            collection,
-            core: core.clone(),
-            plugins: Arc::new(plugins),
-            profiles,
-        })
-    }
-    .await;
-    if result.is_err()
-        && let Err(error) = core.shutdown().await
-    {
-        tracing::error!(%error, "core shutdown failed during boot cleanup");
-    }
-    result
-}
-
-fn shutdown(ctx: &Context) -> Task<Message> {
-    let jobs = ctx.jobs.shutdown();
-    let core = ctx.core.clone();
-    Task::perform(
-        async move {
-            jobs.await;
-            core.shutdown().await.map_err(|error| error.to_string())
-        },
-        Message::ShutdownFinished,
-    )
+fn shutdown(model: &Model) -> Task<Message> {
+    Task::perform(model.shutdown(), Message::ShutdownFinished)
 }
 
 fn status<'a>(title: &'a str, description: &'a str) -> Element<'a, Message> {

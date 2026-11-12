@@ -1,24 +1,21 @@
-//! First-run experience selection and downloads derived from session snapshots.
+//! First-run experience selection and downloads of the essential addons.
 
-use bottles_core::{
-    AddonRole, CatalogEntry, Component, Runner, RunnerFlavor, Slot, Umu, WineBridge,
-};
 use iced::{
-    Element, Fill, Length, Task, Theme,
+    Element, Fill, Length, Theme,
     alignment::{Horizontal, Vertical},
     widget::{column, container, row, scrollable, svg, text},
 };
-
-use crate::{
-    Experience, Icon, app, chrome,
-    context::Context,
-    jobs::{Jobs, Kind},
-    store::Store,
-    theme,
+use next_ui::{
+    Icon, chrome, theme,
     widget::{
         ActionRow, Button, ButtonKind, InfoCard, InfoCardKind, InfoRow, RowGroup, TextExt as _,
         spacing,
     },
+};
+
+use crate::{
+    app::Request,
+    model::{Action, Experience, Model, REQUIRED, Subject, required_available},
 };
 
 const TUTORIALS: [(&str, &str); 3] = [
@@ -53,11 +50,9 @@ pub enum Message {
     SelectExperience(Experience),
     ApplyExperience,
     NextTutorial,
-    Download,
-    Cancel,
     Refresh,
+    Act(Action),
     Window(chrome::Action),
-    SwitchExperience(Experience),
 }
 
 impl State {
@@ -68,16 +63,14 @@ impl State {
         }
     }
 
-    pub fn update(&mut self, ctx: &mut Context, message: Message) -> Task<app::Message> {
+    pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
-            Message::Window(action) => return Task::done(app::Message::Window(action)),
-            Message::SwitchExperience(experience) => {
-                return Task::done(app::Message::SwitchExperience(experience));
-            }
+            Message::Window(action) => return Some(Request::Window(action)),
+            Message::Act(action) => return Some(Request::Act(action)),
             Message::SelectExperience(experience) => self.experience = experience,
             Message::ApplyExperience => {
                 if self.experience == Experience::Next {
-                    return self.downloads(ctx);
+                    return Some(self.downloads());
                 }
                 self.step = Step::Tutorial(0);
             }
@@ -86,42 +79,25 @@ impl State {
                     if index + 1 < TUTORIALS.len() {
                         self.step = Step::Tutorial(index + 1);
                     } else {
-                        return self.downloads(ctx);
+                        return Some(self.downloads());
                     }
                 }
             }
-            Message::Refresh => return self.downloads(ctx),
-            Message::Download => {
-                let entries = essential_entries(&ctx.store);
-                let pending = entries
-                    .into_iter()
-                    .filter(|entry| !installed(&ctx.store, entry))
-                    .collect::<Vec<_>>();
-                return Task::batch(pending.into_iter().map(|entry| ctx.fetch(entry)));
-            }
-            Message::Cancel => {
-                let entries = essential_entries(&ctx.store);
-                for entry in entries {
-                    if let Some(job) = ctx.jobs.find(&Kind::Fetch(entry.id())) {
-                        job.cancel.cancel();
-                    }
-                }
-            }
+            Message::Refresh => return Some(self.downloads()),
         }
-        Task::none()
+        None
     }
 
-    fn downloads(&mut self, ctx: &mut Context) -> Task<app::Message> {
+    fn downloads(&mut self) -> Request {
         self.step = Step::Downloads;
-        ctx.jobs
-            .start(Kind::RefreshCatalog, ctx.core.catalogs().refresh())
+        Request::Act(Action::RefreshCatalog)
     }
 
-    pub fn view<'a>(&'a self, ctx: &'a Context) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
         let content = match self.step {
             Step::Welcome => self.welcome_view(),
             Step::Tutorial(index) => tutorial_view(index),
-            Step::Downloads => self.downloads_view(&ctx.store, &ctx.jobs),
+            Step::Downloads => self.downloads_view(model),
         };
         shell(content)
     }
@@ -172,14 +148,12 @@ impl State {
         .into()
     }
 
-    fn downloads_view(&self, store: &Store, jobs: &Jobs) -> Element<'_, Message> {
-        let preparing = jobs.running(&Kind::RefreshCatalog);
-        let entries = essential_entries(store);
+    fn downloads_view(&self, model: &Model) -> Element<'_, Message> {
+        let preparing = model.operations.get(&Subject::Catalog).is_some();
+        let entries = model.essential_entries();
         let available = required_available(&entries);
         let mut group = RowGroup::new();
         let mut running = false;
-        let complete = store.addons.releases::<Runner>().next().is_some()
-            && store.addons.releases::<WineBridge>().next().is_some();
         for (role, label) in REQUIRED.into_iter().zip(["Runner", "WineBridge"]) {
             if !entries.iter().any(|entry| entry.role() == role) {
                 group = group.row(InfoRow::new(label).description(if preparing {
@@ -191,19 +165,20 @@ impl State {
         }
         for entry in &entries {
             let label = format!("{} {}", entry.name(), entry.version());
-            if installed(store, entry) {
+            if model.installed(entry) {
                 group = group.row(ActionRow::progress(label, 1.0).description("Installed"));
-            } else if let Some(job) = jobs.find(&Kind::Fetch(entry.id())) {
+            } else if let Some(fetch) = model.operations.get(&Subject::Addon(entry.id())) {
                 running = true;
                 group = group.row(
                     ActionRow::progress(
                         label,
-                        job.progress
+                        fetch
+                            .progress
                             .as_ref()
                             .and_then(bottles_core::Progress::fraction)
                             .unwrap_or(0.0),
                     )
-                    .description(job.progress.as_ref().map_or_else(
+                    .description(fetch.progress.as_ref().map_or_else(
                         || "Preparing…".into(),
                         |progress| progress.stage.to_string(),
                     )),
@@ -212,14 +187,15 @@ impl State {
                 group = group.row(InfoRow::new(label).description("Pending"));
             }
         }
-        let action = if complete {
-            next_button("Get Started").on_press(Message::SwitchExperience(self.experience))
+        let action = if model.can_create_bottles() {
+            next_button("Get Started")
+                .on_press(Message::Act(Action::SwitchExperience(self.experience)))
         } else if preparing {
             button("Preparing…")
         } else if running {
-            button("Cancel").on_press(Message::Cancel)
+            button("Cancel").on_press(Message::Act(Action::CancelEssentials))
         } else if available {
-            next_button("Download").on_press(Message::Download)
+            next_button("Download").on_press(Message::Act(Action::FetchEssentials))
         } else {
             button("Refresh catalog").on_press(Message::Refresh)
         };
@@ -232,45 +208,6 @@ impl State {
         .align_x(Horizontal::Center)
         .into()
     }
-}
-
-const REQUIRED: [AddonRole; 2] = [
-    AddonRole::Runner(Runner {
-        flavor: RunnerFlavor::Wine,
-    }),
-    AddonRole::WineBridge(WineBridge {}),
-];
-const OPTIONAL: [AddonRole; 4] = [
-    AddonRole::Umu(Umu {}),
-    AddonRole::Component(Component { slot: Slot::Dxvk }),
-    AddonRole::Component(Component { slot: Slot::Vkd3d }),
-    AddonRole::Component(Component {
-        slot: Slot::LatencyFlex,
-    }),
-];
-
-fn essential_entries(store: &Store) -> Vec<CatalogEntry> {
-    REQUIRED
-        .into_iter()
-        .chain(OPTIONAL)
-        .filter_map(|role| {
-            store
-                .catalogs
-                .entries::<AddonRole>()
-                .find(|entry| entry.role() == role && entry.is_supported())
-                .cloned()
-        })
-        .collect()
-}
-
-fn required_available(entries: &[CatalogEntry]) -> bool {
-    REQUIRED
-        .iter()
-        .all(|role| entries.iter().any(|entry| entry.role() == *role))
-}
-
-fn installed(store: &Store, entry: &CatalogEntry) -> bool {
-    store.addons.release::<AddonRole>(entry.id()).is_some()
 }
 
 pub(crate) fn shell<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
@@ -310,7 +247,7 @@ fn title<'a>(heading: &'a str, subtitle: &'a str) -> Element<'a, Message> {
                 ..iced::Font::DEFAULT
             })
             .style(|theme: &Theme| text::Style {
-                color: Some(crate::theme::colors(theme).accent)
+                color: Some(theme::colors(theme).accent)
             }),
         text(subtitle).size(16).medium().muted(),
     ]
@@ -336,7 +273,7 @@ fn tutorial_view(index: usize) -> Element<'static, Message> {
         .width(160)
         .height(160)
         .style(|theme: &Theme, _| svg::Style {
-            color: Some(crate::theme::colors(theme).accent),
+            color: Some(theme::colors(theme).accent),
         });
     column![
         row![
