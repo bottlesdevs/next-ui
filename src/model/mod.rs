@@ -376,10 +376,17 @@ impl Model {
         downloads
     }
 
-    /// Programs to suggest installing when the library is empty.
-    #[allow(dead_code)]
-    pub(crate) fn suggestions(&self) -> Vec<String> {
-        todo!("the repository of bottle recipes doesn't exist yet")
+    /// Programs to suggest installing when the library is empty, with what
+    /// each is.
+    ///
+    /// A fixed list until the repository of bottle recipes exists to supply
+    /// it.
+    pub(crate) fn suggestions(&self) -> &'static [(&'static str, &'static str)] {
+        &[
+            ("Steam", "Games and store"),
+            ("Battle.net", "Blizzard games"),
+            ("Notepad++", "Text editor"),
+        ]
     }
 
     /// The shortcuts a one-off program created in bottle `prefix`, so they

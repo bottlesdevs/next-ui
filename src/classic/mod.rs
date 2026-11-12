@@ -242,6 +242,7 @@ impl State {
                 |target| Message::Act(Action::Launch(target)),
                 |_| None,
                 Message::Act(Action::AddProgram),
+                |name| Message::Act(Action::InstallSuggestion(name)),
             ),
         };
         parts::body_page(header, body)
