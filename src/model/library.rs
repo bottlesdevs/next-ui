@@ -22,6 +22,14 @@ pub(crate) enum Target {
 }
 
 impl Target {
+    /// The prefix of a standalone program, which is also its process group.
+    pub(crate) fn standalone(&self) -> Option<Uuid> {
+        match self {
+            Self::Program { prefix, group } if prefix == group => Some(*prefix),
+            _ => None,
+        }
+    }
+
     pub(crate) fn subject(&self) -> Subject {
         match self.clone() {
             Self::Program { prefix, group } => Subject::Program { prefix, group },
@@ -125,18 +133,6 @@ impl Model {
         })
     }
 
-    /// Standalone programs whose prefix exists, ordered by name.
-    pub(crate) fn programs(&self) -> Vec<Program<'_>> {
-        let mut programs = self
-            .collection
-            .programs
-            .keys()
-            .filter_map(|id| self.program(*id))
-            .collect::<Vec<_>>();
-        programs.sort_by_key(|program| program.name);
-        programs
-    }
-
     /// The standalone program whose prefix and process group are both `id`.
     pub(crate) fn program(&self, id: Uuid) -> Option<Program<'_>> {
         let record = self.collection.programs.get(&id)?;
@@ -159,11 +155,16 @@ impl Model {
                 target: program.target(),
             }));
         }
-        entries.extend(self.programs().into_iter().map(|program| Entry {
-            title: program.name,
-            source: "Program",
-            target: program.target(),
-        }));
+        let standalone = self.collection.programs.keys();
+        entries.extend(
+            standalone
+                .filter_map(|id| self.program(*id))
+                .map(|program| Entry {
+                    title: program.name,
+                    source: "Program",
+                    target: program.target(),
+                }),
+        );
         for (plugin, listing) in &self.sources.listings {
             if let Listing::Loaded(listed) = listing {
                 entries.extend(listed.iter().map(|entry| Entry {

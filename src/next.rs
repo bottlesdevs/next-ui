@@ -1,10 +1,10 @@
-//! The Next experience: standalone programs and their launch controls.
+//! The Next experience: one library, with details for standalone programs.
 
 use iced::{Element, Fill, widget::text};
 use next_ui::{
     Icon, chrome,
     layout::{self, PaneContext},
-    widget::{ArtworkCard, CardAction, InfoCard, InfoCardKind, InfoRow, RowGroup, Search, spacing},
+    widget::{InfoRow, RowGroup, Search},
 };
 use uuid::Uuid;
 
@@ -66,7 +66,7 @@ impl State {
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             let header = if selected {
                 header.start(parts::header_button(
-                    "Back to programs",
+                    "Back to library",
                     Icon::Arrow,
                     Message::Back,
                 ))
@@ -75,7 +75,7 @@ impl State {
             };
             header.middle(
                 iced::widget::container(Search::new(
-                    "Search programs",
+                    "Search library",
                     &self.query,
                     Message::QueryChanged,
                 ))
@@ -83,58 +83,12 @@ impl State {
                 .max_width(550),
             )
         });
-        let query = self.query.to_lowercase();
-        let cards = model
-            .programs()
-            .into_iter()
-            .filter(|program| program.name.to_lowercase().contains(&query))
-            .map(|program| {
-                let activity = model.activity(&program.target().subject());
-                ArtworkCard::new(
-                    program.name,
-                    match activity {
-                        Activity::Stopping => "Stopping…",
-                        Activity::Launching => "Launching…",
-                        Activity::Running => "Running",
-                        Activity::Idle | Activity::Busy => "Installed program",
-                    },
-                )
-                .menu(
-                    CardAction::new("Program details", Icon::EllipsisVertical)
-                        .on_press(Message::Select(program.prefix)),
-                )
-                .primary(if activity == Activity::Running {
-                    CardAction::new("Stop", Icon::Stop)
-                        .on_press(Message::Act(Action::Stop(program.prefix)))
-                } else {
-                    CardAction::new("Play", Icon::Play)
-                        .loading(activity != Activity::Idle)
-                        .on_press_maybe(
-                            (activity == Activity::Idle)
-                                .then(|| Message::Act(Action::Launch(program.target()))),
-                        )
-                })
-                .into()
-            })
-            .collect::<Vec<_>>();
-        let body: Element<'a, Message> = if cards.is_empty() {
-            InfoCard::new(
-                InfoCardKind::Hint,
-                "Nothing here yet",
-                if query.is_empty() {
-                    "Installed programs will show up here."
-                } else {
-                    "No programs match your search."
-                },
-            )
-            .into()
-        } else {
-            iced::widget::Grid::with_children(cards)
-                .fluid(400.0)
-                .spacing(spacing::SM)
-                .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
-                .into()
-        };
+        let body = parts::library_grid(
+            model,
+            &self.query,
+            |target| Message::Act(Action::Launch(target)),
+            |target| target.standalone().map(Message::Select),
+        );
         parts::page(header, body)
     }
 
@@ -150,7 +104,7 @@ impl State {
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             let header = if pane.is_standalone() {
                 header.start(parts::header_button(
-                    "Back to programs",
+                    "Back to library",
                     Icon::Arrow,
                     Message::Back,
                 ))
