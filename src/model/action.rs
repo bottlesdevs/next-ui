@@ -20,6 +20,11 @@ pub(crate) enum Action {
     Launch(Target),
     /// Asks the programs of a prefix to close, then stops it.
     Stop(Uuid),
+    /// Ends the processes of a program without asking it to close.
+    Kill {
+        prefix: Uuid,
+        group: Uuid,
+    },
     Delete(Uuid),
     CreateBottle {
         name: String,
@@ -46,6 +51,19 @@ impl Model {
         match action {
             Action::Launch(target) => self.launch(target),
             Action::Stop(id) => self.on_prefix(id, Verb::Stop, |prefix| prefix.stop(false)),
+            Action::Kill { prefix, group } => match self.core.prefixes().open(prefix) {
+                Ok(handle) => {
+                    let kill =
+                        async move { handle.kill(group).await.map_err(|error| error.to_string()) };
+                    self.operations
+                        .perform(Subject::Program { prefix, group }, Verb::Stop, kill)
+                        .map(|(subject, event)| Message::Operation(subject, event))
+                }
+                Err(error) => {
+                    self.notifications.error(error.to_string());
+                    Task::none()
+                }
+            },
             Action::Delete(id) => {
                 let operation = self.core.prefixes().delete(id);
                 self.start(Subject::Prefix(id), Verb::Delete, operation)

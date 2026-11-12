@@ -124,23 +124,28 @@ pub(super) fn creation<'a>(
 pub(super) fn programs<'a>(bottle: Bottle<'a>, model: &'a Model) -> Element<'a, Message> {
     let cards = bottle.programs().map(move |program| {
         let activity = model.activity(&program.target().subject());
-        let launching = activity == Activity::Launching;
         ArtworkCard::new(
             program.name,
-            if launching {
-                "Launching…"
-            } else {
-                "Installed program"
+            match activity {
+                Activity::Launching => "Launching…",
+                Activity::Running => "Running",
+                Activity::Stopping => "Stopping…",
+                Activity::Idle | Activity::Busy => "Installed program",
             },
         )
-        .primary(
+        .primary(if activity == Activity::Running {
+            CardAction::new("Force stop", Icon::Stop).on_press(Message::Act(Action::Kill {
+                prefix: program.prefix,
+                group: program.group,
+            }))
+        } else {
             CardAction::new("Play", Icon::Play)
-                .loading(launching)
+                .loading(activity == Activity::Launching)
                 .on_press_maybe(
                     (activity == Activity::Idle)
                         .then(|| Message::Act(Action::Launch(program.target()))),
-                ),
-        )
+                )
+        })
         .into()
     });
     Grid::with_children(std::iter::once(new_program().into()).chain(cards))
@@ -177,14 +182,14 @@ fn new_program<'a>() -> ActionTile<'a, Message> {
     .padding(spacing::LG)
 }
 
-/// The settings of `bottle`, editable while nothing else is happening to it.
+/// The settings of `bottle`, editable unless an operation on it is in flight.
 pub(super) fn settings<'a>(
     bottle: Bottle<'a>,
     rename: Option<&'a str>,
-    idle: bool,
+    editable: bool,
 ) -> Element<'a, Message> {
     const SETTINGS_TRACK_MIN_WIDTH: f32 = 300.0;
-    let editing = !idle;
+    let editing = !editable;
     let (id, name, state) = (bottle.id, bottle.name, bottle.state);
     responsive(move |size| {
         let columns = usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
@@ -268,10 +273,16 @@ pub(super) fn settings<'a>(
     .into()
 }
 
-pub(super) fn status<'a>(bottle: &Bottle<'a>) -> LogPanel<'a> {
+pub(super) fn status<'a>(bottle: &Bottle<'a>, activity: Activity) -> LogPanel<'a> {
     let runner = &bottle.state.runner;
+    let (label, icon) = match activity {
+        Activity::Running => ("Running", Icon::Lightning),
+        Activity::Idle => ("Stopped", Icon::Power),
+        Activity::Stopping => ("Stopping", Icon::Power),
+        Activity::Launching | Activity::Busy => ("Busy", Icon::Lightning),
+    };
     LogPanel::new(
-        StatusBar::new("Ready", Icon::Lightning)
+        StatusBar::new(label, icon)
             .detail(Icon::Chip, "Win64")
             .detail(Icon::Run, format!("{} {}", runner.name(), runner.version())),
     )

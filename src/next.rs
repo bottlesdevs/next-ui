@@ -95,6 +95,7 @@ impl State {
                     match activity {
                         Activity::Stopping => "Stopping…",
                         Activity::Launching => "Launching…",
+                        Activity::Running => "Running",
                         Activity::Idle | Activity::Busy => "Installed program",
                     },
                 )
@@ -102,14 +103,17 @@ impl State {
                     CardAction::new("Program details", Icon::EllipsisVertical)
                         .on_press(Message::Select(program.prefix)),
                 )
-                .primary(
+                .primary(if activity == Activity::Running {
+                    CardAction::new("Stop", Icon::Stop)
+                        .on_press(Message::Act(Action::Stop(program.prefix)))
+                } else {
                     CardAction::new("Play", Icon::Play)
                         .loading(activity != Activity::Idle)
                         .on_press_maybe(
                             (activity == Activity::Idle)
                                 .then(|| Message::Act(Action::Launch(program.target()))),
-                        ),
-                )
+                        )
+                })
                 .into()
             })
             .collect::<Vec<_>>();
@@ -142,7 +146,7 @@ impl State {
             );
         };
         let stop = Message::Act(Action::Stop(program.prefix));
-        let idle = model.activity(&program.target().subject()) == Activity::Idle;
+        let running = model.activity(&program.target().subject()) == Activity::Running;
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
             let header = if pane.is_standalone() {
                 header.start(parts::header_button(
@@ -155,7 +159,7 @@ impl State {
             };
             header.middle(text(program.name)).end(
                 parts::header_button("Stop program", Icon::Power, stop.clone())
-                    .on_press_maybe(idle.then_some(stop)),
+                    .on_press_maybe(running.then_some(stop)),
             )
         });
         parts::page(
