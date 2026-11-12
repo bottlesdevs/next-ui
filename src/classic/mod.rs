@@ -2,6 +2,7 @@
 
 mod bottle;
 
+use bottles_core::PrefixBackend;
 use iced::{
     Element, Fill,
     widget::{column, container},
@@ -30,7 +31,6 @@ pub enum TabKind {
 pub enum Detail {
     Programs,
     Settings,
-    #[cfg(feature = "fvs")]
     Snapshots,
 }
 
@@ -213,14 +213,16 @@ impl State {
         };
         let id = bottle.id;
         let activity = model.activity(&Subject::Prefix(id));
+        // Snapshots are taken through FVS, which Virgo's availability reports.
+        let snapshots = PrefixBackend::Virgo
+            .is_available()
+            .then(|| Tab::new(Detail::Snapshots, "Snapshots"));
         let tabs = [
             Tab::new(Detail::Programs, "Programs"),
             Tab::new(Detail::Settings, "Settings"),
-        ];
-        #[cfg(feature = "fvs")]
-        let tabs = tabs
-            .into_iter()
-            .chain([Tab::new(Detail::Snapshots, "Snapshots")]);
+        ]
+        .into_iter()
+        .chain(snapshots);
         let tabs = Tabs::new(tabs, Some(self.detail_tab), Message::Detail).height(Fill);
         let header = pane.header(Message::Window(chrome::Action::Drag), |mut header| {
             if pane.is_standalone() {
@@ -252,7 +254,6 @@ impl State {
             Detail::Settings => {
                 bottle::settings(bottle, self.rename.as_deref(), activity.is_settled())
             }
-            #[cfg(feature = "fvs")]
             Detail::Snapshots => Title::new("Snapshots")
                 .subtitle("Snapshot management is coming later.")
                 .into(),

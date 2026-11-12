@@ -1,7 +1,6 @@
 mod app;
 mod classic;
 mod model;
-#[cfg(feature = "fvs")]
 mod next;
 mod notifications;
 mod onboarding;

@@ -52,8 +52,6 @@ impl<'a> Bottle<'a> {
 }
 
 /// A program record joined with the state of the prefix it runs in.
-// Only the Next experience reads the launch definition and prefix state.
-#[cfg_attr(not(feature = "fvs"), allow(dead_code))]
 #[derive(Clone, Copy)]
 pub(crate) struct Program<'a> {
     pub(crate) prefix: Uuid,
@@ -128,7 +126,6 @@ impl Model {
     }
 
     /// Standalone programs whose prefix exists, ordered by name.
-    #[cfg(feature = "fvs")]
     pub(crate) fn programs(&self) -> Vec<Program<'_>> {
         let mut programs = self
             .collection
@@ -141,7 +138,6 @@ impl Model {
     }
 
     /// The standalone program whose prefix and process group are both `id`.
-    #[cfg(feature = "fvs")]
     pub(crate) fn program(&self, id: Uuid) -> Option<Program<'_>> {
         let record = self.collection.programs.get(&id)?;
         Some(Program {
@@ -163,7 +159,6 @@ impl Model {
                 target: program.target(),
             }));
         }
-        #[cfg(feature = "fvs")]
         entries.extend(self.programs().into_iter().map(|program| Entry {
             title: program.name,
             source: "Program",

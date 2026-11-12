@@ -22,9 +22,7 @@ use tokio_util::task::TaskTracker;
 
 pub(crate) use action::{Action, Change};
 pub(crate) use defaults::{REQUIRED, required_available};
-#[cfg(feature = "fvs")]
-pub(crate) use library::Program;
-pub(crate) use library::{Activity, Bottle, Target};
+pub(crate) use library::{Activity, Bottle, Program, Target};
 pub(crate) use operations::{Operations, Subject, Verb};
 pub(crate) use settings::Experience;
 pub(crate) use sources::{Listing, Sources};
