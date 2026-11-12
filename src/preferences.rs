@@ -9,8 +9,8 @@ use next_ui::{
     Icon, chrome,
     layout::{PaneContext, Side, side_panel},
     widget::{
-        ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, ListRow, Popover, RowGroup,
-        StatusPage, Tab, Tabs, Tag, TextExt as _, Title, spacing,
+        ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
+        Popover, RowGroup, Search, StatusPage, Tab, Tabs, Tag, TextExt as _, Title, spacing,
     },
 };
 
@@ -34,6 +34,18 @@ pub struct State {
     page: Page,
     /// The plugin whose details are open beside the Plugins page.
     plugin: Option<String>,
+    /// What the Plugins page is narrowed to.
+    plugin_query: String,
+    plugin_kind: PluginKind,
+}
+
+/// Which plugins the Plugins page lists, by what they provide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PluginKind {
+    #[default]
+    All,
+    Accounts,
+    Libraries,
 }
 
 #[derive(Debug, Clone)]
@@ -45,13 +57,18 @@ pub enum Message {
     Dismiss,
     OpenPlugin(String),
     ClosePlugin,
+    PluginQuery(String),
+    PluginKind(PluginKind),
     Window(chrome::Action),
 }
 
 impl State {
     /// Opens Preferences at `page`.
     pub fn at(page: Page) -> Self {
-        Self { page, plugin: None }
+        Self {
+            page,
+            ..Self::default()
+        }
     }
 
     pub fn update(&mut self, message: Message) -> Option<Request> {
@@ -70,6 +87,8 @@ impl State {
             }
             Message::OpenPlugin(id) => self.plugin = Some(id),
             Message::ClosePlugin => self.plugin = None,
+            Message::PluginQuery(query) => self.plugin_query = query,
+            Message::PluginKind(kind) => self.plugin_kind = kind,
             Message::Dismiss => {}
             Message::Window(action) => return Some(Request::Window(action)),
         }
@@ -105,7 +124,7 @@ impl State {
         let body = match self.page {
             Page::General => Ok(general(model)),
             Page::Addons => addons(model),
-            Page::Plugins => plugins(model, self.plugin.as_deref()),
+            Page::Plugins => plugins(model, self),
             Page::About => Ok(about()),
         };
         match body {
@@ -290,35 +309,78 @@ fn addons(model: &Model) -> Body<'_> {
         .into())
 }
 
-fn plugins<'a>(model: &'a Model, open: Option<&str>) -> Body<'a> {
+fn plugins<'a>(model: &'a Model, state: &'a State) -> Body<'a> {
     let installed = model.installed_plugins();
-    // Adding from a file needs a file picker, and the catalog of available
-    // plugins doesn't exist yet (`Model::plugin_about` has no description or
-    // author either), so the page lists installed plugins only.
+    // The catalog of available plugins doesn't exist yet, and the manifests
+    // have no description, author or update (`Model::plugin_about`,
+    // `Model::plugin_update`), so the page lists installed plugins by name.
     if installed.is_empty() {
         return Err(StatusPage::new("No plugins installed")
             .description("Plugins add storefront accounts and libraries.")
             .into());
     }
-    let rows = installed.into_iter().map(|plugin| -> Element<'a, Message> {
-        ActionRow::new(plugin.name.clone(), Message::OpenPlugin(plugin.id.clone()))
-            .description(plugin.version.clone())
-            .leading(Avatar::new(initial(&plugin.name)).shape(AvatarShape::Rounded))
-            .trailing(tags(&plugin))
-            .selected(open == Some(plugin.id.as_str()))
-            .trailing(Popover::confirm(
-                Button::new("Uninstall").icon(Icon::Trash),
-                format!("Uninstall {}?", plugin.name),
-                "You can install it again later.",
-                "Uninstall",
-                Message::Act(Action::UninstallPlugin(plugin.id)),
-                Message::Dismiss,
-            ))
+    let query = state.plugin_query.to_lowercase();
+    let shown = installed
+        .into_iter()
+        .filter(|plugin| match state.plugin_kind {
+            PluginKind::All => true,
+            PluginKind::Accounts => plugin.account,
+            PluginKind::Libraries => plugin.library,
+        })
+        .filter(|plugin| plugin.name.to_lowercase().contains(&query))
+        .collect::<Vec<_>>();
+
+    // Installing from a file needs the plugin host to read a package
+    // without installing it (next-plugin-host#6).
+    let toolbar = row![
+        Search::new("Search plugins…", &state.plugin_query, Message::PluginQuery),
+        Button::new("From File").icon(Icon::Folder),
+    ]
+    .spacing(spacing::SM)
+    .align_y(Alignment::Center);
+    let chips = FilterChips::new(
+        [
+            (PluginKind::All, "All"),
+            (PluginKind::Accounts, "Accounts"),
+            (PluginKind::Libraries, "Libraries"),
+        ],
+        state.plugin_kind,
+    )
+    .on_select(Message::PluginKind);
+
+    let open = state.plugin.as_deref();
+    let list: Element<'a, Message> = if shown.is_empty() {
+        StatusPage::new("No plugins found")
+            .description("No installed plugin matches.")
             .into()
-    });
-    Ok(rows
-        .fold(RowGroup::new().title("Installed"), RowGroup::row)
-        .into())
+    } else {
+        let heading = text(format!("Installed · {}", shown.len()))
+            .size(15)
+            .medium()
+            .style(|theme| text::Style {
+                color: Some(next_ui::theme::colors(theme).accent_muted),
+            });
+        let group = shown.into_iter().fold(BoxedGroup::new(), |group, plugin| {
+            group.row(
+                ActionRow::new(plugin.name.clone(), Message::OpenPlugin(plugin.id.clone()))
+                    .title_suffix(text(plugin.version.clone()).size(13).muted())
+                    .title_suffix(tags(&plugin))
+                    .leading(Avatar::new(initial(&plugin.name)).shape(AvatarShape::Rounded))
+                    .selected(open == Some(plugin.id.as_str()))
+                    .trailing(Popover::confirm(
+                        Button::new("Uninstall").icon(Icon::Trash),
+                        format!("Uninstall {}?", plugin.name),
+                        "You can install it again later.",
+                        "Uninstall",
+                        Message::Act(Action::UninstallPlugin(plugin.id)),
+                        Message::Dismiss,
+                    ))
+                    .trailing(Icon::ChevronRight.view()),
+            )
+        });
+        column![heading, group].spacing(spacing::SM).into()
+    };
+    Ok(column![toolbar, chips, list].spacing(spacing::MD).into())
 }
 
 fn about<'a>() -> Element<'a, Message> {
