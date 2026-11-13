@@ -338,7 +338,7 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
         });
     match release.download {
         Some(download) => {
-            let progress = download.progress.unwrap_or(0.0);
+            let progress = download.fraction().unwrap_or(0.0);
             ListRow::new(
                 column![name, ProgressBar::new(progress)]
                     .spacing(spacing::SM)

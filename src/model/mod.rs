@@ -53,10 +53,11 @@ pub(crate) struct Model {
 /// A release being downloaded.
 pub(crate) struct Download {
     pub(crate) id: uuid::Uuid,
-    /// Its name and version, unless the catalogs no longer list it.
-    pub(crate) name: Option<String>,
     /// What it's doing, or `None` while it waits to start.
     pub(crate) progress: Option<bottles_core::Progress>,
+    /// The bottle the release is selected in once it's downloaded, read
+    /// from the download's continuation.
+    pub(crate) then_select: Option<uuid::Uuid>,
 }
 
 impl Download {
@@ -333,23 +334,30 @@ impl Model {
             .map(|entry| label(entry.name(), entry.version()))
     }
 
+    /// The download of release `id`, while there is one.
+    pub(crate) fn download(&self, id: uuid::Uuid) -> Option<Download> {
+        let pending = self.operations.get(&Subject::Addon(id))?;
+        (pending.verb == Verb::Fetch).then(|| Download {
+            id,
+            progress: pending.progress.clone(),
+            then_select: match pending.then {
+                Some(Then::Act(Action::UseRelease { prefix, .. })) => Some(prefix),
+                _ => None,
+            },
+        })
+    }
+
     /// The releases being downloaded, by name.
     pub(crate) fn downloads(&self) -> Vec<Download> {
         let mut downloads: Vec<_> = self
             .operations
             .iter()
-            .filter_map(|(subject, pending)| {
-                let (Subject::Addon(id), Verb::Fetch) = (subject, &pending.verb) else {
-                    return None;
-                };
-                Some(Download {
-                    id: *id,
-                    name: self.release_label(*id),
-                    progress: pending.progress.clone(),
-                })
+            .filter_map(|(subject, _)| match subject {
+                Subject::Addon(id) => self.download(*id),
+                _ => None,
             })
             .collect();
-        downloads.sort_by(|left, right| left.name.cmp(&right.name));
+        downloads.sort_by_cached_key(|download| self.release_label(download.id));
         downloads
     }
 

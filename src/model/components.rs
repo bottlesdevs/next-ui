@@ -3,10 +3,7 @@
 use bottles_core::{AddonRole, Component, Slot, WineArch};
 use uuid::Uuid;
 
-use super::{
-    Action, Model, label,
-    operations::{Subject, Then, Verb},
-};
+use super::{Download, Model, label};
 
 /// How many of the newest releases not yet downloaded a picker offers.
 const AVAILABLE_LIMIT: usize = 5;
@@ -15,16 +12,7 @@ const AVAILABLE_LIMIT: usize = 5;
 pub(crate) struct AvailableRelease {
     pub(crate) id: Uuid,
     pub(crate) label: String,
-    pub(crate) download: Option<ReleaseDownload>,
-}
-
-/// A release being downloaded.
-pub(crate) struct ReleaseDownload {
-    /// The fraction done, when the size is known.
-    pub(crate) progress: Option<f32>,
-    /// The bottle the release is selected in once it's downloaded, read
-    /// from the download's continuation.
-    pub(crate) then_select: Option<Uuid>,
+    pub(crate) download: Option<Download>,
 }
 
 impl Model {
@@ -80,20 +68,7 @@ impl Model {
             .map(|entry| AvailableRelease {
                 id: entry.id(),
                 label: label(entry.name(), entry.version()),
-                download: self
-                    .operations
-                    .get(&Subject::Addon(entry.id()))
-                    .filter(|pending| pending.verb == Verb::Fetch)
-                    .map(|pending| ReleaseDownload {
-                        progress: pending
-                            .progress
-                            .as_ref()
-                            .and_then(bottles_core::Progress::fraction),
-                        then_select: match pending.then {
-                            Some(Then::Act(Action::UseRelease { prefix, .. })) => Some(prefix),
-                            _ => None,
-                        },
-                    }),
+                download: self.download(entry.id()),
             })
             .collect()
     }

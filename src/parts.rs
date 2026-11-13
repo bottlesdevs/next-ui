@@ -253,7 +253,7 @@ fn downloads<'a, Message: Clone + 'a>(
         .map(|download| -> Element<'a, Message> {
             let status = download_status(&download);
             let mut body = column![
-                text(download_name(&download))
+                text(download_name(model, &download))
                     .size(text_size::LABEL)
                     .medium(),
                 text(status)
@@ -301,10 +301,9 @@ fn downloads<'a, Message: Clone + 'a>(
 }
 
 /// A download's release name, or a stand-in once the catalogs drop it.
-fn download_name(download: &Download) -> String {
-    download
-        .name
-        .clone()
+fn download_name(model: &Model, download: &Download) -> String {
+    model
+        .release_label(download.id)
         .unwrap_or_else(|| "Release".to_owned())
 }
 
