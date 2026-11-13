@@ -179,6 +179,9 @@ impl Model {
                     };
                     let name = self.release_name(release);
                     match (result, then_select) {
+                        // Cancelling isn't news: the row the download was in
+                        // shows it gone.
+                        (Ok(Outcome::Cancelled), _) => {}
                         (Ok(_), Some(prefix)) => {
                             self.notifications.success(
                                 format!("{name} downloaded"),
