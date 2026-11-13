@@ -47,9 +47,9 @@ impl<'a, T: Copy + PartialEq + 'a, Message: Clone + 'a> From<FilterChips<'a, T, 
                 .style(move |theme, state| {
                     let colors = crate::theme::colors(theme);
                     let background = if active {
-                        Some(colors.border)
+                        Some(colors.raised)
                     } else if state.hovered || state.focused {
-                        Some(colors.surface)
+                        Some(colors.card)
                     } else {
                         None
                     };

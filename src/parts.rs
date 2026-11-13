@@ -123,7 +123,7 @@ fn suggestions<'a, Message: Clone + 'a>(
             .height(120)
             .style(|theme| {
                 container::Style::default()
-                    .background(theme::colors(theme).selection)
+                    .background(theme::colors(theme).selected)
                     .border(iced::Border::default().rounded(iced::border::top(6)))
             });
         let footer = row![
@@ -147,7 +147,7 @@ fn suggestions<'a, Message: Clone + 'a>(
             .clip(true)
             .style(|theme| {
                 container::Style::default()
-                    .background(theme::colors(theme).surface)
+                    .background(theme::colors(theme).card)
                     .border(iced::Border::default().rounded(6))
             })
             .into()
@@ -290,7 +290,7 @@ fn downloads<'a, Message: Clone + 'a>(
             })
             .style(|theme| {
                 container::Style::default()
-                    .background(theme::colors(theme).border)
+                    .background(theme::colors(theme).raised)
                     .border(iced::Border::default().rounded(8))
             })
             .into()

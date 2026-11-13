@@ -146,7 +146,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             .clip(true)
             .style(|theme: &Theme| {
                 container::Style::default()
-                    .background(crate::theme::colors(theme).border)
+                    .background(crate::theme::colors(theme).raised)
                     .border(iced::Border::default().rounded(iced::border::top(6)))
             });
         let labels = container(

@@ -12,16 +12,17 @@ use iced::{
     widget::{container, scrollable},
 };
 
-const BACKGROUND: Color = Color::from_rgb8(58, 50, 53);
-const WINDOW: Color = Color::from_rgb8(41, 34, 37);
-const WINDOW_BORDER: Color = Color::from_rgb8(54, 44, 49);
-const DEEP_BACKGROUND: Color = Color::from_rgb8(27, 25, 26);
-const SURFACE: Color = Color::from_rgb8(65, 57, 60);
-/// Buttons that sit on a row or card, set back from its surface.
+// The fill ramp, in order; see `Colors`.
+const CHROME: Color = Color::from_rgb8(41, 34, 37);
+const PAGE: Color = Color::from_rgb8(58, 50, 53);
+const CARD: Color = Color::from_rgb8(65, 57, 60);
+const RAISED: Color = Color::from_rgb8(76, 66, 70);
+const SELECTED: Color = Color::from_rgb8(89, 78, 82);
+const HOVERED: Color = Color::from_rgb8(96, 85, 89);
+
+const SUNKEN: Color = Color::from_rgb8(27, 25, 26);
 const CONTROL: Color = Color::from_rgb8(47, 40, 43);
-const BORDER: Color = Color::from_rgb8(76, 66, 70);
-const ROW_HOVER: Color = Color::from_rgb8(96, 85, 89);
-const SURFACE_SELECTED: Color = Color::from_rgb8(89, 78, 82);
+const CHROME_BORDER: Color = Color::from_rgb8(54, 44, 49);
 
 const MUTED: Color = Color::from_rgb8(166, 147, 154);
 const TEXT: Color = Color::from_rgb8(250, 236, 241);
@@ -34,16 +35,17 @@ const WARNING: Color = Color::from_rgb8(107, 93, 71);
 const SUCCESS: Color = Color::from_rgb8(53, 71, 51);
 const WHITE: Color = Color::WHITE;
 
-const BACKGROUND_LIGHT: Color = Color::from_rgb8(247, 242, 243);
-const WINDOW_LIGHT: Color = Color::from_rgb8(255, 253, 254);
-const WINDOW_BORDER_LIGHT: Color = Color::from_rgb8(226, 215, 219);
-const DEEP_BACKGROUND_LIGHT: Color = Color::from_rgb8(251, 248, 249);
-const SURFACE_DEEP_LIGHT: Color = Color::from_rgb8(214, 200, 204);
-const SURFACE_LIGHT: Color = Color::from_rgb8(238, 231, 233);
+const CHROME_LIGHT: Color = Color::from_rgb8(255, 253, 254);
+const PAGE_LIGHT: Color = Color::from_rgb8(247, 242, 243);
+const CARD_LIGHT: Color = Color::from_rgb8(238, 231, 233);
+const RAISED_LIGHT: Color = Color::from_rgb8(223, 212, 216);
+const SELECTED_LIGHT: Color = Color::from_rgb8(216, 201, 206);
+const HOVERED_LIGHT: Color = Color::from_rgb8(206, 190, 195);
+
+const SUNKEN_LIGHT: Color = Color::from_rgb8(251, 248, 249);
 const CONTROL_LIGHT: Color = Color::from_rgb8(230, 221, 224);
-const BORDER_LIGHT: Color = Color::from_rgb8(223, 212, 216);
-const ROW_HOVER_LIGHT: Color = Color::from_rgb8(206, 190, 195);
-const SURFACE_SELECTED_LIGHT: Color = Color::from_rgb8(216, 201, 206);
+const CHROME_BORDER_LIGHT: Color = Color::from_rgb8(226, 215, 219);
+const CHROME_HOVERED_LIGHT: Color = Color::from_rgb8(214, 200, 204);
 
 const MUTED_LIGHT: Color = Color::from_rgb8(135, 116, 122);
 const TEXT_LIGHT: Color = Color::from_rgb8(36, 28, 31);
@@ -51,28 +53,37 @@ const ACCENT_LIGHT: Color = Color::from_rgb8(168, 76, 104);
 const ACCENT_MUTED_LIGHT: Color = Color::from_rgb8(196, 150, 164);
 
 /// Semantic colors used by toolkit widgets.
+///
+/// Fills climb one ramp, each step further from the window: `chrome` (the
+/// window frame and header bars), `page`, `card` (rows and cards on a page),
+/// `raised` (blocks on a card, and lines drawn on any level), `selected`,
+/// `hovered`. Dark steps get lighter, light ones darker. The other fills are
+/// roles off the ramp.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Colors {
-    pub background: Color,
-    pub deep_background: Color,
-    pub surface: Color,
-    pub border: Color,
-    pub hover: Color,
-    pub selection: Color,
-    pub window: Color,
-    pub window_border: Color,
-    pub surface_deep: Color,
-    /// A button set into a row or card.
+    pub chrome: Color,
+    pub page: Color,
+    pub card: Color,
+    pub raised: Color,
+    pub selected: Color,
+    pub hovered: Color,
+    /// Set below the page, e.g. a progress track or a pressed chrome button.
+    pub sunken: Color,
+    /// A button set back into a row or card.
     pub control: Color,
+    /// The outline around the window.
+    pub chrome_border: Color,
+    /// A chrome-filled button under the pointer.
+    pub chrome_hovered: Color,
     pub text: Color,
     pub muted: Color,
     pub accent: Color,
     pub accent_muted: Color,
     pub scrim: Color,
+    pub info: Color,
     pub danger: Color,
-    pub danger_surface: Color,
-    pub warning_surface: Color,
-    pub success_surface: Color,
+    pub warning: Color,
+    pub success: Color,
 }
 
 /// Builds the dark Iced appearance used by the toolkit.
@@ -80,7 +91,7 @@ pub fn dark() -> IcedTheme {
     custom(
         "Bottles Next",
         Palette {
-            background: BACKGROUND,
+            background: PAGE,
             text: TEXT,
             primary: ACCENT,
             success: SUCCESS,
@@ -89,24 +100,24 @@ pub fn dark() -> IcedTheme {
         },
         Extended {
             background: BackgroundPalette {
-                base: pair(BACKGROUND, TEXT),
-                weakest: pair(DEEP_BACKGROUND, TEXT),
-                weaker: pair(BACKGROUND, TEXT),
-                weak: pair(SURFACE, TEXT),
-                neutral: pair(BORDER, TEXT),
-                strong: pair(ROW_HOVER, TEXT),
-                stronger: pair(SURFACE_SELECTED, TEXT),
-                strongest: pair(WINDOW_BORDER, TEXT),
+                base: pair(PAGE, TEXT),
+                weakest: pair(SUNKEN, TEXT),
+                weaker: pair(PAGE, TEXT),
+                weak: pair(CARD, TEXT),
+                neutral: pair(RAISED, TEXT),
+                strong: pair(HOVERED, TEXT),
+                stronger: pair(SELECTED, TEXT),
+                strongest: pair(CHROME_BORDER, TEXT),
             },
             primary: Primary {
                 base: pair(MUTED, TEXT),
-                weak: pair(WINDOW, TEXT),
+                weak: pair(CHROME, TEXT),
                 strong: pair(ACCENT_MUTED, TEXT),
             },
             secondary: Secondary {
-                base: pair(DEEP_BACKGROUND, MUTED),
-                weak: pair(BACKGROUND, MUTED),
-                strong: pair(WINDOW_BORDER, MUTED),
+                base: pair(SUNKEN, MUTED),
+                weak: pair(PAGE, MUTED),
+                strong: pair(CHROME_BORDER, MUTED),
             },
             success: Success {
                 base: pair(SUCCESS, WHITE),
@@ -133,7 +144,7 @@ pub fn light() -> IcedTheme {
     custom(
         "Bottles Next Light",
         Palette {
-            background: BACKGROUND_LIGHT,
+            background: PAGE_LIGHT,
             text: TEXT_LIGHT,
             primary: ACCENT_LIGHT,
             success: SUCCESS,
@@ -142,24 +153,24 @@ pub fn light() -> IcedTheme {
         },
         Extended {
             background: BackgroundPalette {
-                base: pair(BACKGROUND_LIGHT, TEXT_LIGHT),
-                weakest: pair(DEEP_BACKGROUND_LIGHT, TEXT_LIGHT),
-                weaker: pair(BACKGROUND_LIGHT, TEXT_LIGHT),
-                weak: pair(SURFACE_LIGHT, TEXT_LIGHT),
-                neutral: pair(BORDER_LIGHT, TEXT_LIGHT),
-                strong: pair(ROW_HOVER_LIGHT, TEXT_LIGHT),
-                stronger: pair(SURFACE_SELECTED_LIGHT, TEXT_LIGHT),
-                strongest: pair(WINDOW_BORDER_LIGHT, TEXT_LIGHT),
+                base: pair(PAGE_LIGHT, TEXT_LIGHT),
+                weakest: pair(SUNKEN_LIGHT, TEXT_LIGHT),
+                weaker: pair(PAGE_LIGHT, TEXT_LIGHT),
+                weak: pair(CARD_LIGHT, TEXT_LIGHT),
+                neutral: pair(RAISED_LIGHT, TEXT_LIGHT),
+                strong: pair(HOVERED_LIGHT, TEXT_LIGHT),
+                stronger: pair(SELECTED_LIGHT, TEXT_LIGHT),
+                strongest: pair(CHROME_BORDER_LIGHT, TEXT_LIGHT),
             },
             primary: Primary {
                 base: pair(MUTED_LIGHT, TEXT_LIGHT),
-                weak: pair(WINDOW_LIGHT, TEXT_LIGHT),
+                weak: pair(CHROME_LIGHT, TEXT_LIGHT),
                 strong: pair(ACCENT_MUTED_LIGHT, TEXT_LIGHT),
             },
             secondary: Secondary {
-                base: pair(DEEP_BACKGROUND_LIGHT, MUTED_LIGHT),
-                weak: pair(BACKGROUND_LIGHT, MUTED_LIGHT),
-                strong: pair(SURFACE_DEEP_LIGHT, MUTED_LIGHT),
+                base: pair(SUNKEN_LIGHT, MUTED_LIGHT),
+                weak: pair(PAGE_LIGHT, MUTED_LIGHT),
+                strong: pair(CHROME_HOVERED_LIGHT, MUTED_LIGHT),
             },
             success: Success {
                 base: pair(SUCCESS, WHITE),
@@ -193,29 +204,29 @@ pub fn colors(theme: &IcedTheme) -> Colors {
     .scale_alpha(171.0 / 255.0);
 
     Colors {
-        background: extended.background.base.color,
-        deep_background: extended.background.weakest.color,
-        surface: extended.background.weak.color,
-        border: extended.background.neutral.color,
-        hover: extended.background.strong.color,
-        selection: extended.background.stronger.color,
-        window: extended.primary.weak.color,
-        window_border: extended.background.strongest.color,
-        surface_deep: extended.secondary.strong.color,
+        chrome: extended.primary.weak.color,
+        page: extended.background.base.color,
+        card: extended.background.weak.color,
+        raised: extended.background.neutral.color,
+        selected: extended.background.stronger.color,
+        hovered: extended.background.strong.color,
+        sunken: extended.background.weakest.color,
         control: if extended.is_dark {
             CONTROL
         } else {
             CONTROL_LIGHT
         },
+        chrome_border: extended.background.strongest.color,
+        chrome_hovered: extended.secondary.strong.color,
         text,
         muted: extended.secondary.weak.text,
         accent: theme.palette().primary,
         accent_muted: extended.primary.strong.color,
         scrim,
+        info: INFO,
         danger: theme.palette().danger,
-        danger_surface: theme.palette().danger,
-        warning_surface: theme.palette().warning,
-        success_surface: theme.palette().success,
+        warning: theme.palette().warning,
+        success: theme.palette().success,
     }
 }
 
@@ -225,16 +236,6 @@ pub fn for_mode(mode: Mode) -> IcedTheme {
         Mode::Light => light(),
         Mode::Dark | Mode::None => dark(),
     }
-}
-
-pub(crate) fn hint(theme: &IcedTheme) -> Pair {
-    let colors = colors(theme);
-    pair(colors.window, colors.text)
-}
-
-pub(crate) fn deep_surface(theme: &IcedTheme) -> Pair {
-    let colors = colors(theme);
-    pair(colors.surface_deep, colors.text)
 }
 
 pub(crate) fn muted(theme: &IcedTheme) -> Color {
@@ -256,12 +257,12 @@ pub fn application(theme: &IcedTheme) -> ApplicationStyle {
 /// Styles a standard application panel.
 pub fn panel(theme: &IcedTheme) -> container::Style {
     let colors = colors(theme);
-    surface(pair(colors.background, colors.text))
+    surface(pair(colors.page, colors.text))
 }
 
 pub(crate) fn card(theme: &IcedTheme) -> container::Style {
     let colors = colors(theme);
-    surface(pair(colors.surface, colors.text))
+    surface(pair(colors.card, colors.text))
 }
 
 /// A panel floating over the page, e.g. a menu. The design is flat, so a
@@ -269,7 +270,7 @@ pub(crate) fn card(theme: &IcedTheme) -> container::Style {
 /// sets it apart.
 pub(crate) fn overlay(theme: &IcedTheme) -> container::Style {
     let colors = colors(theme);
-    surface(pair(colors.selection, colors.text))
+    surface(pair(colors.selected, colors.text))
 }
 
 pub(crate) fn surface(colors: Pair) -> container::Style {
@@ -294,10 +295,6 @@ pub fn scrollbar(theme: &IcedTheme, status: scrollable::Status) -> scrollable::S
     style.vertical_rail = rail;
     style.horizontal_rail = rail;
     style
-}
-
-pub(crate) const fn info() -> Pair {
-    pair(INFO, WHITE)
 }
 
 fn custom(name: &'static str, palette: Palette, extended: Extended) -> IcedTheme {

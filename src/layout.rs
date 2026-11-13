@@ -505,7 +505,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                     && progress > 0.0
                     && let Some(bounds) = child_layout.bounds().intersection(&clip)
                 {
-                    let window = theme::colors(theme).window;
+                    let window = theme::colors(theme).chrome;
                     renderer.with_layer(bounds, |renderer| {
                         renderer.fill_quad(
                             renderer::Quad {

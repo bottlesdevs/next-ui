@@ -105,7 +105,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 
 fn style(current_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(theme::colors(current_theme).window)),
+        background: Some(Background::Color(theme::colors(current_theme).chrome)),
         border: Border::default().rounded(iced::border::top(6)),
         ..container::Style::default()
     }

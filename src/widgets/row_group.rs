@@ -187,7 +187,7 @@ fn boxed<'a, Message: Clone + 'a>(
                 .style(move |theme| {
                     let colors = crate::theme::colors(theme);
                     container::Style::default()
-                        .background(colors.surface)
+                        .background(colors.card)
                         .color(colors.accent_muted)
                         .border(Border::default().rounded(radius))
                 }),
@@ -294,7 +294,7 @@ fn panel_style(theme: &Theme) -> container::Style {
     let colors = crate::theme::colors(theme);
 
     container::Style::default()
-        .background(colors.border)
+        .background(colors.raised)
         .color(colors.text)
         .border(Border::default().rounded(RADIUS))
 }

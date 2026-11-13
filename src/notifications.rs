@@ -258,7 +258,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
         row![
             label(toggle, Message::ExpandNotifications),
             container(Space::new().width(1).height(18)).style(|theme| {
-                container::Style::default().background(next_ui::theme::colors(theme).selection)
+                container::Style::default().background(next_ui::theme::colors(theme).selected)
             }),
             label("Dismiss All".to_owned(), Message::DismissAllNotifications),
         ]
@@ -271,7 +271,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     .style(|theme| {
         let colors = next_ui::theme::colors(theme);
         container::Style::default()
-            .background(colors.border)
+            .background(colors.raised)
             .border(iced::Border::default().rounded(20))
     })
     .into()

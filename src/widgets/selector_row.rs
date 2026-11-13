@@ -181,13 +181,13 @@ where
             container(iced::widget::Space::new().height(1))
                 .width(Fill)
                 .style(|theme| {
-                    container::Style::default().background(crate::theme::colors(theme).selection)
+                    container::Style::default().background(crate::theme::colors(theme).selected)
                 }),
             list,
         ];
         let panel = container(list).width(Fill).style(move |theme| {
             container::Style::default()
-                .background(crate::theme::colors(theme).border)
+                .background(crate::theme::colors(theme).raised)
                 .border(Border::default().rounded(iced::border::bottom(if popup {
                     PANEL_RADIUS
                 } else {

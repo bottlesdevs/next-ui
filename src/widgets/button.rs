@@ -271,7 +271,7 @@ fn appearance(
     iced::widget::button::Style {
         background: if kind == ButtonKind::Transparent {
             if state.focused && !state.hovered {
-                Some(Background::Color(semantic.hover))
+                Some(Background::Color(semantic.hovered))
             } else {
                 None
             }
@@ -292,7 +292,7 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
 
     if disabled {
         return Pair {
-            color: colors.background,
+            color: colors.page,
             text: colors.muted,
         };
     }
@@ -301,20 +301,25 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
         ButtonKind::Primary => {
             if pressed {
                 Pair {
-                    color: colors.deep_background,
+                    color: colors.sunken,
                     text: colors.text,
                 }
-            } else if active {
-                crate::theme::deep_surface(theme)
             } else {
-                crate::theme::hint(theme)
+                Pair {
+                    color: if active {
+                        colors.chrome_hovered
+                    } else {
+                        colors.chrome
+                    },
+                    text: colors.text,
+                }
             }
         }
         ButtonKind::Secondary => Pair {
             color: if pressed {
-                colors.window
+                colors.chrome
             } else if active {
-                colors.background
+                colors.page
             } else {
                 colors.control
             },
@@ -322,11 +327,11 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
         },
         ButtonKind::Surface => {
             let background = if pressed {
-                colors.selection
+                colors.selected
             } else if active {
-                colors.hover
+                colors.hovered
             } else {
-                colors.surface
+                colors.card
             };
 
             Pair {
@@ -335,7 +340,7 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
             }
         }
         ButtonKind::Transparent => Pair {
-            color: colors.background,
+            color: colors.page,
             text: colors.muted,
         },
         ButtonKind::Accent => Pair {
@@ -344,7 +349,7 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
             } else {
                 colors.accent
             },
-            text: colors.window,
+            text: colors.chrome,
         },
         ButtonKind::Destructive => Pair {
             color: if pressed || active {

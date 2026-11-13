@@ -90,9 +90,9 @@ fn style(theme: &Theme, state: ActionState) -> button::Style {
 
     button::Style {
         background: if state.pressed {
-            Some(Background::Color(colors.selection))
+            Some(Background::Color(colors.selected))
         } else if state.hovered || state.focused {
-            Some(Background::Color(colors.hover))
+            Some(Background::Color(colors.hovered))
         } else {
             None
         },
@@ -135,7 +135,7 @@ impl<Message> canvas::Program<Message> for Outline {
                 },
                 ..canvas::Stroke::default()
                     .with_width(BORDER_WIDTH)
-                    .with_color(crate::theme::colors(theme).border)
+                    .with_color(crate::theme::colors(theme).raised)
             },
         );
 

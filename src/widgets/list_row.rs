@@ -375,7 +375,7 @@ fn control_style(theme: &Theme, corners: Radius) -> container::Style {
     let colors = crate::theme::colors(theme);
 
     container::Style::default()
-        .background(colors.surface)
+        .background(colors.card)
         .border(Border::default().rounded(corners))
         .color(colors.text)
 }
@@ -383,13 +383,13 @@ fn control_style(theme: &Theme, corners: Radius) -> container::Style {
 pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = crate::theme::colors(theme);
     let color = if state.pressed {
-        colors.selection
+        colors.selected
     } else if state.selected || state.focused {
-        colors.border
+        colors.raised
     } else if state.hovered {
-        colors.hover
+        colors.hovered
     } else {
-        colors.surface
+        colors.card
     };
 
     button::Style {
@@ -407,8 +407,8 @@ pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> butto
 
     button::Style {
         background: highlighted.then_some(Background::Color(match menu {
-            Menu::Floating => colors.hover,
-            Menu::Attached => colors.selection,
+            Menu::Floating => colors.hovered,
+            Menu::Attached => colors.selected,
         })),
         text_color: if highlighted {
             colors.text
