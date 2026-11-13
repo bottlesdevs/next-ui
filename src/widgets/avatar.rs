@@ -3,8 +3,6 @@ use iced::{
     widget::{container, text},
 };
 
-use super::text::TextExt as _;
-
 /// The outline of an [`Avatar`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum AvatarShape {
@@ -76,22 +74,25 @@ impl<'a, Message: 'a> From<Avatar<'a>> for Element<'a, Message> {
         let font = size * 0.4;
         // A capital fills only the top of its line box, which also holds room
         // for descenders; push it down so the glyph, not the box, is centred.
-        container(text(initial).size(font).medium())
-            .center(Length::Fixed(size))
-            .padding(iced::Padding::ZERO.top(font * 0.15))
-            .style(move |theme| {
-                let colors = crate::theme::colors(theme);
-                let (background, foreground) = match (color, active) {
-                    (Some(color), _) => (color, colors.text),
-                    (None, true) => (colors.accent, colors.window),
-                    (None, false) => (colors.selection, colors.text),
-                };
+        container(text(initial).size(font).font(iced::Font {
+            weight: iced::font::Weight::Bold,
+            ..iced::Font::DEFAULT
+        }))
+        .center(Length::Fixed(size))
+        .padding(iced::Padding::ZERO.top(font * 0.15))
+        .style(move |theme| {
+            let colors = crate::theme::colors(theme);
+            let (background, foreground) = match (color, active) {
+                (Some(color), _) => (color, colors.text),
+                (None, true) => (colors.accent, colors.window),
+                (None, false) => (colors.selection, colors.text),
+            };
 
-                container::Style::default()
-                    .background(background)
-                    .color(foreground)
-                    .border(Border::default().rounded(radius))
-            })
-            .into()
+            container::Style::default()
+                .background(background)
+                .color(foreground)
+                .border(Border::default().rounded(radius))
+        })
+        .into()
     }
 }
