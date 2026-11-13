@@ -1,21 +1,15 @@
 use iced::{
-    Alignment, Background, Border, Color, Element, Event, Fill, Length, Rectangle, Size, Theme,
-    Vector,
-    advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree, tree},
-    },
-    keyboard::{self, key},
+    Alignment, Background, Border, Color, Element, Fill, Theme,
+    advanced::widget::Id,
     widget::{column, container, row, scrollable, text, text_input},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    focus::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
     menu::{footer as panel_footer, overlay_item as menu_item, row_content},
+    popup::{AnchorMessage, Popup, PopupMessage},
     spacing,
     text::TextExt as _,
 };
@@ -133,15 +127,17 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         .width(Fill)
         .padding([spacing::SM, spacing::MD])
         .style(search_style);
+        let input: Element<'a, Message> = input.into();
         let (panel, visible, focus_targets) = panel(search.state, search.footer);
 
-        Element::new(SearchWidget {
-            input: input.into(),
-            panel,
-            visible,
-            focus_targets,
-            query: search.query,
-        })
+        Popup::new(
+            input.map(AnchorMessage::Emit),
+            panel.map(PopupMessage::Close),
+        )
+        .while_focused(visible, search.query)
+        .focus_targets(focus_targets)
+        .match_anchor_width()
+        .into()
     }
 }
 
@@ -224,276 +220,6 @@ fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Messa
     .width(Fill)
     .padding(spacing::MD)
     .into()
-}
-
-struct SearchWidget<'a, Message> {
-    input: Element<'a, Message>,
-    panel: Element<'a, Message>,
-    visible: bool,
-    focus_targets: Vec<Id>,
-    query: &'a str,
-}
-
-#[derive(Debug, Default)]
-struct SearchLocal {
-    input_focused: bool,
-    panel_focus: PopupFocusState,
-    dismissed: bool,
-    restore_input_focus: bool,
-    query: String,
-}
-
-impl SearchLocal {
-    fn popup_open(&self, visible: bool) -> bool {
-        visible
-            && !self.dismissed
-            && (self.input_focused || self.panel_focus != PopupFocusState::None)
-    }
-}
-
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for SearchWidget<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<SearchLocal>()
-    }
-
-    fn state(&self) -> tree::State {
-        tree::State::new(SearchLocal {
-            query: self.query.to_owned(),
-            ..SearchLocal::default()
-        })
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.input), Tree::new(&self.panel)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[&self.input, &self.panel]);
-        let state = tree.state.downcast_mut::<SearchLocal>();
-
-        if state.query != self.query {
-            state.query.clear();
-            state.query.push_str(self.query);
-            state.dismissed = false;
-        }
-
-        if !self.visible {
-            state.panel_focus = PopupFocusState::None;
-        }
-    }
-
-    fn size(&self) -> Size<Length> {
-        self.input.as_widget().size()
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &iced::Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        self.input
-            .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, limits)
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        self.input
-            .as_widget_mut()
-            .operate(&mut tree.children[0], layout, renderer, operation);
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        let state = tree.state.downcast_mut::<SearchLocal>();
-
-        if state.restore_input_focus {
-            focus_first_descendant(
-                self.input.as_widget_mut(),
-                &mut tree.children[0],
-                layout,
-                renderer,
-            );
-            state.restore_input_focus = false;
-            shell.request_redraw();
-        }
-
-        if state.dismissed
-            && matches!(
-                event,
-                Event::Mouse(mouse::Event::ButtonPressed(_))
-                    | Event::Touch(iced::touch::Event::FingerPressed { .. })
-            )
-            && event_cursor(event, cursor).is_over(layout.bounds())
-        {
-            state.dismissed = false;
-        }
-
-        if state.input_focused
-            && state.popup_open(self.visible)
-            && !self.focus_targets.is_empty()
-            && let Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(key::Named::Tab),
-                modifiers,
-                repeat: false,
-                ..
-            }) = event
-            && !modifiers.shift()
-        {
-            state.panel_focus = PopupFocusState::Requested;
-            unfocus_descendants(
-                self.input.as_widget_mut(),
-                &mut tree.children[0],
-                layout,
-                renderer,
-            );
-            state.input_focused = false;
-            shell.capture_event();
-            shell.request_redraw();
-            return;
-        }
-
-        self.input.as_widget_mut().update(
-            &mut tree.children[0],
-            event,
-            layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );
-
-        let input_focused = descendant_is_focused(
-            self.input.as_widget_mut(),
-            &mut tree.children[0],
-            layout,
-            renderer,
-        );
-
-        if input_focused && !state.input_focused {
-            state.dismissed = false;
-        }
-
-        state.input_focused = input_focused;
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        self.input.as_widget().mouse_interaction(
-            &tree.children[0],
-            layout,
-            cursor,
-            viewport,
-            renderer,
-        )
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        self.input.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            style,
-            layout,
-            cursor,
-            viewport,
-        );
-    }
-
-    fn overlay<'a>(
-        &'a mut self,
-        tree: &'a mut Tree,
-        layout: Layout<'a>,
-        renderer: &iced::Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        let (state, children) = (&mut tree.state, &mut tree.children);
-        let state = state.downcast_mut::<SearchLocal>();
-
-        if !state.popup_open(self.visible) {
-            return self.input.as_widget_mut().overlay(
-                &mut children[0],
-                layout,
-                renderer,
-                viewport,
-                translation,
-            );
-        }
-
-        let anchor = Rectangle::new(
-            layout.bounds().position() + translation,
-            layout.bounds().size(),
-        );
-        let SearchLocal {
-            panel_focus,
-            dismissed,
-            restore_input_focus,
-            ..
-        } = state;
-
-        Some(overlay::Element::new(Box::new(
-            PopupCore::new(
-                anchor,
-                *viewport,
-                self.panel.as_widget_mut(),
-                &mut children[1],
-                0.0,
-                PopupFocus {
-                    state: panel_focus,
-                    restore_anchor: restore_input_focus,
-                    targets: &self.focus_targets,
-                },
-                move |reason| {
-                    *dismissed = true;
-                    match reason {
-                        DismissReason::OutsidePress | DismissReason::FocusLost => {
-                            DismissOutcome::PassThrough
-                        }
-                        DismissReason::ContentMessage { keyboard: false } => {
-                            DismissOutcome::Captured
-                        }
-                        DismissReason::Escape
-                        | DismissReason::ContentMessage { keyboard: true } => {
-                            DismissOutcome::CapturedAndRestoreFocus
-                        }
-                    }
-                },
-            )
-            .match_anchor_width(),
-        )))
-    }
 }
 
 fn search_style(theme: &Theme) -> container::Style {

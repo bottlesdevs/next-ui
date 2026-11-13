@@ -1,9 +1,6 @@
 use iced::{
-    Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
-    advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree, tree},
-    },
+    Element, Fill, Length, Theme,
+    advanced::widget::Id,
     widget::{
         Space, column, container, row, scrollable, svg, text, text::Fragment, text::IntoFragment,
         tooltip,
@@ -14,10 +11,10 @@ use crate::icons::Icon;
 
 use super::text::TextExt as _;
 use super::{
-    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
     menu::{self, overlay_item as menu_item, row_content_with},
     picker_row::PickerRow,
+    popup::{AnchorMessage, Popup, PopupMessage},
     spacing,
 };
 
@@ -143,11 +140,15 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
             .width(Length::Fixed(popover.width))
             .padding(spacing::MD);
 
-        Element::new(PopoverWidget {
-            trigger: popover.trigger,
-            panel: container(content).style(crate::theme::overlay).into(),
-            focus_targets,
-        })
+        let panel: Element<'a, Message> = container(content).style(crate::theme::overlay).into();
+
+        Popup::new(
+            popover.trigger.map(|()| AnchorMessage::Toggle),
+            panel.map(PopupMessage::Close),
+        )
+        .focus_targets(focus_targets)
+        .viewport_inset(spacing::SM)
+        .into()
     }
 }
 
@@ -290,269 +291,6 @@ fn item_row<'a, Message: Clone + 'a>(
     }
 }
 
-struct PopoverWidget<'a, Message> {
-    trigger: Element<'a, ()>,
-    panel: Element<'a, Message>,
-    focus_targets: Vec<Id>,
-}
-
-fn unexpected_trigger_overlay_message<Message>((): ()) -> Message {
-    unreachable!("popover trigger overlays are presentational")
-}
-
-#[derive(Debug, Default)]
-struct State {
-    open: bool,
-    focus_trigger: bool,
-    panel_focus: PopupFocusState,
-}
-
-impl State {
-    fn open(&mut self, focus_content: bool) {
-        self.open = true;
-        self.focus_trigger = false;
-        self.panel_focus = if focus_content {
-            PopupFocusState::Requested
-        } else {
-            PopupFocusState::None
-        };
-    }
-
-    fn dismiss(&mut self) {
-        self.open = false;
-        self.focus_trigger = true;
-        self.panel_focus = PopupFocusState::None;
-    }
-
-    fn toggle(&mut self, focus_content: bool) {
-        if self.open {
-            self.dismiss();
-        } else {
-            self.open(focus_content);
-        }
-    }
-}
-
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopoverWidget<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
-    }
-
-    fn state(&self) -> tree::State {
-        tree::State::new(State::default())
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.trigger), Tree::new(&self.panel)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.children[0].diff(&self.trigger);
-        tree.children[1].diff(&self.panel);
-    }
-
-    fn size(&self) -> Size<Length> {
-        self.trigger.as_widget().size()
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &iced::Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        self.trigger
-            .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, limits)
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        self.trigger
-            .as_widget_mut()
-            .operate(&mut tree.children[0], layout, renderer, operation);
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        let state = tree.state.downcast_mut::<State>();
-
-        if state.focus_trigger {
-            super::focus::focus_first_descendant(
-                self.trigger.as_widget_mut(),
-                &mut tree.children[0],
-                layout,
-                renderer,
-            );
-            state.focus_trigger = false;
-        }
-
-        let mut messages = Vec::new();
-        let mut trigger_shell = Shell::new(&mut messages);
-
-        self.trigger.as_widget_mut().update(
-            &mut tree.children[0],
-            event,
-            layout,
-            cursor,
-            renderer,
-            clipboard,
-            &mut trigger_shell,
-            viewport,
-        );
-
-        if trigger_shell.is_empty() {
-            shell.merge(trigger_shell, |()| unreachable!("empty trigger shell"));
-        } else {
-            let opening = !state.open;
-            let focus_panel =
-                opening && !self.focus_targets.is_empty() && matches!(event, Event::Keyboard(_));
-            if focus_panel {
-                super::focus::unfocus_descendants(
-                    self.trigger.as_widget_mut(),
-                    &mut tree.children[0],
-                    layout,
-                    renderer,
-                );
-            }
-            state.toggle(focus_panel);
-            shell.capture_event();
-            shell.request_redraw();
-        }
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        self.trigger.as_widget().mouse_interaction(
-            &tree.children[0],
-            layout,
-            cursor,
-            viewport,
-            renderer,
-        )
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        self.trigger.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            style,
-            layout,
-            cursor,
-            viewport,
-        );
-    }
-
-    fn overlay<'a>(
-        &'a mut self,
-        tree: &'a mut Tree,
-        layout: Layout<'a>,
-        renderer: &iced::Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        let (state, children) = (&mut tree.state, &mut tree.children);
-        let state = state.downcast_mut::<State>();
-
-        let bounds = layout.bounds();
-
-        if !state.open {
-            return self
-                .trigger
-                .as_widget_mut()
-                .overlay(&mut children[0], layout, renderer, viewport, translation)
-                .map(|content| content.map(&unexpected_trigger_overlay_message::<Message>));
-        }
-
-        let State {
-            open,
-            focus_trigger,
-            panel_focus,
-        } = state;
-        let anchor = Rectangle::new(bounds.position() + translation, bounds.size());
-
-        Some(overlay::Element::new(Box::new(PopupCore::new(
-            anchor,
-            *viewport,
-            self.panel.as_widget_mut(),
-            &mut children[1],
-            spacing::SM,
-            PopupFocus {
-                state: panel_focus,
-                restore_anchor: focus_trigger,
-                targets: &self.focus_targets,
-            },
-            move |reason| {
-                *open = false;
-                match reason {
-                    DismissReason::FocusLost | DismissReason::OutsidePress => {
-                        DismissOutcome::PassThrough
-                    }
-                    DismissReason::ContentMessage { keyboard: false } => DismissOutcome::Captured,
-                    DismissReason::Escape | DismissReason::ContentMessage { keyboard: true } => {
-                        DismissOutcome::CapturedAndRestoreFocus
-                    }
-                }
-            },
-        ))))
-    }
-}
-
 fn tooltip_style(theme: &Theme) -> container::Style {
     crate::theme::surface(crate::theme::deep_surface(theme))
-}
-
-#[cfg(test)]
-mod tests {
-    use iced::advanced::widget::Tree;
-
-    use super::*;
-
-    fn popover() -> Element<'static, ()> {
-        Popover::new(Button::new("Open"))
-            .item(PopoverItem::new("Item").on_select(()))
-            .into()
-    }
-
-    #[test]
-    fn rebuilding_retains_local_disclosure_state() {
-        let popover = popover();
-        let mut tree = Tree::new(&popover);
-        tree.state.downcast_mut::<State>().open = true;
-
-        tree.diff(self::popover());
-
-        assert!(tree.state.downcast_ref::<State>().open);
-        assert_eq!(tree.children.len(), 2);
-    }
 }

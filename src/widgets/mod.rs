@@ -3,6 +3,7 @@ mod anchored_overlay;
 pub(crate) mod focus;
 mod focusable_action;
 mod menu;
+mod popup;
 mod style;
 
 use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
