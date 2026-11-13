@@ -311,7 +311,7 @@ fn downloads<'a, Message: Clone + 'a>(
         container(Icon::Download.view().width(12).height(12)).center(24),
     ])
     .kind(ButtonKind::Transparent);
-    // Each download is a card of its own, a step lighter than the popover:
+    // Each download is a card of its own, set a step darker into the popover:
     // its name and status over the progress bar, the percentage beside it.
     let rows = downloads
         .into_iter()
@@ -351,7 +351,7 @@ fn downloads<'a, Message: Clone + 'a>(
             })
             .style(|theme| {
                 container::Style::default()
-                    .background(theme::colors(theme).hover)
+                    .background(theme::colors(theme).border)
                     .border(iced::Border::default().rounded(8))
             })
             .into()
