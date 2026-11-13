@@ -201,9 +201,7 @@ pub fn button(model: &Model) -> Element<'_, Message> {
     let selected = profiles.selected();
     let trigger = Button::custom(
         row![
-            text(selected.name.as_str())
-                .size(text_size::HEADING)
-                .muted(),
+            text(selected.name.as_str()).size(text_size::HEADING),
             Avatar::new(initial(&selected.name)).size(32.0).active(true),
         ]
         .spacing(10)

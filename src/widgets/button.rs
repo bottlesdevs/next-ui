@@ -225,23 +225,24 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
     }
 }
 
+/// The button's icon, in the colour of its label so both follow its state.
 fn icon_element<'a, Message: 'a>(
     icon: Icon,
     size: f32,
     kind: ButtonKind,
     disabled: bool,
 ) -> Element<'a, Message> {
-    icon.view()
-        .width(size)
-        .height(size)
-        .style(move |theme: &Theme, _| svg::Style {
-            color: Some(if disabled || kind == ButtonKind::Primary {
-                crate::theme::colors(theme).muted
-            } else {
-                colors(theme, false, false, false, kind).text
-            }),
-        })
-        .into()
+    if disabled || kind == ButtonKind::Primary {
+        icon.view()
+            .width(size)
+            .height(size)
+            .style(|theme: &Theme, _| svg::Style {
+                color: Some(crate::theme::colors(theme).muted),
+            })
+            .into()
+    } else {
+        icon.inherited(size).into()
+    }
 }
 
 fn appearance(
