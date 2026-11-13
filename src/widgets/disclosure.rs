@@ -9,11 +9,10 @@ use iced::{
         svg::Renderer as _,
         widget::{Operation, Tree, tree},
     },
-    keyboard::{self, key},
-    touch,
 };
 
 use super::{
+    anchored_overlay::dismisses,
     focusable_action::{ActionState, Interaction},
     list_row,
     popup::{self, PopupMessage},
@@ -584,19 +583,4 @@ fn parts(layout: Layout<'_>) -> (Layout<'_>, Layout<'_>) {
         children.next().expect("disclosure header"),
         children.next().expect("disclosure panel"),
     )
-}
-
-fn dismisses(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
-    match event {
-        Event::Mouse(mouse::Event::ButtonPressed(_)) => cursor
-            .position()
-            .is_some_and(|position| !bounds.contains(position)),
-        Event::Touch(touch::Event::FingerPressed { position, .. }) => !bounds.contains(*position),
-        Event::Keyboard(keyboard::Event::KeyPressed {
-            key: keyboard::Key::Named(key::Named::Escape),
-            repeat: false,
-            ..
-        }) => true,
-        _ => false,
-    }
 }
