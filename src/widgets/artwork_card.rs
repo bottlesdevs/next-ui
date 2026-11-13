@@ -56,7 +56,7 @@ impl<'a, Message> CardAction<'a, Message> {
 
 pub struct ArtworkCard<'a, Message> {
     title: &'a str,
-    subtitle: &'a str,
+    subtitle: iced::advanced::text::Fragment<'a>,
     banner: Option<image::Handle>,
     menu: Option<CardAction<'a, Message>>,
     secondary: Option<CardAction<'a, Message>>,
@@ -64,10 +64,10 @@ pub struct ArtworkCard<'a, Message> {
 }
 
 impl<'a, Message> ArtworkCard<'a, Message> {
-    pub fn new(title: &'a str, subtitle: &'a str) -> Self {
+    pub fn new(title: &'a str, subtitle: impl iced::advanced::text::IntoFragment<'a>) -> Self {
         Self {
             title,
-            subtitle,
+            subtitle: subtitle.into_fragment(),
             banner: None,
             menu: None,
             secondary: None,

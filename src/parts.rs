@@ -20,7 +20,7 @@ use next_ui::{
 use crate::{
     app::Control,
     manage_profiles,
-    model::{Activity, Download, Experience, Listing, Model, Target},
+    model::{Activity, Download, Experience, Listing, Model, Source, Target},
 };
 
 /// A card for every program and library entry whose title contains `query`,
@@ -59,6 +59,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
         }
     }
 
+    let plugins = model.installed_plugins();
     let cards = model
         .entries()
         .into_iter()
@@ -70,9 +71,16 @@ pub fn library_grid<'a, Message: Clone + 'a>(
             let card = ArtworkCard::new(
                 entry.title,
                 match activity {
-                    Activity::Launching => "Launching…",
-                    Activity::Running => "Running",
-                    _ => entry.source,
+                    Activity::Launching => "Launching…".to_owned(),
+                    Activity::Running => "Running".to_owned(),
+                    _ => match entry.source {
+                        Source::Bottle(name) => name.to_owned(),
+                        Source::Standalone => "Program".to_owned(),
+                        Source::Plugin(id) => plugins
+                            .iter()
+                            .find(|plugin| plugin.id == id)
+                            .map_or_else(|| id.to_owned(), |plugin| plugin.name.clone()),
+                    },
                 },
             )
             .primary(
