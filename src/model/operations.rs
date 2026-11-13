@@ -59,6 +59,8 @@ pub(crate) struct Pending {
 #[derive(Clone, Debug)]
 pub(crate) enum Outcome {
     Done,
+    /// Stopped before it finished, e.g. a download the user cancelled.
+    Cancelled,
     /// The prefix of a created bottle.
     Created(Uuid),
 }
@@ -118,7 +120,7 @@ impl Operations {
                 };
             match result {
                 Ok(value) => Ok(outcome(value)),
-                Err(error::Error::Cancelled) => Ok(Outcome::Done),
+                Err(error::Error::Cancelled) => Ok(Outcome::Cancelled),
                 Err(error) => Err(error.to_string()),
             }
         };
