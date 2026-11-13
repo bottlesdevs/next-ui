@@ -330,9 +330,14 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
                 text: colors.muted,
             }
         }
+        // No fill, so the pointer shows in the label, as it does on tabs.
         ButtonKind::Transparent => Pair {
             color: colors.page,
-            text: colors.muted,
+            text: if active || pressed {
+                colors.text
+            } else {
+                colors.muted
+            },
         },
         ButtonKind::Accent => Pair {
             color: if pressed || active {
