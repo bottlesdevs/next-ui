@@ -196,13 +196,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
         let colors = next_ui::theme::colors(theme);
         container::Style::default()
             .background(colors.border)
-            // Flat: a hairline, not a shadow, sets it off the page.
-            .border(
-                iced::Border::default()
-                    .rounded(20)
-                    .width(1)
-                    .color(colors.window),
-            )
+            .border(iced::Border::default().rounded(20))
     })
     .into()
 }
