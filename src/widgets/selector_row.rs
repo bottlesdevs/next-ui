@@ -219,13 +219,13 @@ where
                 container::Style::default()
                     .background(colors.border)
                     .border(Border::default().rounded(iced::border::bottom(PANEL_RADIUS)))
-                    // Offset by as much as it blurs, so the shadow fades out
-                    // before the row: the popup continues the row rather
-                    // than floating over it.
+                    // Soft and pushed down, so the shadow has faded out by
+                    // the row: the popup continues the row rather than
+                    // floating over it.
                     .shadow(Shadow {
-                        color: iced::Color::BLACK.scale_alpha(0.35),
-                        offset: Vector::new(0.0, 16.0),
-                        blur_radius: 16.0,
+                        color: iced::Color::BLACK.scale_alpha(0.22),
+                        offset: Vector::new(0.0, 22.0),
+                        blur_radius: 30.0,
                     })
             } else {
                 container::Style::default()
