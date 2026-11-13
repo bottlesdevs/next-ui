@@ -33,6 +33,15 @@ pub enum ButtonKind {
     Destructive,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ButtonSize {
+    #[default]
+    Regular,
+    /// Tighter padding, for a button set into a dense list such as a
+    /// picker's options.
+    Compact,
+}
+
 pub struct Button<'a, Message> {
     content: Element<'a, Message>,
     tooltip: Option<&'a str>,
@@ -45,7 +54,7 @@ pub struct Button<'a, Message> {
     kind: ButtonKind,
     on_press: Option<Message>,
     loading: bool,
-    compact: bool,
+    size: ButtonSize,
 }
 
 impl<'a, Message> Button<'a, Message> {
@@ -66,15 +75,17 @@ impl<'a, Message> Button<'a, Message> {
             kind: ButtonKind::Secondary,
             on_press: None,
             loading: false,
-            compact: false,
+            size: ButtonSize::Regular,
         }
     }
 
-    /// Tightens the padding, for a button set into a dense list such as a
-    /// picker's options.
-    pub fn compact(mut self) -> Self {
-        self.compact = true;
+    pub fn size(mut self, size: ButtonSize) -> Self {
+        self.size = size;
         self
+    }
+
+    pub fn compact(self) -> Self {
+        self.size(ButtonSize::Compact)
     }
 
     pub fn icon_only(tooltip: &'a str, icon: Icon) -> Self {
@@ -198,7 +209,9 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
             .style(move |theme, status| appearance(theme, status, shape, kind));
 
         control = match shape {
-            Shape::Rectangular | Shape::Pill if button.compact => control.padding([8.0, 11.0]),
+            Shape::Rectangular | Shape::Pill if button.size == ButtonSize::Compact => {
+                control.padding([8.0, 11.0])
+            }
             Shape::Rectangular | Shape::Pill => control.padding(if kind == ButtonKind::Primary {
                 [spacing::MD, spacing::XG]
             } else {
