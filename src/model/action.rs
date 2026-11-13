@@ -14,6 +14,7 @@ use super::{
     defaults,
     library::Target,
     operations::{Outcome, Subject, Verb},
+    report::{Refusal, Report},
     settings::Experience,
 };
 
@@ -165,10 +166,7 @@ impl Model {
                         .perform(Subject::Program { prefix, group }, Verb::Stop, kill)
                         .map(|(subject, event)| Message::Operation(subject, event))
                 }
-                Err(error) => {
-                    self.notifications.error(error.to_string());
-                    Task::none()
-                }
+                Err(error) => self.report(Report::Error(error.to_string())),
             },
             Action::Delete(id) => {
                 let operation = self.core.prefixes().delete(id);
@@ -195,19 +193,13 @@ impl Model {
                     });
                 }
                 let Some(runner) = releases.release::<Runner>(release) else {
-                    self.notifications
-                        .error("This release is no longer downloaded");
-                    return Task::none();
+                    return self.report(Report::Refused(Refusal::ReleaseGone));
                 };
                 // Only Proton runners are launched through UMU, as at creation.
                 let umu = match runner.flavor() {
                     RunnerFlavor::Proton => match self.umu() {
                         Some(umu) => Some(umu),
-                        None => {
-                            self.notifications
-                                .error("Proton runners need UMU, which isn't downloaded");
-                            return Task::none();
-                        }
+                        None => return self.report(Report::Refused(Refusal::NoUmu)),
                     },
                     RunnerFlavor::Wine => None,
                 };
@@ -256,16 +248,10 @@ impl Model {
                         handle.launch(group, spec),
                     )
                 }
-                Err(error) => {
-                    self.notifications.error(error.to_string());
-                    Task::none()
-                }
+                Err(error) => self.report(Report::Error(error.to_string())),
             },
             Action::InstallSuggestion(name) => {
-                self.notifications.info(format!(
-                    "Installing {name} needs bottle recipes, which aren’t available yet"
-                ));
-                Task::none()
+                self.report(Report::Refused(Refusal::NoRecipes(name)))
             }
             Action::AddStandalone {
                 name,
@@ -273,9 +259,7 @@ impl Model {
                 options,
             } => {
                 let Some(runner) = self.default_runner() else {
-                    self.notifications
-                        .error("A runner is required to add a program");
-                    return Task::none();
+                    return self.report(Report::Refused(Refusal::NoRunner));
                 };
                 let spec = program_spec(&executable, &options);
                 self.create_prefix(
@@ -336,21 +320,16 @@ impl Model {
         match target {
             Target::Program { prefix, group } => {
                 let Some(spec) = self.spec(prefix, group) else {
-                    self.notifications.error("This program no longer exists");
-                    return Task::none();
+                    return self.report(Report::Refused(Refusal::ProgramGone));
                 };
                 match self.core.prefixes().open(prefix) {
                     Ok(prefix) => self.start(subject, Verb::Launch, prefix.launch(group, spec)),
-                    Err(error) => {
-                        self.notifications.error(error.to_string());
-                        Task::none()
-                    }
+                    Err(error) => self.report(Report::Error(error.to_string())),
                 }
             }
             Target::Entry { plugin, id } => {
                 let Some(library) = self.plugins.get::<Library>(&plugin) else {
-                    self.notifications.error("This plugin is no longer loaded");
-                    return Task::none();
+                    return self.report(Report::Refused(Refusal::PluginGone));
                 };
                 let launch = async move {
                     library
@@ -371,9 +350,7 @@ impl Model {
             self.sources.addons.release::<Runner>(runner),
             self.winebridge(),
         ) else {
-            self.notifications
-                .error("A runner and WineBridge are required to create a bottle");
-            return Task::none();
+            return self.report(Report::Refused(Refusal::NoRunnerOrWineBridge));
         };
         // Only Proton runners are launched through UMU.
         let umu = match runner.flavor() {
@@ -460,10 +437,7 @@ impl Model {
     ) -> Task<Message> {
         match self.core.prefixes().open(id) {
             Ok(prefix) => self.start(Subject::Prefix(id), verb, operation(&prefix)),
-            Err(error) => {
-                self.notifications.error(error.to_string());
-                Task::none()
-            }
+            Err(error) => self.report(Report::Error(error.to_string())),
         }
     }
 

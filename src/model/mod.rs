@@ -11,6 +11,7 @@ mod defaults;
 mod library;
 mod operations;
 mod records;
+mod report;
 mod settings;
 mod sources;
 
@@ -25,17 +26,14 @@ pub(crate) use action::{Action, Change};
 pub(crate) use components::AvailableRelease;
 pub(crate) use defaults::{REQUIRED, required_available};
 pub(crate) use library::{Activity, Bottle, Program, Target};
-pub(crate) use operations::{Operations, Subject, Verb};
+pub(crate) use operations::{Operations, Outcome, Subject, Verb};
+pub(crate) use report::{Refusal, Report};
 pub(crate) use settings::Experience;
 pub(crate) use sources::{Listing, Sources};
 
-use crate::{
-    notifications::{Follow, Notification, Notifications},
-    profiles::Profiles,
-};
+use crate::profiles::Profiles;
 use collection::Collection;
-use next_ui::widget::InfoCardKind;
-use operations::{Finished, Outcome};
+use operations::Finished;
 use records::Saved;
 use settings::Settings;
 
@@ -47,7 +45,8 @@ pub(crate) struct Model {
     collection: Saved<Collection>,
     pub(crate) profiles: Saved<Profiles>,
     pub(crate) operations: Operations,
-    pub(crate) notifications: Notifications,
+    /// What happened since the shell last took them, oldest first.
+    reports: Vec<Report>,
     tracker: TaskTracker,
 }
 
@@ -154,21 +153,15 @@ impl Model {
             collection: Saved::new(boot.collection, Collection::path()),
             profiles: Saved::new(boot.profiles, Profiles::path()),
             operations: Operations::new(tracker.clone()),
-            notifications: Notifications::default(),
+            reports: boot
+                .plugin_failures
+                .into_iter()
+                .map(|(id, error)| Report::PluginFailed { id, error })
+                .collect(),
             core: boot.core,
             plugins: boot.plugins,
             tracker,
         };
-        for (id, error) in boot.plugin_failures {
-            model.notifications.push(
-                Notification::new(
-                    InfoCardKind::Warning,
-                    "A plugin couldn’t load",
-                    format!("{id}: {error}"),
-                )
-                .action("Open Plugins", Follow::Plugins),
-            );
-        }
         let watch = Sources::watch(&model.core, &model.plugins).map(Message::Source);
         let prune = model.prune();
         (model, Task::batch([watch, prune]))
@@ -195,57 +188,39 @@ impl Model {
                 else {
                     return Task::none();
                 };
-                match (&subject, verb, result) {
-                    // Cancelling isn't news: the row the download was in
-                    // shows it gone.
-                    (_, _, Ok(Outcome::Cancelled)) => {}
-                    // Essentials show their progress where they were
-                    // started, so finishing needs no notification.
-                    (Subject::Addon(release), Verb::Fetch, Ok(outcome)) => {
-                        if let Some(then) = then {
-                            let name = self.release_name(*release);
-                            self.notifications.success(
-                                format!("{name} downloaded"),
-                                "It’s selected in the bottle.",
-                            );
-                            return self.follow(then, outcome);
-                        }
+                let follow = match (&then, &result) {
+                    (Some(then), Ok(outcome @ (Outcome::Done | Outcome::Created(_)))) => {
+                        Some((then.clone(), outcome.clone()))
                     }
-                    (Subject::Addon(release), Verb::Fetch, Err(error)) => {
-                        let name = self.release_name(*release);
-                        let retry = match then {
-                            Some(Action::UseRelease { prefix, release }) => {
-                                Action::FetchRelease { prefix, release }
-                            }
-                            _ => Action::Download(*release),
-                        };
-                        self.notifications.push(
-                            Notification::new(
-                                InfoCardKind::Error,
-                                "Error",
-                                format!("Couldn’t download {name}. {error}"),
-                            )
-                            .action("Retry", Follow::Act(retry)),
-                        );
-                        return Task::none();
-                    }
-                    (_, _, Err(error)) => {
-                        self.notifications.error(error);
-                        return Task::none();
-                    }
-                    (_, _, Ok(outcome)) => {
-                        if let Some(then) = then {
-                            return self.follow(then, outcome);
-                        }
-                    }
+                    _ => None,
+                };
+                self.reports.push(Report::Finished {
+                    subject,
+                    verb,
+                    then,
+                    result,
+                });
+                if let Some((then, outcome)) = follow {
+                    return self.follow(then, outcome);
                 }
             }
             Message::Saved(result) => {
                 if let Err(error) = result {
-                    self.notifications.error(error);
+                    self.reports.push(Report::Error(error));
                 }
             }
         }
+        Task::none()
+    }
+
+    /// Takes what happened since the last call, oldest first.
+    pub(crate) fn take_reports(&mut self) -> Vec<Report> {
+        std::mem::take(&mut self.reports)
+    }
+
+    /// Notes `report` for the shell, starting nothing.
+    fn report(&mut self, report: Report) -> Task<Message> {
+        self.reports.push(report);
         Task::none()
     }
 
@@ -282,8 +257,7 @@ impl Model {
     ) -> Task<Message> {
         let mut changed = self.profiles.clone();
         if let Err(error) = change(&mut changed) {
-            self.notifications.error(error);
-            return Task::none();
+            return self.report(Report::Error(error));
         }
         let save = self.profiles.change(move |profiles| *profiles = changed);
         self.write(save)
@@ -357,12 +331,6 @@ impl Model {
             .catalogs
             .entry::<bottles_core::AddonRole>(id)
             .map(|entry| label(entry.name(), entry.version()))
-    }
-
-    /// A catalog release's name and version, or a stand-in.
-    fn release_name(&self, id: uuid::Uuid) -> String {
-        self.release_label(id)
-            .unwrap_or_else(|| "the release".to_owned())
     }
 
     /// The releases being downloaded, by name.
