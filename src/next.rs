@@ -193,7 +193,7 @@ fn component_switch<'a>(
         let download = release.download.as_ref()?;
         (download.then_select == Some(prefix)).then(|| {
             let percent = download
-                .progress
+                .fraction()
                 .map(|progress| format!(" {}%", (progress * 100.0).round()))
                 .unwrap_or_default();
             format!("Downloading {}{percent}", release.label)

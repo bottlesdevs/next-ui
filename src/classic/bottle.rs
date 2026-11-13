@@ -411,7 +411,7 @@ fn available_rows<'a>(
         match release.download {
             Some(download) => column![
                 label,
-                ProgressBar::new(download.progress.unwrap_or(0.0)).percentage()
+                ProgressBar::new(download.fraction().unwrap_or(0.0)).percentage()
             ]
             .spacing(4)
             .into(),
