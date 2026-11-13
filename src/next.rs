@@ -202,7 +202,7 @@ impl State {
                 RowGroup::new()
                     .title("Graphics")
                     .row(switch(Slot::Dxvk, "DXVK", "Vulkan-based D3D9/D3D10/D3D11"))
-                    .row(switch(Slot::Vkd3d, "VKD3D-Proton", "Vulkan-based D3D12"))
+                    .row(switch(Slot::Vkd3d, "VKD3D", "Vulkan-based D3D12"))
                     .row(switch(
                         Slot::LatencyFlex,
                         "LatencyFlex",
