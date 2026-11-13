@@ -51,12 +51,12 @@ pub struct SelectorRow<'a, T, Message> {
 /// options that are ready to select.
 pub struct AvailableOption<'a, Message> {
     label: text::Fragment<'a>,
-    state: AvailableState<'a, Message>,
+    state: AvailableState<Message>,
 }
 
-enum AvailableState<'a, Message> {
+enum AvailableState<Message> {
     Download(Message),
-    Progress(f32, &'a str),
+    Progress(f32),
 }
 
 impl<'a, Message> AvailableOption<'a, Message> {
@@ -68,12 +68,11 @@ impl<'a, Message> AvailableOption<'a, Message> {
         }
     }
 
-    /// An option that is downloading, with a status line such as
-    /// "Selected when downloaded".
-    pub fn progress(label: impl text::IntoFragment<'a>, progress: f32, status: &'a str) -> Self {
+    /// An option that is downloading, with its progress.
+    pub fn progress(label: impl text::IntoFragment<'a>, progress: f32) -> Self {
         Self {
             label: label.into_fragment(),
-            state: AvailableState::Progress(progress, status),
+            state: AvailableState::Progress(progress),
         }
     }
 }
@@ -264,9 +263,8 @@ fn available_row<'a, Message: Clone + 'a>(
         .spacing(spacing::SM)
         .align_y(Alignment::Center)
         .into(),
-        AvailableState::Progress(progress, status) => column![
+        AvailableState::Progress(progress) => column![
             text(option.label).label().muted(),
-            text(status).detail().muted(),
             ProgressBar::new(progress).percentage(),
         ]
         .spacing(4)

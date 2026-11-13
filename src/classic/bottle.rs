@@ -406,15 +406,9 @@ fn available_options<'a>(
     releases
         .into_iter()
         .map(move |release| match release.download {
-            Some(download) => AvailableOption::progress(
-                release.label,
-                download.progress.unwrap_or(0.0),
-                if download.then_select == Some(prefix) {
-                    "Selected when downloaded"
-                } else {
-                    "Downloading"
-                },
-            ),
+            Some(download) => {
+                AvailableOption::progress(release.label, download.progress.unwrap_or(0.0))
+            }
             None => AvailableOption::download(
                 release.label,
                 Message::Act(Action::FetchRelease {
