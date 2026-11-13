@@ -20,14 +20,16 @@ use super::{
     draw_caret,
     focusable_action::Interaction,
     list_row::{self, ListRow},
-    menu::{self, item as menu_item, row_content},
+    menu::{self, item as menu_item},
     progress_bar::ProgressBar,
     spacing,
     switcher::Switcher,
     text::TextExt as _,
 };
 
-const PANEL_PADDING: [f32; 2] = [spacing::MD, spacing::SM];
+const PANEL_PADDING: [f32; 2] = [spacing::SM, spacing::SM];
+/// Options read smaller than the row's title, as a list under it.
+const OPTION_SIZE: f32 = 15.0;
 const RADIUS: f32 = 6.0;
 /// The free corners of a popup panel, rounder than the row it hangs from.
 const PANEL_RADIUS: f32 = 8.0;
@@ -169,11 +171,12 @@ where
                 .map(|on_selected| on_selected(option.clone()));
 
             let current = selected == Some(option);
-            let mut content = row_content(label(option).into(), None, None);
+            let mut content =
+                row![text(label(option)).size(OPTION_SIZE).width(Fill)].align_y(Alignment::Center);
             if current {
                 content = content.push(Icon::Checkmark.view().width(16).height(16));
             }
-            menu_item(content, message, current).into()
+            menu_item(container(content).padding([6, 0]), message, current).into()
         });
         let mut list = Column::new().width(Fill);
         // A selector that can download names what's already downloaded,
@@ -239,7 +242,7 @@ where
 }
 
 fn section_heading<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
-    container(text(label).size(14).muted())
+    container(text(label).size(13).muted())
         .padding([spacing::XS, spacing::MD])
         .into()
 }
@@ -249,14 +252,15 @@ fn available_row<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let body: Element<'a, Message> = match option.state {
         AvailableState::Download(message) => row![
-            text(option.label).label().muted().width(Fill),
+            text(option.label).size(OPTION_SIZE).muted().width(Fill),
             // Downloading keeps the options open, so the download's progress
             // shows in place.
             KeepOpen::new(
-                Button::new("Download")
+                Button::custom(text("Download").size(14))
                     .trailing_icon(Icon::Download)
-                    .icon_size(16.0)
+                    .icon_size(14.0)
                     .kind(ButtonKind::Secondary)
+                    .compact()
                     .on_press(message),
             ),
         ]
@@ -264,7 +268,7 @@ fn available_row<'a, Message: Clone + 'a>(
         .align_y(Alignment::Center)
         .into(),
         AvailableState::Progress(progress) => column![
-            text(option.label).label().muted(),
+            text(option.label).size(OPTION_SIZE).muted(),
             ProgressBar::new(progress).percentage(),
         ]
         .spacing(4)

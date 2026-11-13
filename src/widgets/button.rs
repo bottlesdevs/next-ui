@@ -46,6 +46,7 @@ pub struct Button<'a, Message> {
     id: Option<Id>,
     on_press: Option<Message>,
     loading: bool,
+    compact: bool,
 }
 
 impl<'a, Message> Button<'a, Message> {
@@ -67,7 +68,15 @@ impl<'a, Message> Button<'a, Message> {
             id: None,
             on_press: None,
             loading: false,
+            compact: false,
         }
+    }
+
+    /// Tightens the padding, for a button set into a dense list such as a
+    /// picker's options.
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
     }
 
     pub fn icon_only(tooltip: &'a str, icon: Icon) -> Self {
@@ -200,6 +209,7 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         }
 
         control = match shape {
+            Shape::Rectangular | Shape::Pill if button.compact => control.padding([8.0, 11.0]),
             Shape::Rectangular | Shape::Pill => control.padding(if kind == ButtonKind::Primary {
                 [spacing::MD, spacing::XG]
             } else {
