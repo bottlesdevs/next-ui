@@ -13,7 +13,7 @@ use iced::{
 
 use super::{
     anchored_overlay::{Placement, PopupCore, PopupFocus, PopupFocusState},
-    focus::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
+    focus::{descendant_is_focused, event_cursor, unfocus_descendants},
     spacing,
 };
 
@@ -81,7 +81,6 @@ struct State {
     /// whether it hasn't been dismissed since the anchor last asked for it.
     open: bool,
     anchor_focused: bool,
-    restore_anchor: bool,
     panel_focus: PopupFocusState,
     key: String,
 }
@@ -259,12 +258,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
         let state = tree.state.downcast_mut::<State>();
         let anchor = self.anchor.as_widget_mut();
 
-        if state.restore_anchor {
-            focus_first_descendant(anchor, &mut tree.children[0], layout, renderer);
-            state.restore_anchor = false;
-            shell.request_redraw();
-        }
-
         if let Trigger::Focus { .. } = self.trigger {
             if !state.open
                 && matches!(
@@ -337,8 +330,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
         match self.trigger {
             Trigger::Toggle if toggled => {
                 if state.open {
-                    // Focus goes back to the anchor only if the panel took it.
-                    state.restore_anchor = state.panel_focus != PopupFocusState::None;
                     state.open = false;
                     state.panel_focus = PopupFocusState::None;
                 } else {
@@ -347,7 +338,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
                         unfocus_descendants(anchor, &mut tree.children[0], layout, renderer);
                     }
                     state.open = true;
-                    state.restore_anchor = false;
                     state.panel_focus = if focus_panel {
                         PopupFocusState::Requested
                     } else {
@@ -427,22 +417,22 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
 
         let bounds = layout.bounds();
         let State {
-            open,
-            restore_anchor,
-            panel_focus,
-            ..
+            open, panel_focus, ..
         } = state;
+        let (anchor_tree, panel_tree) = children.split_at_mut(1);
 
         Some(overlay::Element::new(Box::new(PopupCore::new(
             Rectangle::new(bounds.position() + translation, bounds.size()),
             *viewport,
             self.panel.as_widget_mut(),
-            &mut children[1],
+            &mut panel_tree[0],
             self.placement,
             open,
             PopupFocus {
                 state: panel_focus,
-                restore_anchor,
+                anchor: self.anchor.as_widget_mut(),
+                anchor_tree: &mut anchor_tree[0],
+                anchor_layout: layout,
             },
         ))))
     }
