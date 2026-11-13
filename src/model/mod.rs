@@ -93,8 +93,6 @@ pub(crate) enum Message {
     Source(sources::Update),
     Operation(Subject, operations::Event),
     Saved(Result<(), String>),
-    /// An action chosen in a system dialog, or `None` when it was dismissed.
-    Chosen(Option<action::Action>),
 }
 
 impl Model {
@@ -223,8 +221,6 @@ impl Model {
                     self.notifications.error(error);
                 }
             }
-            Message::Chosen(Some(action)) => return self.perform(action),
-            Message::Chosen(None) => {}
         }
         Task::none()
     }
