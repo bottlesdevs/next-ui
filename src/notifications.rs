@@ -201,7 +201,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
                 iced::Border::default()
                     .rounded(20)
                     .width(1)
-                    .color(colors.selection),
+                    .color(colors.window),
             )
     })
     .into()
