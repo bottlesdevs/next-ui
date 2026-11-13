@@ -7,7 +7,7 @@ use crate::{icons::Icon, theme};
 
 use super::{
     button::{Button, ButtonKind},
-    header, spacing,
+    header, radius, spacing,
 };
 
 /// Builds a header-sized icon button; the caller supplies its action.
@@ -106,7 +106,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 fn style(current_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(theme::colors(current_theme).chrome)),
-        border: Border::default().rounded(iced::border::top(6)),
+        border: Border::default().rounded(iced::border::top(radius::ROW)),
         ..container::Style::default()
     }
 }

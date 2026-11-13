@@ -42,6 +42,7 @@ pub mod widget {
         popover::Popover,
         progress_bar::ProgressBar,
         progress_ring::ProgressRing,
+        radius,
         row_group::RowGroup,
         search::{Search, SearchState},
         selector_row::SelectorRow,

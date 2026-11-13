@@ -124,7 +124,10 @@ fn suggestions<'a, Message: Clone + 'a>(
             .style(|theme| {
                 container::Style::default()
                     .background(theme::colors(theme).selected)
-                    .border(iced::Border::default().rounded(iced::border::top(6)))
+                    .border(
+                        iced::Border::default()
+                            .rounded(iced::border::top(next_ui::widget::radius::ROW)),
+                    )
             });
         let footer = row![
             column![
@@ -148,7 +151,7 @@ fn suggestions<'a, Message: Clone + 'a>(
             .style(|theme| {
                 container::Style::default()
                     .background(theme::colors(theme).card)
-                    .border(iced::Border::default().rounded(6))
+                    .border(iced::Border::default().rounded(next_ui::widget::radius::ROW))
             })
             .into()
     });
@@ -291,7 +294,7 @@ fn downloads<'a, Message: Clone + 'a>(
             .style(|theme| {
                 container::Style::default()
                     .background(theme::colors(theme).raised)
-                    .border(iced::Border::default().rounded(8))
+                    .border(iced::Border::default().rounded(next_ui::widget::radius::BOX))
             })
             .into()
         });

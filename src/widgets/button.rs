@@ -8,7 +8,7 @@ use crate::icons::{self, Icon};
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
-    spacing,
+    radius, spacing,
     text::TextExt as _,
 };
 
@@ -280,8 +280,8 @@ fn appearance(
         },
         text_color: colors.text,
         border: Border::default().rounded(match (shape, kind) {
-            (Shape::Rectangular, _) | (Shape::IconOnly, ButtonKind::Transparent) => 6.0,
-            (Shape::Pill | Shape::IconOnly, _) => 999.0,
+            (Shape::Rectangular, _) | (Shape::IconOnly, ButtonKind::Transparent) => radius::ROW,
+            (Shape::Pill | Shape::IconOnly, _) => radius::PILL,
         }),
         ..iced::widget::button::Style::default()
     }

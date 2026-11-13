@@ -10,7 +10,7 @@ use super::{
     focusable_action::FocusableAction,
     list_row::{self, ListRow, Menu},
     popup::{AnchorMessage, Popup, PopupMessage},
-    spacing,
+    radius, spacing,
     text::TextExt as _,
     text_field::TextField,
 };
@@ -155,7 +155,7 @@ fn footer_row<'a, Message: Clone + 'a>(label: &'a str, message: Message) -> Elem
     .on_press_maybe(Some(message))
     .style(|theme, state| button::Style {
         background: Some(Background::Color(crate::theme::colors(theme).hovered)),
-        border: Border::default().rounded(iced::border::bottom(6)),
+        border: Border::default().rounded(iced::border::bottom(radius::ROW)),
         ..list_row::menu_style(theme, state, Menu::Floating)
     })
     .into()

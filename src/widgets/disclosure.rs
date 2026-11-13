@@ -16,11 +16,11 @@ use super::{
     focusable_action::{ActionState, Interaction},
     list_row,
     popup::{self, PopupMessage},
+    radius,
 };
 
 /// The corners of the header and panel, which the bridge between them
 /// continues.
-const RADIUS: f32 = 6.0;
 const CARET: f32 = 20.0;
 
 /// A header that opens and closes a panel laid out under it.
@@ -443,7 +443,7 @@ pub(super) fn draw_header(
 ) {
     let mut style = list_row::action_style(theme, state);
     if attached {
-        style.border = Border::default().rounded(iced::border::top(RADIUS));
+        style.border = Border::default().rounded(iced::border::top(radius::ROW));
     }
     renderer.fill_quad(
         renderer::Quad {
@@ -508,9 +508,9 @@ fn draw_bridge(
         renderer::Quad {
             bounds: Rectangle {
                 x: header.x,
-                y: header.y + header.height - RADIUS,
+                y: header.y + header.height - radius::ROW,
                 width: header.width,
-                height: panel.y - header.y - header.height + RADIUS * 2.0,
+                height: panel.y - header.y - header.height + radius::ROW * 2.0,
             },
             border: Border::default(),
             shadow: Shadow::default(),
@@ -544,15 +544,19 @@ fn fill_concave_corner(
     color: Color,
     background: Color,
 ) {
-    let clip_x = if extends_left { x - RADIUS } else { x };
+    let clip_x = if extends_left { x - radius::ROW } else { x };
     let clip = Rectangle::new(
-        Point::new(clip_x, panel_y - RADIUS),
-        Size::new(RADIUS, RADIUS),
+        Point::new(clip_x, panel_y - radius::ROW),
+        Size::new(radius::ROW, radius::ROW),
     );
-    let cutout_x = if extends_left { x - RADIUS * 2.0 } else { x };
+    let cutout_x = if extends_left {
+        x - radius::ROW * 2.0
+    } else {
+        x
+    };
     let cutout = Rectangle::new(
-        Point::new(cutout_x, panel_y - RADIUS * 2.0),
-        Size::new(RADIUS * 2.0, RADIUS * 2.0),
+        Point::new(cutout_x, panel_y - radius::ROW * 2.0),
+        Size::new(radius::ROW * 2.0, radius::ROW * 2.0),
     );
 
     renderer.with_layer(clip, |renderer| {
@@ -568,7 +572,7 @@ fn fill_concave_corner(
         renderer.fill_quad(
             renderer::Quad {
                 bounds: cutout,
-                border: Border::default().rounded(RADIUS),
+                border: Border::default().rounded(radius::ROW),
                 shadow: Shadow::default(),
                 snap: true,
             },

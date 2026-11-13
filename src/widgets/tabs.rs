@@ -5,7 +5,7 @@ use iced::{
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
-    spacing,
+    radius, spacing,
     text::TextExt as _,
 };
 use crate::theme;
@@ -129,7 +129,7 @@ fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
         } else {
             colors.muted
         },
-        border: Border::default().rounded(6),
+        border: Border::default().rounded(radius::ROW),
         ..button::Style::default()
     }
 }

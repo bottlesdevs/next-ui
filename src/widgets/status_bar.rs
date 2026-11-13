@@ -20,7 +20,7 @@ use super::{
     button::{Button, ButtonKind},
     focus::focus_first_descendant,
     focusable_action::Interaction,
-    spacing,
+    radius, spacing,
     text::TextExt as _,
 };
 
@@ -193,7 +193,7 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
 
 fn bar_style(theme: &Theme) -> container::Style {
     container::background(theme::colors(theme).page)
-        .border(iced::Border::default().rounded(iced::border::bottom(6)))
+        .border(iced::Border::default().rounded(iced::border::bottom(radius::ROW)))
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -15,6 +15,18 @@ pub mod spacing {
     pub const XG: f32 = 32.0;
 }
 
+/// Shared corner radii.
+pub mod radius {
+    /// A single row, card or control.
+    pub const ROW: f32 = 6.0;
+    /// A box that holds rows or floats over the page, e.g. a popup panel or
+    /// a notification.
+    pub const BOX: f32 = 8.0;
+    /// Fully rounded ends; larger than any control so it always caps at half
+    /// the height.
+    pub const PILL: f32 = 999.0;
+}
+
 /// Shared dimensions for header content and frame-owned controls.
 pub mod header {
     pub const HEIGHT: f32 = 64.0;

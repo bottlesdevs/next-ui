@@ -4,6 +4,7 @@ use iced::{
 };
 
 use super::focusable_action::FocusableAction;
+use super::radius;
 
 /// A row of pill toggles where exactly one option is selected.
 pub struct FilterChips<'a, T, Message> {
@@ -57,7 +58,7 @@ impl<'a, T: Copy + PartialEq + 'a, Message: Clone + 'a> From<FilterChips<'a, T, 
                     iced::widget::button::Style {
                         background: background.map(Background::Color),
                         text_color: if active { colors.text } else { colors.muted },
-                        border: Border::default().rounded(999),
+                        border: Border::default().rounded(radius::PILL),
                         ..iced::widget::button::Style::default()
                     }
                 })
