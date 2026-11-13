@@ -55,6 +55,7 @@ pub mod widget {
         tag::Tag,
         text::TextExt,
         text_row::TextRow,
+        text_size,
         title::Title,
     };
 }

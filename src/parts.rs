@@ -8,7 +8,7 @@ use next_ui::{
     Icon, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
-        ProgressBar, ProgressRing, StatusPage, TextExt as _, spacing,
+        ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size,
     },
 };
 
@@ -124,15 +124,12 @@ fn suggestions<'a, Message: Clone + 'a>(
             .style(|theme| {
                 container::Style::default()
                     .background(theme::colors(theme).selected)
-                    .border(
-                        iced::Border::default()
-                            .rounded(iced::border::top(next_ui::widget::radius::ROW)),
-                    )
+                    .border(iced::Border::default().rounded(iced::border::top(radius::ROW)))
             });
         let footer = row![
             column![
-                text(name).size(18).medium(),
-                text(description).size(15).muted()
+                text(name).size(text_size::LABEL).medium(),
+                text(description).size(text_size::DENSE).muted()
             ]
             .spacing(4)
             .width(Fill),
@@ -151,7 +148,7 @@ fn suggestions<'a, Message: Clone + 'a>(
             .style(|theme| {
                 container::Style::default()
                     .background(theme::colors(theme).card)
-                    .border(iced::Border::default().rounded(next_ui::widget::radius::ROW))
+                    .border(iced::Border::default().rounded(radius::ROW))
             })
             .into()
     });
@@ -160,13 +157,15 @@ fn suggestions<'a, Message: Clone + 'a>(
         .kind(ButtonKind::Transparent)
         .on_press(on_add);
     let content = column![
-        text("Your library is empty").size(26).medium(),
+        text("Your library is empty")
+            .size(text_size::PAGE_TITLE)
+            .medium(),
         text(if searchable {
             "Install something to get started, or search for anything above."
         } else {
             "Install something to get started, or add a program you already have."
         })
-        .size(17)
+        .size(text_size::HEADING)
         .muted(),
         row(cards).spacing(16),
         add,
@@ -259,10 +258,14 @@ fn downloads<'a, Message: Clone + 'a>(
         .map(|download| -> Element<'a, Message> {
             let status = download_status(&download);
             let mut body = column![
-                text(download_name(&download)).size(18).medium(),
-                text(status).size(15).style(|theme| text::Style {
-                    color: Some(theme::colors(theme).accent_muted),
-                }),
+                text(download_name(&download))
+                    .size(text_size::LABEL)
+                    .medium(),
+                text(status)
+                    .size(text_size::DENSE)
+                    .style(|theme| text::Style {
+                        color: Some(theme::colors(theme).accent_muted),
+                    }),
             ]
             .spacing(6)
             .width(Fill);
@@ -273,7 +276,7 @@ fn downloads<'a, Message: Clone + 'a>(
                 );
                 card = card.push(body).push(
                     text(format!("{}%", (progress * 100.0).round()))
-                        .size(17)
+                        .size(text_size::HEADING)
                         .medium(),
                 );
             } else {
@@ -294,7 +297,7 @@ fn downloads<'a, Message: Clone + 'a>(
             .style(|theme| {
                 container::Style::default()
                     .background(theme::colors(theme).raised)
-                    .border(iced::Border::default().rounded(next_ui::widget::radius::BOX))
+                    .border(iced::Border::default().rounded(radius::BOX))
             })
             .into()
         });

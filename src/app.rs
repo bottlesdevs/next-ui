@@ -7,6 +7,7 @@ use next_ui::{
     chrome,
     layout::{PaneContext, Side, side_panel},
     theme,
+    widget::text_size,
 };
 use uuid::Uuid;
 
@@ -493,7 +494,7 @@ fn status<'a>(title: &'a str, description: &'a str) -> Element<'a, Message> {
     let header = chrome::header(Message::Window(chrome::Action::Drag), true, |header| header);
     column![
         header,
-        container(column![text(title).size(32), text(description)].spacing(12))
+        container(column![text(title).size(text_size::DISPLAY), text(description)].spacing(12))
             .center_x(Fill)
             .center_y(Fill)
     ]

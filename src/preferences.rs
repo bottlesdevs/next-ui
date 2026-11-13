@@ -12,7 +12,7 @@ use next_ui::{
     widget::{
         ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
         Popover, ProgressBar, RowGroup, Search, StatusPage, Tab, Tabs, Tag, TextExt as _, Title,
-        spacing,
+        spacing, text_size,
     },
 };
 
@@ -167,8 +167,8 @@ impl State {
             Avatar::new(initial(&plugin.name))
                 .size(64.0)
                 .shape(AvatarShape::Rounded),
-            text(plugin.name.clone()).size(24).medium(),
-            text(plugin.version.clone()).size(15).muted(),
+            text(plugin.name.clone()).size(text_size::HEADLINE).medium(),
+            text(plugin.version.clone()).size(text_size::DENSE).muted(),
             tags(&plugin),
         ]
         .spacing(spacing::SM)
@@ -302,7 +302,7 @@ fn addons(model: &Model) -> PageBody<'_, Message> {
                     block.row(
                         ListRow::new(text(label).label().medium()).trailing(Popover::confirm(
                             // The same size as the Download buttons beside it.
-                            Button::custom(text("Remove").size(15))
+                            Button::custom(text("Remove").size(text_size::DENSE))
                                 .icon(Icon::Trash)
                                 .icon_size(16.0)
                                 .compact(),
@@ -346,7 +346,7 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
             )
             .trailing(
                 text(format!("{}%", (progress * 100.0).round()))
-                    .size(15)
+                    .size(text_size::DENSE)
                     .medium(),
             )
             .trailing(
@@ -355,10 +355,11 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
             )
         }
         None => ListRow::new(
-            column![name, text("Not downloaded").size(15).muted()].spacing(spacing::XS),
+            column![name, text("Not downloaded").size(text_size::DENSE).muted()]
+                .spacing(spacing::XS),
         )
         .trailing(
-            Button::custom(text("Download").size(15))
+            Button::custom(text("Download").size(text_size::DENSE))
                 .trailing_icon(Icon::Arrow)
                 .icon_rotation(std::f32::consts::PI)
                 .icon_size(16.0)
@@ -414,7 +415,7 @@ fn plugins<'a>(model: &'a Model, state: &'a State) -> PageBody<'a, Message> {
             .into()
     } else {
         let heading = text(format!("Installed · {}", shown.len()))
-            .size(15)
+            .size(text_size::DENSE)
             .medium()
             .style(|theme| text::Style {
                 color: Some(next_ui::theme::colors(theme).accent_muted),
@@ -422,12 +423,16 @@ fn plugins<'a>(model: &'a Model, state: &'a State) -> PageBody<'a, Message> {
         let group = shown.into_iter().fold(BoxedGroup::new(), |group, plugin| {
             group.row(
                 ActionRow::new(plugin.name.clone(), Message::OpenPlugin(plugin.id.clone()))
-                    .title_suffix(text(plugin.version.clone()).size(13).muted())
+                    .title_suffix(
+                        text(plugin.version.clone())
+                            .size(text_size::FOOTNOTE)
+                            .muted(),
+                    )
                     .title_suffix(tags(&plugin))
                     .leading(Avatar::new(initial(&plugin.name)).shape(AvatarShape::Rounded))
                     .selected(open == Some(plugin.id.as_str()))
                     .trailing(Popover::confirm(
-                        Button::custom(text("Uninstall").size(15))
+                        Button::custom(text("Uninstall").size(text_size::DENSE))
                             .icon(Icon::Trash)
                             .icon_size(16.0)
                             .compact(),
@@ -453,10 +458,10 @@ fn about<'a>() -> Element<'a, Message> {
             .active(true),
         text("Bottles Next").size(30).medium(),
         text("Run Windows software and games, each in a place of its own.")
-            .size(17)
+            .size(text_size::HEADING)
             .muted(),
         text(concat!("Version ", env!("CARGO_PKG_VERSION")))
-            .size(14)
+            .size(text_size::SMALL)
             .muted(),
     ]
     .spacing(spacing::SM)

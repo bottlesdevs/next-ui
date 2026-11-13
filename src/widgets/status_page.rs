@@ -5,7 +5,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{spacing, text::TextExt as _};
+use super::{spacing, text::TextExt as _, text_size};
 
 const ICON_TILE: f32 = 88.0;
 
@@ -62,11 +62,18 @@ impl<'a, Message: 'a> From<StatusPage<'a, Message>> for Element<'a, Message> {
             );
         }
 
-        content = content.push(text(page.title).size(26).medium().center());
+        content = content.push(
+            text(page.title)
+                .size(text_size::PAGE_TITLE)
+                .medium()
+                .center(),
+        );
 
         if let Some(description) = page.description {
-            content =
-                content.push(container(text(description).size(17).muted().center()).max_width(460));
+            content = content.push(
+                container(text(description).size(text_size::HEADING).muted().center())
+                    .max_width(460),
+            );
         }
 
         if let Some(child) = page.child {

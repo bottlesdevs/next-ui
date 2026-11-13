@@ -6,7 +6,7 @@ use iced::{
     },
 };
 
-use super::spacing;
+use super::{spacing, text_size};
 
 enum Detail<'a> {
     Subtitle(Fragment<'a>),
@@ -68,8 +68,8 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
 
 fn typography(detail: Option<&Detail<'_>>) -> (f32, f32) {
     match detail {
-        Some(Detail::Subtitle(_)) => (17.0, 12.0),
-        Some(Detail::Status(_)) => (24.0, 20.0),
-        None => (32.0, 24.0),
+        Some(Detail::Subtitle(_)) => (text_size::HEADING, text_size::CAPTION),
+        Some(Detail::Status(_)) => (text_size::HEADLINE, text_size::BODY),
+        None => (text_size::DISPLAY, text_size::HEADLINE),
     }
 }

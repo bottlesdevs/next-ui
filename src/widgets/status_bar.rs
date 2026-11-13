@@ -22,13 +22,13 @@ use super::{
     focusable_action::Interaction,
     radius, spacing,
     text::TextExt as _,
+    text_size,
 };
 
 const INITIAL_LOG_RATIO: f32 = 0.3;
 const RESIZE_TARGET_HEIGHT: f32 = 8.0;
 const UNBOUNDED_LOG_HEIGHT: f32 = 180.0;
 const ICON_SIZE: f32 = 16.0;
-const TEXT_SIZE: f32 = 12.0;
 
 /// Domain-neutral status presentation.
 pub struct StatusBar<'a> {
@@ -66,7 +66,7 @@ impl<'a> StatusBar<'a> {
             header = header.push(
                 row![
                     status_icon(icon, false),
-                    text(label).size(TEXT_SIZE).muted(),
+                    text(label).size(text_size::CAPTION).muted(),
                 ]
                 .spacing(spacing::SM)
                 .align_y(Vertical::Center),
@@ -78,7 +78,7 @@ impl<'a> StatusBar<'a> {
             row![
                 status_icon(self.status_icon, danger),
                 text(self.status)
-                    .size(TEXT_SIZE)
+                    .size(text_size::CAPTION)
                     .style(move |theme: &Theme| text::Style {
                         color: Some(if danger {
                             theme::colors(theme).danger
@@ -152,13 +152,16 @@ impl<'a, Message: 'static> From<LogPanel<'a>> for Element<'a, Message> {
     fn from(panel: LogPanel<'a>) -> Self {
         let header = panel.status.header(Some(Local::Toggle));
         let log: Element<'a, Local> = if panel.lines.is_empty() {
-            text("No activity yet").size(TEXT_SIZE).muted().into()
+            text("No activity yet")
+                .size(text_size::CAPTION)
+                .muted()
+                .into()
         } else {
             column(
                 panel
                     .lines
                     .into_iter()
-                    .map(|line| text(line).size(TEXT_SIZE).into()),
+                    .map(|line| text(line).size(text_size::CAPTION).into()),
             )
             .into()
         };

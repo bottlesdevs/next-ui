@@ -9,7 +9,7 @@ use next_ui::{
     Icon, chrome, theme,
     widget::{
         ActionRow, Button, ButtonKind, InfoCard, InfoCardKind, InfoRow, RowGroup, TextExt as _,
-        spacing,
+        spacing, text_size,
     },
 };
 
@@ -241,7 +241,7 @@ fn experience_label(experience: Experience) -> &'static str {
 fn title<'a>(heading: &'a str, subtitle: &'a str) -> Element<'a, Message> {
     column![
         text(heading)
-            .size(32)
+            .size(text_size::DISPLAY)
             .font(iced::Font {
                 weight: iced::font::Weight::Bold,
                 ..iced::Font::DEFAULT
@@ -249,7 +249,7 @@ fn title<'a>(heading: &'a str, subtitle: &'a str) -> Element<'a, Message> {
             .style(|theme: &Theme| text::Style {
                 color: Some(theme::colors(theme).accent)
             }),
-        text(subtitle).size(16).medium().muted(),
+        text(subtitle).size(text_size::DETAIL).medium().muted(),
     ]
     .align_x(Horizontal::Center)
     .spacing(6)

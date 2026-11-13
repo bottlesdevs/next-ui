@@ -15,6 +15,7 @@ use super::{
     button::{Button, ButtonKind},
     focus::{cycle_descendant_focus, event_cursor, focus_first_descendant},
     text::TextExt as _,
+    text_size,
 };
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
@@ -54,8 +55,8 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
         Message: Clone,
     {
         let content = column![
-            text(title).size(21).medium(),
-            text(body).size(16).muted(),
+            text(title).size(text_size::DIALOG_TITLE).medium(),
+            text(body).size(text_size::DETAIL).muted(),
             row![
                 Space::new().width(Fill),
                 Button::new("Cancel")

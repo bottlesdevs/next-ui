@@ -5,7 +5,7 @@ use iced::{Element, Fill, widget::text};
 use next_ui::{
     Icon, chrome,
     layout::{self, PageBody, PaneContext},
-    widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing},
+    widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing, text_size},
 };
 use uuid::Uuid;
 
@@ -162,7 +162,7 @@ impl State {
                         "Next always uses the newest downloaded release. Turning a component on \
                      downloads it if needed."
                     )
-                    .size(14)
+                    .size(text_size::SMALL)
                     .muted(),
                 ]
                 .spacing(spacing::SM),

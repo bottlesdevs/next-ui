@@ -4,7 +4,7 @@ use iced::{
 };
 
 use super::focusable_action::FocusableAction;
-use super::radius;
+use super::{radius, text_size};
 
 /// A row of pill toggles where exactly one option is selected.
 pub struct FilterChips<'a, T, Message> {
@@ -42,7 +42,7 @@ impl<'a, T: Copy + PartialEq + 'a, Message: Clone + 'a> From<FilterChips<'a, T, 
         Row::with_children(options.into_iter().map(|(value, label)| {
             let active = value == selected;
 
-            FocusableAction::new(text(label).size(16))
+            FocusableAction::new(text(label).size(text_size::DETAIL))
                 .on_press_maybe(on_select.as_ref().map(|on_select| on_select(value)))
                 .padding([6, 14])
                 .style(move |theme, state| {

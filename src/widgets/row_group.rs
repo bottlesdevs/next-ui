@@ -20,6 +20,7 @@ use super::{
     popup::PopupMessage,
     radius, spacing,
     text::TextExt as _,
+    text_size,
 };
 
 /// The hairline between a boxed group's rows.
@@ -167,7 +168,7 @@ fn boxed<'a, Message: Clone + 'a>(
         if let Some(icon) = icon {
             heading = heading.push(icon.view().width(18).height(18));
         }
-        heading = heading.push(text(title).size(15).medium());
+        heading = heading.push(text(title).size(text_size::DENSE).medium());
         let radius = corners(index);
         block = block.push(
             container(heading)

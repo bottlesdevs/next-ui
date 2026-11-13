@@ -8,11 +8,7 @@ use iced::{
 
 use crate::icons::Icon;
 
-use super::{
-    list_row::{self, ListRow},
-    spacing,
-    text_field::TextField,
-};
+use super::{list_row::ListRow, spacing, text_field::TextField, text_size};
 
 pub struct TextRow<'a, Message> {
     title: Fragment<'a>,
@@ -90,12 +86,12 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         let mut value = row![].spacing(spacing::SM).align_y(Center);
 
         if let Some(icon) = text_row.icon {
-            value = value.push(icon_view(icon, list_row::BODY_SIZE, error));
+            value = value.push(icon_view(icon, text_size::DETAIL, error));
         }
 
         value = value.push(
             TextField::new(text_row.placeholder, text_row.value)
-                .size(list_row::BODY_SIZE)
+                .size(text_size::DETAIL)
                 .secure(text_row.secure)
                 .on_input_maybe(text_row.on_input)
                 .on_submit_maybe(text_row.on_submit)
@@ -107,17 +103,17 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         let mut subtitle = column![value].spacing(spacing::XS);
 
         if let Some(error) = text_row.error {
-            subtitle = subtitle.push(text(error).size(list_row::BODY_SIZE).style(
-                |theme: &Theme| text::Style {
+            subtitle = subtitle.push(text(error).size(text_size::DETAIL).style(|theme: &Theme| {
+                text::Style {
                     color: Some(crate::theme::colors(theme).danger),
-                },
-            ));
+                }
+            }));
         }
 
         let mut row = ListRow::labeled(text_row.title).subtitle_widget(subtitle);
 
         if editable {
-            row = row.trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false));
+            row = row.trailing(icon_view(Icon::Pencil, text_size::DETAIL, false));
         }
 
         row

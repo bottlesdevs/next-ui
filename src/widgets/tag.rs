@@ -3,8 +3,8 @@ use iced::{
     widget::{container, text, text::IntoFragment},
 };
 
-use super::radius;
 use super::text::TextExt as _;
+use super::{radius, text_size};
 
 /// A short label describing what something is, e.g. "Account" or "Library".
 pub struct Tag<'a> {
@@ -21,7 +21,7 @@ impl<'a> Tag<'a> {
 
 impl<'a, Message: 'a> From<Tag<'a>> for Element<'a, Message> {
     fn from(tag: Tag<'a>) -> Self {
-        container(text(tag.label).size(13).medium())
+        container(text(tag.label).size(text_size::FOOTNOTE).medium())
             .padding([3, 9])
             .style(|theme| {
                 let colors = crate::theme::colors(theme);

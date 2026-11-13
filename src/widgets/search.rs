@@ -13,6 +13,7 @@ use super::{
     radius, spacing,
     text::TextExt as _,
     text_field::TextField,
+    text_size,
 };
 
 pub enum SearchState<'a, Message> {
@@ -78,7 +79,7 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         let input = TextField::new(search.placeholder, search.query)
             .on_input_maybe(Some(search.on_input))
             .on_submit_maybe(search.on_submit)
-            .size(18.0)
+            .size(text_size::LABEL)
             .id(search.id);
 
         let input = container(
