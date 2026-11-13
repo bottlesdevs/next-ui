@@ -75,7 +75,7 @@ impl Model {
         self.available(|role| matches!(role, AddonRole::Runner(_)))
     }
 
-    fn available(&self, role: impl Fn(AddonRole) -> bool) -> Vec<AvailableRelease> {
+    pub(super) fn available(&self, role: impl Fn(AddonRole) -> bool) -> Vec<AvailableRelease> {
         let mut entries = self
             .sources
             .catalogs

@@ -45,6 +45,8 @@ pub(crate) enum Action {
         prefix: Uuid,
         slot: Slot,
     },
+    /// Downloads `release` without selecting it anywhere.
+    Download(Uuid),
     /// Downloads `release`, then selects it in bottle `prefix`.
     FetchRelease {
         prefix: Uuid,
@@ -215,6 +217,14 @@ impl Model {
                 self.on_prefix(prefix, Verb::Edit, move |handle| {
                     handle.edit(move |edit| edit.remove_component(slot))
                 })
+            }
+            Action::Download(release) => {
+                let operation = self.core.catalogs().fetch::<AddonRole>(release);
+                self.start(
+                    Subject::Addon(release),
+                    Verb::Fetch { then_select: None },
+                    operation,
+                )
             }
             Action::FetchRelease { prefix, release } => {
                 let operation = self.core.catalogs().fetch::<AddonRole>(release);
