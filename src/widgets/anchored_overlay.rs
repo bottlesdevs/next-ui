@@ -1,8 +1,10 @@
+use std::cell::Cell;
+
 use iced::{
-    Event, Point, Rectangle, Size, Theme, Vector,
+    Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree, operation},
+        widget::{Id, Operation, Tree, operation, tree},
     },
     keyboard::{self, key},
     touch,
@@ -12,6 +14,133 @@ use super::{
     focus::{descendant_is_focused, event_cursor, focus_descendant, unfocus_descendants},
     spacing,
 };
+
+thread_local! {
+    /// Set while a popup's content updates when a [`KeepOpen`] control
+    /// published a message, so the popup stays open for it.
+    static KEEP_OPEN: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Runs `update` and returns whether a [`KeepOpen`] control inside it
+/// published a message.
+pub(super) fn kept_open(update: impl FnOnce()) -> bool {
+    KEEP_OPEN.set(false);
+    update();
+    KEEP_OPEN.get()
+}
+
+/// Wraps a control in a popup whose messages shouldn't close the popup, e.g.
+/// a Download button beside an option.
+pub(super) struct KeepOpen<'a, Message> {
+    content: Element<'a, Message>,
+}
+
+impl<'a, Message> KeepOpen<'a, Message> {
+    pub(super) fn new(content: impl Into<Element<'a, Message>>) -> Self {
+        Self {
+            content: content.into(),
+        }
+    }
+}
+
+impl<Message> Widget<Message, Theme, iced::Renderer> for KeepOpen<'_, Message> {
+    fn tag(&self) -> tree::Tag {
+        self.content.as_widget().tag()
+    }
+
+    fn state(&self) -> tree::State {
+        self.content.as_widget().state()
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        self.content.as_widget().children()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        self.content.as_widget().diff(tree);
+    }
+
+    fn size(&self) -> Size<Length> {
+        self.content.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.content.as_widget_mut().layout(tree, renderer, limits)
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut iced::Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.content
+            .as_widget()
+            .draw(tree, renderer, theme, style, layout, cursor, viewport);
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(tree, layout, renderer, operation);
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        let mut messages = Vec::new();
+        let mut inner = Shell::new(&mut messages);
+        self.content.as_widget_mut().update(
+            tree, event, layout, cursor, renderer, clipboard, &mut inner, viewport,
+        );
+        if !inner.is_empty() {
+            KEEP_OPEN.set(true);
+        }
+        shell.merge(inner, std::convert::identity);
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        self.content
+            .as_widget()
+            .mouse_interaction(tree, layout, cursor, viewport, renderer)
+    }
+}
+
+impl<'a, Message: 'a> From<KeepOpen<'a, Message>> for Element<'a, Message> {
+    fn from(keep: KeepOpen<'a, Message>) -> Self {
+        Element::new(keep)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DismissReason {
@@ -221,7 +350,13 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
     ) {
-        if let Some(reason) = dismissal(event, cursor, layout.bounds()) {
+        // A press on the anchor is the anchor's to handle: it closes the popup
+        // itself on release, and dismissing here too would reopen it.
+        let on_anchor = matches!(event, Event::Mouse(_) | Event::Touch(_))
+            && event_cursor(event, cursor).is_over(self.anchor);
+        if let Some(reason) = dismissal(event, cursor, layout.bounds())
+            .filter(|reason| !(on_anchor && *reason == DismissReason::OutsidePress))
+        {
             let outcome = self.dismiss(reason);
             unfocus_descendants(self.content, self.tree, layout, renderer);
 
@@ -263,6 +398,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         let mut messages = Vec::new();
         let mut panel_shell = Shell::new(&mut messages);
 
+        KEEP_OPEN.set(false);
         self.content.update(
             self.tree,
             event,
@@ -282,7 +418,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             panel_shell.request_redraw();
         }
 
-        if !panel_shell.is_empty() {
+        if !panel_shell.is_empty() && !KEEP_OPEN.get() {
             let outcome = self.dismiss(DismissReason::ContentMessage {
                 keyboard: matches!(event, Event::Keyboard(_)),
             });
