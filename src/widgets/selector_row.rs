@@ -7,20 +7,18 @@ use iced::{
     },
     keyboard::{self, key},
     touch,
-    widget::{Column, column, container, row, scrollable, text},
+    widget::{Column, button, column, container, row, scrollable, text},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{
-        DismissOutcome, DismissReason, KeepOpen, PopupCore, PopupFocus, PopupFocusState, kept_open,
-    },
     button::{Button, ButtonKind},
     draw_caret,
-    focusable_action::Interaction,
+    focusable_action::{ActionState, FocusableAction, Interaction},
     list_row::{self, ListRow},
     menu::{self, item as menu_item},
+    popup::{self, AnchorMessage, Popup, PopupMessage},
     progress_bar::ProgressBar,
     spacing,
     switcher::Switcher,
@@ -168,7 +166,7 @@ where
             let message = selector
                 .on_selected
                 .as_ref()
-                .map(|on_selected| on_selected(option.clone()));
+                .map(|on_selected| PopupMessage::Close(on_selected(option.clone())));
 
             let current = selected == Some(option);
             let mut content =
@@ -199,7 +197,7 @@ where
             .width(Fill)
             .style(crate::theme::scrollbar);
         // A popup hangs from the row: a hairline marks where the row ends.
-        let list: Element<'a, Message> = if popup {
+        let list: Element<'a, PopupMessage<Message>> = if popup {
             column![
                 container(iced::widget::Space::new().height(1))
                     .width(Fill)
@@ -224,11 +222,29 @@ where
             }
         });
 
-        Element::new(Selector {
-            header,
-            panel: panel.into(),
+        if !popup {
+            return Element::new(Selector {
+                header,
+                panel: panel.into(),
+                enabled,
+            });
+        }
+
+        let anchor = FocusableAction::new(header.map(AnchorMessage::Emit))
+            .width(Fill)
+            .on_press_maybe(enabled.then_some(AnchorMessage::Toggle))
+            .style(|theme, _| button::Style {
+                text_color: crate::theme::colors(theme).text,
+                ..button::Style::default()
+            });
+
+        Element::new(PopupSelector {
+            popup: Popup::new(anchor, panel)
+                .enabled(enabled)
+                .match_anchor_width()
+                .attached()
+                .into(),
             enabled,
-            popup,
         })
     }
 }
@@ -241,21 +257,19 @@ fn section_heading<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
 
 fn available_row<'a, Message: Clone + 'a>(
     option: AvailableOption<'a, Message>,
-) -> Element<'a, Message> {
-    let body: Element<'a, Message> = match option.state {
+) -> Element<'a, PopupMessage<Message>> {
+    let body: Element<'a, PopupMessage<Message>> = match option.state {
         AvailableState::Download(message) => row![
             text(option.label).size(OPTION_SIZE).muted().width(Fill),
             // Downloading keeps the options open, so the download's progress
             // shows in place.
-            KeepOpen::new(
-                Button::custom(text("Download").size(14))
-                    .trailing_icon(Icon::Arrow)
-                    .icon_rotation(std::f32::consts::PI)
-                    .icon_size(14.0)
-                    .kind(ButtonKind::Secondary)
-                    .compact()
-                    .on_press(message),
-            ),
+            Button::custom(text("Download").size(14))
+                .trailing_icon(Icon::Arrow)
+                .icon_rotation(std::f32::consts::PI)
+                .icon_size(14.0)
+                .kind(ButtonKind::Secondary)
+                .compact()
+                .on_press(PopupMessage::Emit(message)),
         ]
         .spacing(spacing::SM)
         .align_y(Alignment::Center)
@@ -300,19 +314,17 @@ fn header<'a, Message: 'a>(
     row.into_disclosure_content()
 }
 
+/// A selector whose options push the content below down.
 struct Selector<'a, Message> {
     header: Element<'a, Message>,
-    panel: Element<'a, Message>,
+    panel: Element<'a, PopupMessage<Message>>,
     enabled: bool,
-    popup: bool,
 }
 
 #[derive(Debug, Default)]
 struct State {
     open: bool,
     interaction: Interaction,
-    panel_focus: PopupFocusState,
-    restore_focus: bool,
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
@@ -329,7 +341,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[&self.header, &self.panel]);
+        tree.children[0].diff(&self.header);
+        tree.children[1].diff(&self.panel);
 
         if !self.enabled {
             tree.state.downcast_mut::<State>().open = false;
@@ -352,7 +365,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             .as_widget_mut()
             .layout(&mut tree.children[0], renderer, &limits);
         let header_size = header.size();
-        let panel = if !self.popup && tree.state.downcast_ref::<State>().open {
+        let panel = if tree.state.downcast_ref::<State>().open {
             self.panel
                 .as_widget_mut()
                 .layout(
@@ -395,7 +408,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
                 .as_widget_mut()
                 .operate(&mut tree.children[0], header, renderer, operation);
 
-            if state.open && !self.popup {
+            if state.open {
                 self.panel.as_widget_mut().operate(
                     &mut tree.children[1],
                     panel,
@@ -420,27 +433,24 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let (header_layout, panel_layout) = layout_parts(layout);
         let state = tree.state.downcast_mut::<State>();
 
-        if state.open && !self.popup {
+        if state.open {
             let mut messages = Vec::new();
             let mut panel_shell = Shell::new(&mut messages);
-            let keep_open = kept_open(|| {
-                self.panel.as_widget_mut().update(
-                    &mut tree.children[1],
-                    event,
-                    panel_layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    &mut panel_shell,
-                    viewport,
-                );
-            });
+            self.panel.as_widget_mut().update(
+                &mut tree.children[1],
+                event,
+                panel_layout,
+                cursor,
+                renderer,
+                clipboard,
+                &mut panel_shell,
+                viewport,
+            );
 
-            if !panel_shell.is_empty() && !keep_open {
+            if popup::forward(shell, panel_shell) {
                 state.open = false;
-                panel_shell.invalidate_layout();
+                shell.invalidate_layout();
             }
-            shell.merge(panel_shell, std::convert::identity);
         }
 
         self.header.as_widget_mut().update(
@@ -467,7 +477,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             state.open = !state.open;
             shell.invalidate_layout();
             shell.request_redraw();
-        } else if state.open && !self.popup && dismisses(event, cursor, layout.bounds()) {
+        } else if state.open && dismisses(event, cursor, layout.bounds()) {
             state.open = false;
             shell.invalidate_layout();
             shell.request_redraw();
@@ -492,7 +502,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             renderer,
         );
 
-        if state.open && !self.popup {
+        if state.open {
             interaction = interaction.max(self.panel.as_widget().mouse_interaction(
                 &tree.children[1],
                 panel,
@@ -526,7 +536,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         let (header, panel) = layout_parts(layout);
         let colors = crate::theme::colors(theme);
 
-        if state.open && !self.popup {
+        if state.open {
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: layout.bounds(),
@@ -538,26 +548,14 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             );
         }
 
-        let mut header_state =
+        draw_header_fill(
+            renderer,
+            theme,
+            header.bounds(),
             state
                 .interaction
-                .state(self.enabled, false, header.bounds(), cursor);
-        header_state.selected = state.open;
-        let mut header_style = list_row::action_style(theme, header_state);
-        // An open popup continues the row, so the row's bottom corners go.
-        if state.open && self.popup {
-            header_style.border = Border::default().rounded(iced::border::top(RADIUS));
-        }
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: header.bounds(),
-                border: header_style.border,
-                shadow: header_style.shadow,
-                snap: header_style.snap,
-            },
-            header_style
-                .background
-                .unwrap_or(Background::Color(iced::Color::TRANSPARENT)),
+                .state(self.enabled, state.open, header.bounds(), cursor),
+            false,
         );
         self.header.as_widget().draw(
             &tree.children[0],
@@ -581,7 +579,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
             f32::from(state.open),
         );
 
-        if state.open && !self.popup {
+        if state.open {
             self.panel.as_widget().draw(
                 &tree.children[1],
                 renderer,
@@ -614,71 +612,168 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        if self.popup {
-            let (header, _) = layout_parts(layout);
-            let (state, children) = (&mut tree.state, &mut tree.children);
-            let State {
-                open,
-                panel_focus,
-                restore_focus,
-                ..
-            } = state.downcast_mut::<State>();
-
-            if !*open {
-                return None;
-            }
-
-            let anchor = Rectangle::new(
-                header.bounds().position() + translation,
-                header.bounds().size(),
-            );
-
-            return Some(overlay::Element::new(Box::new(
-                PopupCore::new(
-                    anchor,
-                    *viewport,
-                    self.panel.as_widget_mut(),
-                    &mut children[1],
-                    0.0,
-                    PopupFocus {
-                        state: panel_focus,
-                        restore_anchor: restore_focus,
-                        targets: &[],
-                    },
-                    move |reason| {
-                        *open = false;
-                        match reason {
-                            DismissReason::FocusLost | DismissReason::OutsidePress => {
-                                DismissOutcome::PassThrough
-                            }
-                            DismissReason::ContentMessage { keyboard: false } => {
-                                DismissOutcome::Captured
-                            }
-                            DismissReason::Escape
-                            | DismissReason::ContentMessage { keyboard: true } => {
-                                DismissOutcome::CapturedAndRestoreFocus
-                            }
-                        }
-                    },
-                )
-                .match_anchor_width()
-                .attached(),
-            )));
-        }
-
         let state = tree.state.downcast_ref::<State>();
         let (_, panel) = layout_parts(layout);
 
-        state.open.then(|| {
-            self.panel.as_widget_mut().overlay(
-                &mut tree.children[1],
-                panel,
-                renderer,
-                viewport,
-                translation,
-            )
-        })?
+        state
+            .open
+            .then(|| {
+                self.panel.as_widget_mut().overlay(
+                    &mut tree.children[1],
+                    panel,
+                    renderer,
+                    viewport,
+                    translation,
+                )
+            })?
+            .map(|overlay| overlay.map(&PopupMessage::into_inner))
     }
+}
+
+/// A selector whose options open over the content below: the row and its
+/// caret around a [`Popup`] the row toggles.
+struct PopupSelector<'a, Message> {
+    popup: Element<'a, Message>,
+    enabled: bool,
+}
+
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_, Message> {
+    fn tag(&self) -> tree::Tag {
+        self.popup.as_widget().tag()
+    }
+
+    fn state(&self) -> tree::State {
+        self.popup.as_widget().state()
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        self.popup.as_widget().children()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        self.popup.as_widget().diff(tree);
+    }
+
+    fn size(&self) -> Size<Length> {
+        self.popup.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.popup.as_widget_mut().layout(tree, renderer, limits)
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn Operation,
+    ) {
+        self.popup
+            .as_widget_mut()
+            .operate(tree, layout, renderer, operation);
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        self.popup.as_widget_mut().update(
+            tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+        );
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        self.popup
+            .as_widget()
+            .mouse_interaction(tree, layout, cursor, viewport, renderer)
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut iced::Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        let open = popup::is_open(tree);
+        let bounds = layout.bounds();
+        let interaction = popup::anchor(tree).state.downcast_ref::<Interaction>();
+
+        draw_header_fill(
+            renderer,
+            theme,
+            bounds,
+            interaction.state(self.enabled, open, bounds, cursor),
+            open,
+        );
+        self.popup
+            .as_widget()
+            .draw(tree, renderer, theme, style, layout, cursor, viewport);
+        draw_caret(renderer, theme, disclosure_bounds(bounds), f32::from(open));
+    }
+
+    fn overlay<'a>(
+        &'a mut self,
+        tree: &'a mut Tree,
+        layout: Layout<'a>,
+        renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
+        self.popup
+            .as_widget_mut()
+            .overlay(tree, layout, renderer, viewport, translation)
+    }
+}
+
+/// Fills the row of a selector, as a list row that is `selected` while its
+/// options show. An `attached` panel continues the row, so the row's bottom
+/// corners go.
+fn draw_header_fill(
+    renderer: &mut iced::Renderer,
+    theme: &Theme,
+    bounds: Rectangle,
+    state: ActionState,
+    attached: bool,
+) {
+    let mut style = list_row::action_style(theme, state);
+    if attached {
+        style.border = Border::default().rounded(iced::border::top(RADIUS));
+    }
+    renderer.fill_quad(
+        renderer::Quad {
+            bounds,
+            border: style.border,
+            shadow: style.shadow,
+            snap: style.snap,
+        },
+        style
+            .background
+            .unwrap_or(Background::Color(iced::Color::TRANSPARENT)),
+    );
 }
 
 fn layout_parts(layout: Layout<'_>) -> (Layout<'_>, Layout<'_>) {

@@ -1,10 +1,8 @@
-use std::cell::Cell;
-
 use iced::{
-    Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
+    Event, Point, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree, operation, tree},
+        widget::{Id, Operation, Tree, operation},
     },
     keyboard::{self, key},
     touch,
@@ -12,149 +10,16 @@ use iced::{
 
 use super::{
     focus::{descendant_is_focused, event_cursor, focus_descendant, unfocus_descendants},
+    popup::{PopupMessage, forward},
     spacing,
 };
 
-thread_local! {
-    /// Set while a popup's content updates when a [`KeepOpen`] control
-    /// published a message, so the popup stays open for it.
-    static KEEP_OPEN: Cell<bool> = const { Cell::new(false) };
-}
-
-/// Runs `update` and returns whether a [`KeepOpen`] control inside it
-/// published a message.
-pub(super) fn kept_open(update: impl FnOnce()) -> bool {
-    KEEP_OPEN.set(false);
-    update();
-    KEEP_OPEN.get()
-}
-
-/// Wraps a control in a popup whose messages shouldn't close the popup, e.g.
-/// a Download button beside an option.
-pub(super) struct KeepOpen<'a, Message> {
-    content: Element<'a, Message>,
-}
-
-impl<'a, Message> KeepOpen<'a, Message> {
-    pub(super) fn new(content: impl Into<Element<'a, Message>>) -> Self {
-        Self {
-            content: content.into(),
-        }
-    }
-}
-
-impl<Message> Widget<Message, Theme, iced::Renderer> for KeepOpen<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        self.content.as_widget().tag()
-    }
-
-    fn state(&self) -> tree::State {
-        self.content.as_widget().state()
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        self.content.as_widget().children()
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        self.content.as_widget().diff(tree);
-    }
-
-    fn size(&self) -> Size<Length> {
-        self.content.as_widget().size()
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &iced::Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        self.content.as_widget_mut().layout(tree, renderer, limits)
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        self.content
-            .as_widget()
-            .draw(tree, renderer, theme, style, layout, cursor, viewport);
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        self.content
-            .as_widget_mut()
-            .operate(tree, layout, renderer, operation);
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        let mut messages = Vec::new();
-        let mut inner = Shell::new(&mut messages);
-        self.content.as_widget_mut().update(
-            tree, event, layout, cursor, renderer, clipboard, &mut inner, viewport,
-        );
-        if !inner.is_empty() {
-            KEEP_OPEN.set(true);
-        }
-        shell.merge(inner, std::convert::identity);
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        self.content
-            .as_widget()
-            .mouse_interaction(tree, layout, cursor, viewport, renderer)
-    }
-}
-
-impl<'a, Message: 'a> From<KeepOpen<'a, Message>> for Element<'a, Message> {
-    fn from(keep: KeepOpen<'a, Message>) -> Self {
-        Element::new(keep)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DismissReason {
+enum DismissReason {
     OutsidePress,
     Escape,
     ContentMessage { keyboard: bool },
     FocusLost,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DismissOutcome {
-    PassThrough,
-    Captured,
-    CapturedAndRestoreFocus,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -171,64 +36,77 @@ pub(super) struct PopupFocus<'a> {
     pub(super) targets: &'a [Id],
 }
 
-/// Positions arbitrary content relative to another widget.
+/// Where a popup's panel goes relative to its anchor.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Placement {
+    /// Space kept between the panel and the viewport's edges.
+    pub(super) inset: f32,
+    pub(super) match_anchor_width: bool,
+    /// Space between the anchor and the panel.
+    pub(super) gap: f32,
+}
+
+impl Default for Placement {
+    fn default() -> Self {
+        Self {
+            inset: 0.0,
+            match_anchor_width: false,
+            gap: spacing::XS,
+        }
+    }
+}
+
+/// The floating half of a [`Popup`]: places its panel by the anchor, moves
+/// focus through it and dismisses it.
+///
+/// [`Popup`]: super::popup::Popup
 pub(super) struct PopupCore<'a, Message> {
     anchor: Rectangle,
     viewport: Rectangle,
-    content: &'a mut dyn Widget<Message, Theme, iced::Renderer>,
+    content: &'a mut dyn Widget<PopupMessage<Message>, Theme, iced::Renderer>,
     tree: &'a mut Tree,
-    viewport_inset: f32,
-    match_anchor_width: bool,
-    /// Space between the anchor and the content.
-    gap: f32,
+    placement: Placement,
+    open: &'a mut bool,
     focus: PopupFocus<'a>,
-    on_dismiss: Box<dyn FnMut(DismissReason) -> DismissOutcome + 'a>,
 }
 
 impl<'a, Message> PopupCore<'a, Message> {
     pub(super) fn new(
         anchor: Rectangle,
         viewport: Rectangle,
-        content: &'a mut dyn Widget<Message, Theme, iced::Renderer>,
+        content: &'a mut dyn Widget<PopupMessage<Message>, Theme, iced::Renderer>,
         tree: &'a mut Tree,
-        viewport_inset: f32,
+        placement: Placement,
+        open: &'a mut bool,
         focus: PopupFocus<'a>,
-        on_dismiss: impl FnMut(DismissReason) -> DismissOutcome + 'a,
     ) -> Self {
         Self {
             anchor,
             viewport,
             content,
             tree,
-            viewport_inset,
-            match_anchor_width: false,
-            gap: spacing::XS,
+            placement,
+            open,
             focus,
-            on_dismiss: Box::new(on_dismiss),
         }
     }
 
-    pub(super) fn match_anchor_width(mut self) -> Self {
-        self.match_anchor_width = true;
-        self
-    }
+    /// Closes the popup and returns whether `reason`'s event is used up by
+    /// that. Keyboard dismissals hand focus back to the anchor.
+    fn dismiss(&mut self, reason: DismissReason) -> bool {
+        let (captured, restore) = match reason {
+            DismissReason::FocusLost | DismissReason::OutsidePress => (false, false),
+            DismissReason::ContentMessage { keyboard } => (true, keyboard),
+            DismissReason::Escape => (true, true),
+        };
 
-    /// Places the content flush against the anchor, so the two read as one
-    /// surface.
-    pub(super) fn attached(mut self) -> Self {
-        self.gap = 0.0;
-        self
-    }
-
-    fn dismiss(&mut self, reason: DismissReason) -> DismissOutcome {
-        let outcome = (self.on_dismiss)(reason);
-
+        *self.open = false;
         *self.focus.state = PopupFocusState::None;
-        if outcome == DismissOutcome::CapturedAndRestoreFocus {
+        if restore {
             *self.focus.restore_anchor = true;
         }
 
-        outcome
+        captured
     }
 
     fn focus(&mut self, index: usize, layout: Layout<'_>, renderer: &iced::Renderer) {
@@ -315,13 +193,20 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
         let bounds = Rectangle::with_size(bounds);
         let viewport = self.viewport.intersection(&bounds).unwrap_or(bounds);
-        let mut geometry = geometry(self.anchor, viewport, self.viewport_inset);
-        geometry.gap = self.gap;
+        let mut geometry = geometry(self.anchor, viewport, self.placement.inset);
+        geometry.gap = self.placement.gap;
         let max_height = geometry.below.max(geometry.above).max(0.0);
         let width = self.anchor.width.min(geometry.max_width);
-        let min = Size::new(if self.match_anchor_width { width } else { 0.0 }, 0.0);
+        let min = Size::new(
+            if self.placement.match_anchor_width {
+                width
+            } else {
+                0.0
+            },
+            0.0,
+        );
         let max = Size::new(
-            if self.match_anchor_width {
+            if self.placement.match_anchor_width {
                 width
             } else {
                 geometry.max_width
@@ -357,10 +242,10 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         if let Some(reason) = dismissal(event, cursor, layout.bounds())
             .filter(|reason| !(on_anchor && *reason == DismissReason::OutsidePress))
         {
-            let outcome = self.dismiss(reason);
+            let captured = self.dismiss(reason);
             unfocus_descendants(self.content, self.tree, layout, renderer);
 
-            if outcome != DismissOutcome::PassThrough {
+            if captured {
                 shell.capture_event();
             }
             shell.request_redraw();
@@ -398,7 +283,6 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         let mut messages = Vec::new();
         let mut panel_shell = Shell::new(&mut messages);
 
-        KEEP_OPEN.set(false);
         self.content.update(
             self.tree,
             event,
@@ -418,25 +302,23 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             panel_shell.request_redraw();
         }
 
-        if !panel_shell.is_empty() && !KEEP_OPEN.get() {
-            let outcome = self.dismiss(DismissReason::ContentMessage {
-                keyboard: matches!(event, Event::Keyboard(_)),
-            });
-            unfocus_descendants(self.content, self.tree, layout, renderer);
-
-            if outcome != DismissOutcome::PassThrough {
-                panel_shell.capture_event();
-            }
-            panel_shell.request_redraw();
-        }
-
         if matches!(event, Event::Mouse(_) | Event::Touch(_))
             && event_cursor(event, cursor).is_over(layout.bounds())
         {
             panel_shell.capture_event();
         }
 
-        shell.merge(panel_shell, std::convert::identity);
+        if forward(shell, panel_shell) {
+            let captured = self.dismiss(DismissReason::ContentMessage {
+                keyboard: matches!(event, Event::Keyboard(_)),
+            });
+            unfocus_descendants(self.content, self.tree, layout, renderer);
+
+            if captured {
+                shell.capture_event();
+            }
+            shell.request_redraw();
+        }
     }
 
     fn mouse_interaction(
@@ -494,6 +376,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         self.content
             .overlay(self.tree, layout, renderer, &self.viewport, Vector::ZERO)
+            .map(|overlay| overlay.map(&PopupMessage::into_inner))
     }
 }
 
