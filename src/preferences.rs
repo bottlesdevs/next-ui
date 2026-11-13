@@ -294,8 +294,8 @@ fn addons(model: &Model) -> Body<'_> {
             let block = group.downloaded.into_iter().fold(
                 BoxedGroup::new().title(group.title).icon(icon),
                 |block, (id, label)| {
-                    block.row(ListRow::new(text(label).label().medium()).trailing(
-                        Popover::confirm(
+                    block.row(
+                        ListRow::new(text(label).label().medium()).trailing(Popover::confirm(
                             // The same size as the Download buttons beside it.
                             Button::custom(text("Remove").size(15))
                                 .icon(Icon::Trash)
@@ -306,8 +306,8 @@ fn addons(model: &Model) -> Body<'_> {
                             "Remove",
                             Message::Act(Action::RemoveRelease(id)),
                             Message::Dismiss,
-                        ),
-                    ))
+                        )),
+                    )
                 },
             );
             // What the catalogs offer follows in the same block, told apart by
@@ -422,7 +422,10 @@ fn plugins<'a>(model: &'a Model, state: &'a State) -> Body<'a> {
                     .leading(Avatar::new(initial(&plugin.name)).shape(AvatarShape::Rounded))
                     .selected(open == Some(plugin.id.as_str()))
                     .trailing(Popover::confirm(
-                        Button::new("Uninstall").icon(Icon::Trash),
+                        Button::custom(text("Uninstall").size(15))
+                            .icon(Icon::Trash)
+                            .icon_size(16.0)
+                            .compact(),
                         format!("Uninstall {}?", plugin.name),
                         "You can install it again later.",
                         "Uninstall",
