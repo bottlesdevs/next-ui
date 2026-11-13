@@ -105,11 +105,6 @@ impl<'a, Message: Clone + 'a> From<Notification<'a, Message>> for Element<'a, Me
                         .background(colors.color)
                         .color(colors.text)
                         .border(Border::default().rounded(8))
-                        .shadow(iced::Shadow {
-                            color: iced::Color::BLACK.scale_alpha(0.35),
-                            offset: iced::Vector::new(0.0, 8.0),
-                            blur_radius: 24.0,
-                        })
                 }),
         )
     }

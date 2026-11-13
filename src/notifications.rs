@@ -193,15 +193,16 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     .padding([0, 16])
     .align_y(Alignment::Center)
     .style(|theme| {
+        let colors = next_ui::theme::colors(theme);
         container::Style::default()
-            .background(next_ui::theme::colors(theme).border)
-            .border(iced::Border::default().rounded(20))
-            // The same lift as the notification cards below it.
-            .shadow(iced::Shadow {
-                color: iced::Color::BLACK.scale_alpha(0.35),
-                offset: iced::Vector::new(0.0, 8.0),
-                blur_radius: 24.0,
-            })
+            .background(colors.border)
+            // Flat: a hairline, not a shadow, sets it off the page.
+            .border(
+                iced::Border::default()
+                    .rounded(20)
+                    .width(1)
+                    .color(colors.selection),
+            )
     })
     .into()
 }
