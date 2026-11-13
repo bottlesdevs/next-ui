@@ -35,7 +35,7 @@ use crate::{
 };
 use collection::Collection;
 use next_ui::widget::InfoCardKind;
-use operations::Outcome;
+use operations::{Finished, Outcome};
 use records::Saved;
 use settings::Settings;
 
@@ -171,51 +171,56 @@ impl Model {
                     return self.prune();
                 }
             }
-            Message::Operation(subject, event) => match self.operations.update(&subject, event) {
-                Some((Verb::Create { name, program }, Ok(Outcome::Created(id)))) => {
-                    return match program {
-                        Some(spec) => self.record_program(id, name, spec),
-                        None => self.record_bottle(id, name),
-                    };
-                }
-                Some((Verb::Fetch { then_select }, result)) => {
-                    let Subject::Addon(release) = subject else {
-                        return Task::none();
-                    };
-                    let name = self.release_name(release);
-                    match (result, then_select) {
-                        // Cancelling isn't news: the row the download was in
-                        // shows it gone.
-                        (Ok(Outcome::Cancelled), _) => {}
-                        (Ok(_), Some(prefix)) => {
+            Message::Operation(subject, event) => {
+                let Some(Finished { verb, then, result }) = self.operations.update(&subject, event)
+                else {
+                    return Task::none();
+                };
+                match (&subject, verb, result) {
+                    // Cancelling isn't news: the row the download was in
+                    // shows it gone.
+                    (_, _, Ok(Outcome::Cancelled)) => {}
+                    // Essentials show their progress where they were
+                    // started, so finishing needs no notification.
+                    (Subject::Addon(release), Verb::Fetch, Ok(outcome)) => {
+                        if let Some(then) = then {
+                            let name = self.release_name(*release);
                             self.notifications.success(
                                 format!("{name} downloaded"),
                                 "It’s selected in the bottle.",
                             );
-                            return self.perform(Action::UseRelease { prefix, release });
+                            return self.follow(then, outcome);
                         }
-                        // Essentials show their progress where they were
-                        // started, so finishing needs no notification.
-                        (Ok(_), None) => {}
-                        (Err(error), _) => {
-                            let retry = match then_select {
-                                Some(prefix) => Action::FetchRelease { prefix, release },
-                                None => Action::Download(release),
-                            };
-                            self.notifications.push(
-                                Notification::new(
-                                    InfoCardKind::Error,
-                                    "Error",
-                                    format!("Couldn’t download {name}. {error}"),
-                                )
-                                .action("Retry", Follow::Act(retry)),
-                            );
+                    }
+                    (Subject::Addon(release), Verb::Fetch, Err(error)) => {
+                        let name = self.release_name(*release);
+                        let retry = match then {
+                            Some(Action::UseRelease { prefix, release }) => {
+                                Action::FetchRelease { prefix, release }
+                            }
+                            _ => Action::Download(*release),
+                        };
+                        self.notifications.push(
+                            Notification::new(
+                                InfoCardKind::Error,
+                                "Error",
+                                format!("Couldn’t download {name}. {error}"),
+                            )
+                            .action("Retry", Follow::Act(retry)),
+                        );
+                        return Task::none();
+                    }
+                    (_, _, Err(error)) => {
+                        self.notifications.error(error);
+                        return Task::none();
+                    }
+                    (_, _, Ok(outcome)) => {
+                        if let Some(then) = then {
+                            return self.follow(then, outcome);
                         }
                     }
                 }
-                Some((_, Err(error))) => self.notifications.error(error),
-                Some((_, Ok(_))) | None => {}
-            },
+            }
             Message::Saved(result) => {
                 if let Err(error) = result {
                     self.notifications.error(error);
@@ -353,7 +358,7 @@ impl Model {
             .operations
             .iter()
             .filter_map(|(subject, pending)| {
-                let (Subject::Addon(id), Verb::Fetch { .. }) = (subject, &pending.verb) else {
+                let (Subject::Addon(id), Verb::Fetch) = (subject, &pending.verb) else {
                     return None;
                 };
                 let name = self

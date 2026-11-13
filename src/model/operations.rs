@@ -2,7 +2,6 @@
 
 use std::{collections::HashMap, future::Future, pin::pin};
 
-use bottles_core::ProgramSpec;
 use bottles_core::{Operation, Progress, error};
 use iced::{
     Task,
@@ -11,6 +10,8 @@ use iced::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use uuid::Uuid;
+
+use super::Action;
 
 /// What an operation acts on. A subject has at most one operation at a time.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -33,16 +34,10 @@ pub(crate) enum Subject {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Verb {
     Refresh,
-    /// Downloads a release, then selects it in bottle `then_select` when set.
-    Fetch {
-        then_select: Option<Uuid>,
-    },
-    /// Creates a prefix: a bottle named `name`, or with `program`, the
-    /// prefix of a standalone program named `name`.
-    Create {
-        name: String,
-        program: Option<ProgramSpec>,
-    },
+    /// Downloads a release.
+    Fetch,
+    /// Creates a prefix.
+    Create,
     Edit,
     Launch,
     Stop,
@@ -52,6 +47,9 @@ pub(crate) enum Verb {
 pub(crate) struct Pending {
     pub(crate) verb: Verb,
     pub(crate) progress: Option<Progress>,
+    /// What to do once the operation succeeds, e.g. select the release it
+    /// downloaded. Dropped when it fails or is cancelled.
+    pub(crate) then: Option<Action>,
     cancel: CancellationToken,
 }
 
@@ -69,6 +67,13 @@ pub(crate) enum Outcome {
 pub(crate) enum Event {
     Progress(Progress),
     Finished(Result<Outcome, String>),
+}
+
+/// An operation that finished, with the continuation it carried.
+pub(crate) struct Finished {
+    pub(crate) verb: Verb,
+    pub(crate) then: Option<Action>,
+    pub(crate) result: Result<Outcome, String>,
 }
 
 pub(crate) struct Operations {
@@ -95,11 +100,13 @@ impl Operations {
         self.pending.iter()
     }
 
-    /// Starts `operation` on `subject`, unless the subject already has one.
+    /// Starts `operation` on `subject`, unless the subject already has one,
+    /// to be followed by `then` once it succeeds.
     pub(crate) fn start<T: Send + 'static>(
         &mut self,
         subject: Subject,
         verb: Verb,
+        then: Option<Action>,
         operation: Operation<T>,
         outcome: impl FnOnce(T) -> Outcome + Send + 'static,
     ) -> Task<(Subject, Event)> {
@@ -124,7 +131,7 @@ impl Operations {
                 Err(error) => Err(error.to_string()),
             }
         };
-        self.run(subject, verb, cancel, progress, drive)
+        self.run(subject, verb, then, cancel, progress, drive)
     }
 
     /// Runs `future` on `subject`, unless the subject already has an operation.
@@ -142,13 +149,14 @@ impl Operations {
                 result.map(|()| Outcome::Done)
             }
         };
-        self.run(subject, verb, cancel, stream::empty(), drive)
+        self.run(subject, verb, None, cancel, stream::empty(), drive)
     }
 
     fn run(
         &mut self,
         subject: Subject,
         verb: Verb,
+        then: Option<Action>,
         cancel: CancellationToken,
         progress: impl Stream<Item = Progress> + Send + 'static,
         drive: impl Future<Output = Result<Outcome, String>> + Send + 'static,
@@ -161,6 +169,7 @@ impl Operations {
             Pending {
                 verb,
                 progress: None,
+                then,
                 cancel,
             },
         );
@@ -182,12 +191,8 @@ impl Operations {
         )
     }
 
-    /// Records `event`, returning the verb and result of a finished operation.
-    pub(crate) fn update(
-        &mut self,
-        subject: &Subject,
-        event: Event,
-    ) -> Option<(Verb, Result<Outcome, String>)> {
+    /// Records `event`, returning the operation it finished, if any.
+    pub(crate) fn update(&mut self, subject: &Subject, event: Event) -> Option<Finished> {
         match event {
             Event::Progress(progress) => {
                 if let Some(pending) = self.pending.get_mut(subject) {
@@ -197,7 +202,11 @@ impl Operations {
             }
             Event::Finished(result) => {
                 let pending = self.pending.remove(subject)?;
-                Some((pending.verb, result))
+                Some(Finished {
+                    verb: pending.verb,
+                    then: pending.then,
+                    result,
+                })
             }
         }
     }

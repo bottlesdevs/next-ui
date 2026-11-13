@@ -25,11 +25,10 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<
         model
             .operations
             .iter()
-            .filter_map(|(_, pending)| match &pending.verb {
-                Verb::Create {
-                    name,
-                    program: None,
-                } => Some((name, pending.progress.as_ref())),
+            .filter_map(|(_, pending)| match (&pending.verb, &pending.then) {
+                (Verb::Create, Some(Action::RecordBottle { name })) => {
+                    Some((name, pending.progress.as_ref()))
+                }
                 _ => None,
             })
     };
