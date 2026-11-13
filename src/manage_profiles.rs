@@ -218,12 +218,15 @@ pub fn button(model: &Model) -> Element<'_, Message> {
                 .on_select(Message::Select(profile.id)),
         );
     }
-    menu.item(
-        PopoverItem::new("Manage Profiles")
-            .icon(Icon::People)
-            .on_select(Message::Open),
-    )
-    .into()
+    // The icon takes the avatars' column, so the label lines up with the
+    // profile names above it.
+    menu.separator()
+        .item(
+            PopoverItem::new("Manage Profiles")
+                .leading(iced::widget::container(Icon::People.view()).center(44))
+                .on_select(Message::Open),
+        )
+        .into()
 }
 
 fn initial(name: &str) -> &str {

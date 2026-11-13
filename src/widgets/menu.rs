@@ -31,7 +31,7 @@ pub(super) fn row_content_with<'a, Message: 'a>(
     let mut labels = column![text(title).label()].spacing(spacing::XS);
 
     if let Some(subtitle) = subtitle {
-        labels = labels.push(text(subtitle).detail().muted());
+        labels = labels.push(text(subtitle).size(14).muted());
     }
 
     let mut content = row![].spacing(spacing::SM).align_y(Alignment::Center);
