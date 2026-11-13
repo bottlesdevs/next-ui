@@ -1,13 +1,16 @@
 use iced::{
     Alignment, Element, Theme,
-    widget::{column, text},
+    widget::{
+        column, text,
+        text::{Fragment, IntoFragment},
+    },
 };
 
 use super::spacing;
 
 enum Detail<'a> {
-    Subtitle(&'a str),
-    Status(&'a str),
+    Subtitle(Fragment<'a>),
+    Status(Fragment<'a>),
 }
 
 pub struct Title<'a> {
@@ -23,13 +26,13 @@ impl<'a> Title<'a> {
         }
     }
 
-    pub fn subtitle(mut self, subtitle: &'a str) -> Self {
-        self.detail = Some(Detail::Subtitle(subtitle));
+    pub fn subtitle(mut self, subtitle: impl IntoFragment<'a>) -> Self {
+        self.detail = Some(Detail::Subtitle(subtitle.into_fragment()));
         self
     }
 
-    pub fn status(mut self, status: &'a str) -> Self {
-        self.detail = Some(Detail::Status(status));
+    pub fn status(mut self, status: impl IntoFragment<'a>) -> Self {
+        self.detail = Some(Detail::Status(status.into_fragment()));
         self
     }
 }

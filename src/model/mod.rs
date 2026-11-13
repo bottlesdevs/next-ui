@@ -167,8 +167,11 @@ impl Model {
                 }
             }
             Message::Operation(subject, event) => match self.operations.update(&subject, event) {
-                Some((Verb::Create(name), Ok(Outcome::Created(id)))) => {
-                    return self.record_bottle(id, name);
+                Some((Verb::Create { name, program }, Ok(Outcome::Created(id)))) => {
+                    return match program {
+                        Some(spec) => self.record_program(id, name, spec),
+                        None => self.record_bottle(id, name),
+                    };
                 }
                 Some((Verb::Fetch { then_select }, result)) => {
                     let Subject::Addon(release) = subject else {

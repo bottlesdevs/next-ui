@@ -49,6 +49,8 @@ pub(crate) enum Request {
     Window(chrome::Action),
     OpenPreferences,
     ClosePreferences,
+    /// Opens the file picker for the Add Program pane.
+    PickProgram,
 }
 
 #[derive(Clone)]
@@ -61,6 +63,8 @@ pub(crate) enum Message {
     CopyNotification(Uuid),
     /// Runs a notification's action and dismisses it.
     FollowNotification(Uuid),
+    /// The file chosen in the Add Program picker, or `None` when cancelled.
+    ProgramPicked(Option<std::path::PathBuf>),
     ExpandNotifications,
     DismissAllNotifications,
     ShutdownFinished(Result<(), String>),
@@ -80,6 +84,7 @@ impl fmt::Debug for Message {
             Self::DismissNotification(_) => "DismissNotification",
             Self::CopyNotification(_) => "CopyNotification",
             Self::FollowNotification(_) => "FollowNotification",
+            Self::ProgramPicked(_) => "ProgramPicked",
             Self::ExpandNotifications => "ExpandNotifications",
             Self::DismissAllNotifications => "DismissAllNotifications",
             Self::ShutdownFinished(_) => "ShutdownFinished",
@@ -200,6 +205,31 @@ impl App {
                             None => Task::none(),
                         };
                     }
+                    Message::ProgramPicked(Some(file)) => {
+                        let windows = file.extension().is_some_and(|extension| {
+                            ["exe", "msi", "bat"]
+                                .iter()
+                                .any(|known| extension.eq_ignore_ascii_case(known))
+                        });
+                        if !windows {
+                            let name = file.file_name().map_or_else(
+                                || file.display().to_string(),
+                                |name| name.to_string_lossy().into_owned(),
+                            );
+                            model.notifications.error(format!(
+                                "{name} isn’t a Windows program. Pick the program’s .exe \
+                                 file, and extract the archive first if it came in one."
+                            ));
+                        } else {
+                            match screen {
+                                Screen::Classic(state) => state.picked(file),
+                                Screen::Next(state) => state.picked(file),
+                                _ => {}
+                            }
+                        }
+                        None
+                    }
+                    Message::ProgramPicked(None) => None,
                     Message::ExpandNotifications => {
                         model.notifications.toggle_expanded();
                         None
@@ -255,6 +285,16 @@ impl App {
                             }
                         }
                         return model.perform(action).map(Message::Model);
+                    }
+                    Some(Request::PickProgram) => {
+                        return Task::perform(
+                            rfd::AsyncFileDialog::new()
+                                .set_title("Add a Program")
+                                .add_filter("Windows programs", &["exe", "msi", "bat"])
+                                .add_filter("All files", &["*"])
+                                .pick_file(),
+                            |file| Message::ProgramPicked(file.map(|file| file.path().to_owned())),
+                        );
                     }
                     Some(Request::OpenPreferences) => {
                         open_preferences(screen, preferences::Page::default());

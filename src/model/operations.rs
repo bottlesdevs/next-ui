@@ -2,6 +2,7 @@
 
 use std::{collections::HashMap, future::Future, pin::pin};
 
+use bottles_core::ProgramSpec;
 use bottles_core::{Operation, Progress, error};
 use iced::{
     Task,
@@ -36,8 +37,12 @@ pub(crate) enum Verb {
     Fetch {
         then_select: Option<Uuid>,
     },
-    /// Creates a bottle with this name.
-    Create(String),
+    /// Creates a prefix: a bottle named `name`, or with `program`, the
+    /// prefix of a standalone program named `name`.
+    Create {
+        name: String,
+        program: Option<ProgramSpec>,
+    },
     Edit,
     Launch,
     Stop,
