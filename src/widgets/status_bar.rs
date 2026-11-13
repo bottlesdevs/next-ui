@@ -104,7 +104,7 @@ impl<'a> StatusBar<'a> {
 
         column![
             rule::horizontal(1).style(|theme: &Theme| rule::Style {
-                color: theme::colors(theme).border,
+                color: theme::colors(theme).raised,
                 radius: 0.0.into(),
                 fill_mode: rule::FillMode::Full,
                 snap: true,
@@ -165,16 +165,16 @@ impl<'a, Message: 'static> From<LogPanel<'a>> for Element<'a, Message> {
         let log = container(scrollable(log).height(Fill))
             .padding([spacing::MD, spacing::LG])
             .width(Fill)
-            .style(|current_theme: &Theme| container::background(theme::hint(current_theme).color))
+            .style(|current_theme: &Theme| {
+                container::background(theme::colors(current_theme).chrome)
+            })
             .into();
 
         container(Element::new(LogWidget {
             children: [header, log],
         }))
         .width(Fill)
-        .style(|current_theme: &Theme| {
-            container::background(theme::colors(current_theme).background)
-        })
+        .style(|current_theme: &Theme| container::background(theme::colors(current_theme).page))
         .into()
     }
 }
@@ -192,7 +192,7 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
 }
 
 fn bar_style(theme: &Theme) -> container::Style {
-    container::background(theme::colors(theme).background)
+    container::background(theme::colors(theme).page)
         .border(iced::Border::default().rounded(iced::border::bottom(6)))
 }
 

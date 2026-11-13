@@ -98,18 +98,24 @@ pub(super) fn colors(theme: &Theme, kind: Kind) -> Pair {
     let colors = theme::colors(theme);
 
     match kind {
-        Kind::Hint => theme::hint(theme),
-        Kind::Info => theme::info(),
+        Kind::Hint => Pair {
+            color: colors.chrome,
+            text: colors.text,
+        },
+        Kind::Info => Pair {
+            color: colors.info,
+            text: Color::WHITE,
+        },
         Kind::Error => Pair {
-            color: colors.danger_surface,
+            color: colors.danger,
             text: Color::WHITE,
         },
         Kind::Warning => Pair {
-            color: colors.warning_surface,
+            color: colors.warning,
             text: Color::WHITE,
         },
         Kind::Success => Pair {
-            color: colors.success_surface,
+            color: colors.success,
             text: Color::WHITE,
         },
     }

@@ -182,7 +182,7 @@ fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(next_ui::theme::colors(theme).surface)
+                .background(next_ui::theme::colors(theme).card)
                 .border(iced::Border::default().rounded(22))
         });
     let labels = column![

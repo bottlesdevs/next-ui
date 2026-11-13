@@ -84,8 +84,8 @@ impl<'a, Message: 'a> From<Avatar<'a>> for Element<'a, Message> {
             let colors = crate::theme::colors(theme);
             let (background, foreground) = match (color, active) {
                 (Some(color), _) => (color, colors.text),
-                (None, true) => (colors.accent, colors.window),
-                (None, false) => (colors.selection, colors.text),
+                (None, true) => (colors.accent, colors.chrome),
+                (None, false) => (colors.selected, colors.text),
             };
 
             container::Style::default()

@@ -154,7 +154,7 @@ fn footer_row<'a, Message: Clone + 'a>(label: &'a str, message: Message) -> Elem
     .padding(spacing::MD)
     .on_press_maybe(Some(message))
     .style(|theme, state| button::Style {
-        background: Some(Background::Color(crate::theme::colors(theme).hover)),
+        background: Some(Background::Color(crate::theme::colors(theme).hovered)),
         border: Border::default().rounded(iced::border::bottom(6)),
         ..list_row::menu_style(theme, state, Menu::Floating)
     })
@@ -177,7 +177,7 @@ fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Messa
 fn search_style(theme: &Theme) -> container::Style {
     let colors = crate::theme::colors(theme);
     crate::theme::surface(iced::theme::palette::Pair {
-        color: colors.border,
+        color: colors.raised,
         text: colors.text,
     })
 }

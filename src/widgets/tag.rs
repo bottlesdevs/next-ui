@@ -26,7 +26,7 @@ impl<'a, Message: 'a> From<Tag<'a>> for Element<'a, Message> {
                 let colors = crate::theme::colors(theme);
 
                 container::Style::default()
-                    .background(colors.border)
+                    .background(colors.raised)
                     .color(colors.accent_muted)
                     .border(Border::default().rounded(6))
             })

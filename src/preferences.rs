@@ -513,7 +513,7 @@ fn icon_tile<'a>(icon: Icon) -> Element<'a, Message> {
         .style(|theme| {
             let colors = next_ui::theme::colors(theme);
             container::Style::default()
-                .background(colors.border)
+                .background(colors.raised)
                 .border(iced::Border::default().rounded(10))
         })
         .into()

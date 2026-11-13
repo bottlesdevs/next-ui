@@ -56,7 +56,7 @@ impl<'a, Message: 'a> From<StatusPage<'a, Message>> for Element<'a, Message> {
                     .style(|theme| {
                         let colors = crate::theme::colors(theme);
                         container::Style::default()
-                            .background(colors.surface)
+                            .background(colors.card)
                             .border(iced::Border::default().rounded(22))
                     }),
             );

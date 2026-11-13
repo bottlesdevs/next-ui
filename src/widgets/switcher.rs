@@ -120,7 +120,7 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
         let diameter = bounds.height;
         let colors = theme::colors(theme);
         let color = if self.enabled {
-            palette::mix(colors.selection, colors.accent, progress)
+            palette::mix(colors.selected, colors.accent, progress)
         } else {
             colors.muted
         };
@@ -145,7 +145,7 @@ fn track_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = theme::colors(theme);
 
     button::Style {
-        background: Some(Background::Color(colors.background)),
+        background: Some(Background::Color(colors.page)),
         border: Border::default()
             .rounded(HEIGHT / 2.0)
             .color(colors.accent)

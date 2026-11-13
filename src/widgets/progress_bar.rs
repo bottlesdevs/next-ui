@@ -38,7 +38,7 @@ impl<'a, Message: 'a> From<ProgressBar> for Element<'a, Message> {
                 let colors = crate::theme::colors(theme);
 
                 progress_bar::Style {
-                    background: Background::Color(colors.deep_background),
+                    background: Background::Color(colors.sunken),
                     bar: Background::Color(colors.accent),
                     border: Border::default().rounded(THICKNESS / 2.0),
                 }

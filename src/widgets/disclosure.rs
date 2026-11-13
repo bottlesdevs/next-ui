@@ -321,8 +321,8 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
                 renderer,
                 header.bounds(),
                 panel.bounds(),
-                colors.border,
-                colors.background,
+                colors.raised,
+                colors.page,
             );
         }
 

@@ -72,10 +72,10 @@ pub fn window_frame<'a, Message: Clone + 'a>(
             let colors = theme::colors(current_theme);
 
             container::Style {
-                background: Some(Background::Color(colors.window)),
+                background: Some(Background::Color(colors.chrome)),
                 border: Border::default()
                     .rounded(6)
-                    .color(colors.window_border)
+                    .color(colors.chrome_border)
                     .width(1),
                 ..container::Style::default()
             }
