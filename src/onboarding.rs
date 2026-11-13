@@ -297,7 +297,6 @@ fn button(label: &str) -> Button<'_, Message> {
 
 fn next_button(label: &str) -> Button<'_, Message> {
     button(label)
-        .trailing_icon(Icon::Arrow)
-        .icon_rotation(std::f32::consts::PI)
+        .trailing_icon(Icon::ArrowRight)
         .icon_size(18.0)
 }

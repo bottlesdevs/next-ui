@@ -52,7 +52,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> PageBody<'_, Messag
             ActionRow::new(bottle.name, Message::Select(bottle.id))
                 .description(bottle.state.runner.name())
                 .icon(Icon::Bottles)
-                .trailing(Icon::Arrow.view().rotation(std::f32::consts::PI))
+                .trailing(Icon::ArrowRight.view())
                 .selected(selected == Some(bottle.id))
                 .into()
         });
@@ -418,8 +418,7 @@ fn available_rows<'a>(
             None => row![
                 label.width(Fill),
                 Button::custom(text("Download").size(text_size::SMALL))
-                    .trailing_icon(Icon::Arrow)
-                    .icon_rotation(std::f32::consts::PI)
+                    .trailing_icon(Icon::ArrowRight)
                     .icon_size(14.0)
                     .kind(ButtonKind::Secondary)
                     .compact()

@@ -64,10 +64,9 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
             .kind(ButtonKind::Transparent)
             .diameter(32.0)
             .on_press_maybe(cycle.previous);
-        let next = Button::icon_only("Next value", Icon::Arrow)
+        let next = Button::icon_only("Next value", Icon::ArrowRight)
             .kind(ButtonKind::Transparent)
             .diameter(32.0)
-            .icon_rotation(std::f32::consts::PI)
             .on_press_maybe(cycle.next);
 
         ListRow::labeled(cycle.title)

@@ -149,12 +149,9 @@ fn panel<'a, Message: Clone + 'a>(
 /// A row across the panel's foot, e.g. a fallback for when no result fits.
 fn footer_row<'a, Message: Clone + 'a>(label: &'a str, message: Message) -> Element<'a, Message> {
     FocusableAction::new(
-        row![
-            text(label),
-            Icon::Arrow.view().rotation(std::f32::consts::PI)
-        ]
-        .spacing(spacing::SM)
-        .align_y(Alignment::Center),
+        row![text(label), Icon::ArrowRight.view()]
+            .spacing(spacing::SM)
+            .align_y(Alignment::Center),
     )
     .width(Fill)
     .padding(spacing::MD)

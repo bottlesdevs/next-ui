@@ -17,9 +17,9 @@ const EMPTY_OPTIONS: &[&str] = &[];
 const GALLERY_TABS: &[&str] = &["Bottles", "Library", "Settings"];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
 const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
-    ("Epic Games Store", "Install", Icon::Arrow),
+    ("Epic Games Store", "Install", Icon::ArrowRight),
     ("Epic Fight", "Run", Icon::Play),
-    ("GOG Galaxy", "Install", Icon::Arrow),
+    ("GOG Galaxy", "Install", Icon::ArrowRight),
     ("Steam", "Run", Icon::Play),
 ];
 const LOG: [&str; 3] = [
@@ -535,11 +535,6 @@ impl Gallery {
                     .trailing(
                         Button::new(*action)
                             .trailing_icon(*action_icon)
-                            .icon_rotation(if *action_icon == Icon::Arrow {
-                                std::f32::consts::PI
-                            } else {
-                                0.0
-                            })
                             .kind(ButtonKind::Surface)
                             .on_press(Message::Noop),
                     )

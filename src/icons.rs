@@ -7,6 +7,7 @@ pub(crate) const SIZE: f32 = 24.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Icon {
     Arrow,
+    ArrowRight,
     Bottles,
     Bug,
     Checkmark,
@@ -72,6 +73,7 @@ impl Icon {
     const fn name(self) -> &'static str {
         match self {
             Self::Arrow => "arrow",
+            Self::ArrowRight => "arrow_right",
             Self::Bottles => "bottles-symbolic",
             Self::Bug => "bug",
             Self::Checkmark => "checkmark",
@@ -128,8 +130,9 @@ mod tests {
 
     use super::*;
 
-    const ALL: [Icon; 42] = [
+    const ALL: [Icon; 43] = [
         Icon::Arrow,
+        Icon::ArrowRight,
         Icon::Bottles,
         Icon::Bug,
         Icon::Checkmark,
