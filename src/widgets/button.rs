@@ -47,7 +47,6 @@ pub struct Button<'a, Message> {
     tooltip: Option<&'a str>,
     icon: Option<Icon>,
     icon_trailing: bool,
-    icon_rotation: f32,
     icon_size: f32,
     shape: Shape,
     diameter: f32,
@@ -68,7 +67,6 @@ impl<'a, Message> Button<'a, Message> {
             tooltip: None,
             icon: None,
             icon_trailing: false,
-            icon_rotation: 0.0,
             icon_size: icons::SIZE,
             shape: Shape::Rectangular,
             diameter: 52.0,
@@ -106,11 +104,6 @@ impl<'a, Message> Button<'a, Message> {
     pub fn trailing_icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
         self.icon_trailing = true;
-        self
-    }
-
-    pub fn icon_rotation(mut self, rotation: f32) -> Self {
-        self.icon_rotation = rotation;
         self
     }
 
@@ -161,7 +154,6 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         } else if button.shape == Shape::IconOnly {
             container(icon_element(
                 button.icon.expect("icon-only buttons always have an icon"),
-                button.icon_rotation,
                 button.icon_size,
                 button.kind,
                 disabled,
@@ -178,25 +170,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 .align_y(Center);
 
             if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
-                row = row.push(icon_element(
-                    icon,
-                    button.icon_rotation,
-                    button.icon_size,
-                    button.kind,
-                    disabled,
-                ));
+                row = row.push(icon_element(icon, button.icon_size, button.kind, disabled));
             }
 
             row = row.push(button.content);
 
             if let Some(icon) = button.icon.filter(|_| button.icon_trailing) {
-                row = row.push(icon_element(
-                    icon,
-                    button.icon_rotation,
-                    button.icon_size,
-                    button.kind,
-                    disabled,
-                ));
+                row = row.push(icon_element(icon, button.icon_size, button.kind, disabled));
             }
 
             row.into()
@@ -247,7 +227,6 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 
 fn icon_element<'a, Message: 'a>(
     icon: Icon,
-    rotation: f32,
     size: f32,
     kind: ButtonKind,
     disabled: bool,
@@ -255,7 +234,6 @@ fn icon_element<'a, Message: 'a>(
     icon.view()
         .width(size)
         .height(size)
-        .rotation(rotation)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if disabled || kind == ButtonKind::Primary {
                 crate::theme::colors(theme).muted

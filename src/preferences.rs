@@ -360,8 +360,7 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
         )
         .trailing(
             Button::custom(text("Download").size(text_size::DENSE))
-                .trailing_icon(Icon::Arrow)
-                .icon_rotation(std::f32::consts::PI)
+                .trailing_icon(Icon::ArrowRight)
                 .icon_size(16.0)
                 .compact()
                 .on_press(Message::Act(Action::Download(release.id))),
