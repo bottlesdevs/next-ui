@@ -16,7 +16,7 @@ use super::text::TextExt as _;
 use super::{
     anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
-    menu::{self, item as menu_item, row_content_with},
+    menu::{self, overlay_item as menu_item, row_content_with},
     picker_row::PickerRow,
     spacing,
 };

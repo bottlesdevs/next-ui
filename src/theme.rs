@@ -265,16 +265,11 @@ pub(crate) fn card(theme: &IcedTheme) -> container::Style {
 }
 
 /// A panel floating over the page, e.g. a menu. The design is flat, so a
-/// dark hairline rather than a shadow cuts it out of whatever it covers; a
-/// lighter one would read as a glow.
+/// fill a step lighter than the rows it covers, not a shadow or an outline,
+/// sets it apart.
 pub(crate) fn overlay(theme: &IcedTheme) -> container::Style {
     let colors = colors(theme);
-    surface(pair(colors.border, colors.text)).border(
-        Border::default()
-            .rounded(6)
-            .width(1)
-            .color(colors.window),
-    )
+    surface(pair(colors.selection, colors.text))
 }
 
 pub(crate) fn surface(colors: Pair) -> container::Style {

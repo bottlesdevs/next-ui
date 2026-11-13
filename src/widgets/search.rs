@@ -15,7 +15,7 @@ use super::{
     anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
     button::{Button, ButtonKind},
     focus::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
-    menu::{footer as panel_footer, item as menu_item, row_content},
+    menu::{footer as panel_footer, overlay_item as menu_item, row_content},
     spacing,
     text::TextExt as _,
 };

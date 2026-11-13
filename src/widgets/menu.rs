@@ -56,6 +56,21 @@ pub(super) fn item<'a, Message: Clone + 'a>(
         .style(row_style)
 }
 
+/// An [`item`] in a floating panel, whose fill is already the selection
+/// colour: it highlights a step lighter.
+pub(super) fn overlay_item<'a, Message: Clone + 'a>(
+    content: impl Into<Element<'a, Message>>,
+    on_press: Option<Message>,
+    selected: bool,
+) -> FocusableAction<'a, Message> {
+    item(content, on_press, selected).style(|theme, state| button::Style {
+        background: (state.enabled
+            && (state.selected || state.hovered || state.pressed || state.focused))
+            .then_some(Background::Color(crate::theme::colors(theme).hover)),
+        ..row_style(theme, state)
+    })
+}
+
 pub(super) fn footer<'a, Message: Clone + 'a>(
     label: &'a str,
     message: Message,
@@ -72,7 +87,7 @@ pub(super) fn footer<'a, Message: Clone + 'a>(
     .padding(spacing::MD)
     .on_press_maybe(Some(message))
     .style(|theme, state| button::Style {
-        background: Some(Background::Color(crate::theme::colors(theme).selection)),
+        background: Some(Background::Color(crate::theme::colors(theme).hover)),
         border: Border::default().rounded(iced::border::bottom(6)),
         ..row_style(theme, state)
     })
@@ -102,7 +117,7 @@ pub(super) fn separator<'a, Message: 'a>() -> Element<'a, Message> {
             .width(Fill)
             .height(1)
             .style(|theme| {
-                container::Style::default().background(crate::theme::colors(theme).selection)
+                container::Style::default().background(crate::theme::colors(theme).hover)
             }),
     )
     .padding([spacing::XS, spacing::SM])
