@@ -5,12 +5,15 @@
 //! other.
 
 use bottles_core::{
-    Addon, AddonRole, CatalogEntry, Component, Runner, RunnerFlavor, Slot, Umu, WineArch,
-    WineBridge,
+    Addon, AddonRole, CatalogEntry, Component, PrefixBackend, Runner, RunnerFlavor, Slot, Umu,
+    WineArch, WineBridge,
 };
 use uuid::Uuid;
 
 use super::Model;
+
+/// The backend new bottles are created with.
+pub(crate) const BACKEND: PrefixBackend = PrefixBackend::Standard;
 
 pub(crate) const REQUIRED: [AddonRole; 2] = [
     AddonRole::Runner(Runner {
@@ -83,10 +86,8 @@ impl Model {
             return false;
         };
         self.winebridge().is_some()
-            && match runner.flavor() {
-                RunnerFlavor::Wine => true,
-                RunnerFlavor::Proton => self.umu().is_some() && arch == WineArch::Win64,
-            }
+            && (runner.flavor() != RunnerFlavor::Proton || self.umu().is_some())
+            && arch.check(BACKEND, runner.flavor()).is_ok()
     }
 
     /// Installed runners, ordered by series and newest first within each.
