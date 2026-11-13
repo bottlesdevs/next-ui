@@ -16,7 +16,7 @@ use next_ui::{
 use uuid::Uuid;
 
 use super::{Draft, Message};
-use crate::model::{Action, Activity, AvailableRelease, Bottle, Change, Model, Verb};
+use crate::model::{Action, Activity, AvailableRelease, Bottle, Change, Model, Then, Verb};
 
 /// A row for every bottle and for every bottle being created.
 pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<'_, Message> {
@@ -26,7 +26,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<
             .operations
             .iter()
             .filter_map(|(_, pending)| match (&pending.verb, &pending.then) {
-                (Verb::Create, Some(Action::RecordBottle { name })) => {
+                (Verb::Create, Some(Then::RecordBottle { name })) => {
                     Some((name, pending.progress.as_ref()))
                 }
                 _ => None,

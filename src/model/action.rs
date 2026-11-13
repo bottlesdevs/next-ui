@@ -13,7 +13,7 @@ use super::{
     collection::{BottleRecord, ProgramRecord},
     defaults,
     library::Target,
-    operations::{Outcome, Subject, Verb},
+    operations::{Outcome, Subject, Then, Verb},
     report::{Refusal, Report},
     settings::Experience,
 };
@@ -89,17 +89,6 @@ pub(crate) enum Action {
     UninstallPlugin(String),
     /// Stops downloading a release.
     CancelDownload(Uuid),
-    /// Records the prefix just created as a bottle named `name`. Only follows
-    /// a creation, which supplies the prefix.
-    RecordBottle {
-        name: String,
-    },
-    /// Records the prefix just created as a standalone program. Only follows
-    /// a creation, which supplies the prefix.
-    RecordProgram {
-        name: String,
-        spec: ProgramSpec,
-    },
 }
 
 /// A change to how a prefix starts.
@@ -155,9 +144,6 @@ impl Model {
                 profiles.unlink(link);
                 Ok(())
             }),
-            Action::RecordBottle { .. } | Action::RecordProgram { .. } => {
-                unreachable!("a record only follows the creation of its prefix")
-            }
             Action::Stop(id) => self.on_prefix(id, Verb::Stop, |prefix| prefix.stop(false)),
             Action::Kill { prefix, group } => match self.core.prefixes().open(prefix) {
                 Ok(handle) => {
@@ -174,7 +160,7 @@ impl Model {
                 self.start(Subject::Prefix(id), Verb::Delete, operation)
             }
             Action::CreateBottle { name, runner, arch } => {
-                self.create_prefix(runner, arch, Action::RecordBottle { name })
+                self.create_prefix(runner, arch, Then::RecordBottle { name })
             }
             Action::Rename(id, name) => self.change_collection(move |collection| {
                 if let Some(bottle) = collection.bottles.get_mut(&id) {
@@ -263,11 +249,7 @@ impl Model {
                     return self.report(Report::Refused(Refusal::NoRunner));
                 };
                 let spec = program_spec(&executable, &options);
-                self.create_prefix(
-                    runner,
-                    WineArch::Win64,
-                    Action::RecordProgram { name, spec },
-                )
+                self.create_prefix(runner, WineArch::Win64, Then::RecordProgram { name, spec })
             }
             Action::AddToBottle {
                 prefix,
@@ -346,7 +328,7 @@ impl Model {
     }
 
     /// Creates a prefix, then records it with `record`.
-    fn create_prefix(&mut self, runner: Uuid, arch: WineArch, record: Action) -> Task<Message> {
+    fn create_prefix(&mut self, runner: Uuid, arch: WineArch, record: Then) -> Task<Message> {
         let (Some(runner), Some(winebridge)) = (
             self.sources.addons.release::<Runner>(runner),
             self.winebridge(),
@@ -375,13 +357,14 @@ impl Model {
 
     /// Performs `then`, the continuation of an operation that finished with
     /// `outcome`.
-    pub(super) fn follow(&mut self, then: Action, outcome: Outcome) -> Task<Message> {
+    pub(super) fn follow(&mut self, then: Then, outcome: Outcome) -> Task<Message> {
         match (then, outcome) {
-            (Action::RecordBottle { name }, Outcome::Created(id)) => self.record_bottle(id, name),
-            (Action::RecordProgram { name, spec }, Outcome::Created(id)) => {
+            (Then::RecordBottle { name }, Outcome::Created(id)) => self.record_bottle(id, name),
+            (Then::RecordProgram { name, spec }, Outcome::Created(id)) => {
                 self.record_program(id, name, spec)
             }
-            (then, _) => self.perform(then),
+            (Then::Act(action), _) => self.perform(action),
+            (Then::RecordBottle { .. } | Then::RecordProgram { .. }, _) => Task::none(),
         }
     }
 
@@ -423,7 +406,7 @@ impl Model {
             .start(
                 Subject::Addon(release),
                 Verb::Fetch,
-                then,
+                then.map(Then::Act),
                 operation,
                 |_| Outcome::Done,
             )
