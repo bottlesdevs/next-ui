@@ -111,7 +111,8 @@ pub(crate) struct Boot {
 pub(crate) enum Message {
     Source(sources::Update),
     Operation(Subject, operations::Event),
-    Saved(Result<(), String>),
+    /// Work the model doesn't track finished; only its failure is reported.
+    Completed(Result<(), String>),
 }
 
 impl Model {
@@ -205,7 +206,7 @@ impl Model {
                     return self.follow(then, outcome);
                 }
             }
-            Message::Saved(result) => {
+            Message::Completed(result) => {
                 if let Err(error) = result {
                     self.reports.push(Report::Error(error));
                 }
@@ -438,7 +439,7 @@ impl Model {
 
     fn write(&self, save: BoxFuture<'static, Result<(), String>>) -> Task<Message> {
         // Register now: shutdown must also wait for writes not yet polled by Iced.
-        Task::perform(self.tracker.track_future(save), Message::Saved)
+        Task::perform(self.tracker.track_future(save), Message::Completed)
     }
 }
 
