@@ -244,13 +244,7 @@ pub(super) fn settings<'a>(
             .title("Graphics")
             .columns(columns)
             .row(component(model, bottle, Slot::Dxvk, "DXVK", editable))
-            .row(component(
-                model,
-                bottle,
-                Slot::Vkd3d,
-                "VKD3D-Proton",
-                editable,
-            ))
+            .row(component(model, bottle, Slot::Vkd3d, "VKD3D", editable))
             .row(component(
                 model,
                 bottle,

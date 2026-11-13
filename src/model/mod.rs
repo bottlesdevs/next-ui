@@ -286,7 +286,7 @@ impl Model {
         let mut groups: Vec<(&'static str, Vec<bottles_core::Addon<AddonRole>>)> = vec![
             ("Runners", Vec::new()),
             ("DXVK", Vec::new()),
-            ("VKD3D-Proton", Vec::new()),
+            ("VKD3D", Vec::new()),
             ("DXVK-NVAPI", Vec::new()),
             ("LatencyFlex", Vec::new()),
             ("WineBridge and UMU", Vec::new()),
