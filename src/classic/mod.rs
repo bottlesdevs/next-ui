@@ -69,6 +69,8 @@ pub enum Message {
     Create,
     Rename(String),
     SaveName,
+    /// Asks for a program, then runs it once in a bottle.
+    RunProgram(Uuid),
     /// Asks before deleting a bottle.
     AskDelete(Uuid),
     Delete,
@@ -160,6 +162,7 @@ impl State {
                 let name = self.rename.take()?;
                 return Some(Request::Act(Action::Rename(self.selected?, name)));
             }
+            Message::RunProgram(id) => return Some(Request::RunProgram(id)),
             Message::AskDelete(id) => self.deleting = Some(id),
             Message::Delete => return Some(Request::Act(Action::Delete(self.deleting.take()?))),
             Message::Dismiss => self.deleting = None,
@@ -312,7 +315,7 @@ impl State {
             let mut run = PopoverItem::new("Run a Program…").icon(Icon::RunProgram);
             let mut delete = PopoverItem::new("Delete Bottle…").icon(Icon::Trash);
             if activity.is_settled() {
-                run = run.on_select(Message::Act(Action::RunProgram(id)));
+                run = run.on_select(Message::RunProgram(id));
                 delete = delete.on_select(Message::AskDelete(id));
             }
             let stop = Message::Act(Action::Stop(id));

@@ -66,9 +66,23 @@ pub(crate) enum Request {
     ClosePreferences,
     /// Opens the Add Program pane for programs going to `target`.
     AddProgram(add_program::Target),
+    /// Asks for a program, then runs it once in bottle `prefix`.
+    RunProgram(Uuid),
     /// Passes on what an app-wide header control sent.
     Control(Control),
 }
+
+/// What a program chosen in the file picker is for.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Pick {
+    /// The Add Program pane's file.
+    AddProgram,
+    /// A one-off run in the bottle with this prefix.
+    Run(Uuid),
+}
+
+/// The extensions of the files Wine runs as Windows programs.
+const WINDOWS_PROGRAMS: [&str; 3] = ["exe", "msi", "bat"];
 
 /// What the app-wide header controls send. Screens place the controls, as
 /// only they build their headers, and pass this on unread.
@@ -88,8 +102,8 @@ pub(crate) enum Message {
     CopyNotification(Uuid),
     /// Runs a notification's action and dismisses it.
     FollowNotification(Uuid),
-    /// The file chosen in the Add Program picker, or `None` when cancelled.
-    ProgramPicked(Option<std::path::PathBuf>),
+    /// The program chosen in the file picker, or `None` when cancelled.
+    Picked(Pick, Option<std::path::PathBuf>),
     ExpandNotifications,
     DismissAllNotifications,
     ShutdownFinished(Result<(), String>),
@@ -111,7 +125,7 @@ impl fmt::Debug for Message {
             Self::DismissNotification(_) => "DismissNotification",
             Self::CopyNotification(_) => "CopyNotification",
             Self::FollowNotification(_) => "FollowNotification",
-            Self::ProgramPicked(_) => "ProgramPicked",
+            Self::Picked(..) => "Picked",
             Self::ExpandNotifications => "ExpandNotifications",
             Self::DismissAllNotifications => "DismissAllNotifications",
             Self::ShutdownFinished(_) => "ShutdownFinished",
@@ -266,9 +280,9 @@ impl Ready {
                     None => Task::none(),
                 };
             }
-            Message::ProgramPicked(Some(file)) => {
+            Message::Picked(pick, Some(file)) => {
                 let windows = file.extension().is_some_and(|extension| {
-                    ["exe", "msi", "bat"]
+                    WINDOWS_PROGRAMS
                         .iter()
                         .any(|known| extension.eq_ignore_ascii_case(known))
                 });
@@ -281,12 +295,22 @@ impl Ready {
                         "{name} isn’t a Windows program. Pick the program’s .exe \
                          file, and extract the archive first if it came in one."
                     ));
-                } else if let Some(adding) = &mut self.adding {
-                    adding.picked(file);
+                    return Task::none();
                 }
-                None
+                match pick {
+                    Pick::AddProgram => {
+                        if let Some(adding) = &mut self.adding {
+                            adding.picked(file);
+                        }
+                        None
+                    }
+                    Pick::Run(prefix) => Some(Request::Act(Action::Run {
+                        prefix,
+                        executable: file,
+                    })),
+                }
             }
-            Message::ProgramPicked(None) => None,
+            Message::Picked(_, None) => None,
             Message::ExpandNotifications => {
                 model.notifications.toggle_expanded();
                 None
@@ -334,16 +358,7 @@ impl Ready {
                 .and_then(|adding| adding.update(message))
             {
                 None => None,
-                Some(add_program::Event::PickFile) => {
-                    return Task::perform(
-                        rfd::AsyncFileDialog::new()
-                            .set_title("Add a Program")
-                            .add_filter("Windows programs", &["exe", "msi", "bat"])
-                            .add_filter("All files", &["*"])
-                            .pick_file(),
-                        |file| Message::ProgramPicked(file.map(|file| file.path().to_owned())),
-                    );
-                }
+                Some(add_program::Event::PickFile) => return pick_program(Pick::AddProgram),
                 Some(add_program::Event::Window(action)) => Some(Request::Window(action)),
                 Some(add_program::Event::Close) => {
                     self.adding_open = false;
@@ -386,6 +401,7 @@ impl Ready {
                 self.adding = Some(add_program::State::new(target));
                 self.adding_open = true;
             }
+            Request::RunProgram(prefix) => return pick_program(Pick::Run(prefix)),
             Request::Control(Control::Profiles(message)) => {
                 if let Some(request) = self.profiles.update(&self.model, message) {
                     return self.request(request);
@@ -433,6 +449,22 @@ impl Ready {
             Screen::Next(state) => state.view(model, pane).map(Message::Next),
         }
     }
+}
+
+/// Opens the system file picker for a Windows program.
+fn pick_program(pick: Pick) -> Task<Message> {
+    let title = match pick {
+        Pick::AddProgram => "Add a Program",
+        Pick::Run(_) => "Run a Program",
+    };
+    Task::perform(
+        rfd::AsyncFileDialog::new()
+            .set_title(title)
+            .add_filter("Windows programs", &WINDOWS_PROGRAMS)
+            .add_filter("All files", &["*"])
+            .pick_file(),
+        move |file| Message::Picked(pick, file.map(|file| file.path().to_owned())),
+    )
 }
 
 fn shutdown(model: &Model) -> Task<Message> {

@@ -68,8 +68,6 @@ pub(crate) enum Action {
     },
     /// Installs a suggested program from its bottle recipe.
     InstallSuggestion(&'static str),
-    /// Asks for an executable, then runs it once in a bottle.
-    RunProgram(Uuid),
     /// Runs `executable`, a host path, once in bottle `prefix`.
     Run {
         prefix: Uuid,
@@ -245,18 +243,6 @@ impl Model {
                     Ok(())
                 })
             }),
-            Action::RunProgram(prefix) => Task::perform(
-                rfd::AsyncFileDialog::new()
-                    .set_title("Run a Program")
-                    .add_filter("Windows programs", &["exe"])
-                    .pick_file(),
-                move |file| {
-                    Message::Chosen(file.map(|file| Action::Run {
-                        prefix,
-                        executable: file.path().to_owned(),
-                    }))
-                },
-            ),
             Action::Run { prefix, executable } => match self.core.prefixes().open(prefix) {
                 // A one-off run gets its own process group and no record;
                 // the shortcuts it creates are what become programs
