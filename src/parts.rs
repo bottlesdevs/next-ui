@@ -145,11 +145,7 @@ fn suggestions<'a, Message: Clone + 'a>(
         container(column![art, container(footer).padding([18, 22])])
             .width(Fill)
             .clip(true)
-            .style(|theme| {
-                container::Style::default()
-                    .background(theme::colors(theme).card)
-                    .border(iced::Border::default().rounded(radius::ROW))
-            })
+            .style(theme::surface(theme::Surface::Card))
             .into()
     });
     let add = Button::new("Add a program from your computer")
@@ -294,11 +290,7 @@ fn downloads<'a, Message: Clone + 'a>(
                 bottom: 18.0,
                 left: 24.0,
             })
-            .style(|theme| {
-                container::Style::default()
-                    .background(theme::colors(theme).raised)
-                    .border(iced::Border::default().rounded(radius::BOX))
-            })
+            .style(theme::surface(theme::Surface::Boxed))
             .into()
         });
     Some(

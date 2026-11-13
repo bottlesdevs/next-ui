@@ -13,7 +13,7 @@ use super::{
     text::TextExt as _,
     text_size,
 };
-use crate::icons::Icon;
+use crate::{icons::Icon, theme::Surface};
 
 /// A notification whose content and actions are owned by the caller.
 pub struct Notification<'a, Message> {
@@ -105,10 +105,8 @@ impl<'a, Message: Clone + 'a> From<Notification<'a, Message>> for Element<'a, Me
                 .padding([14, 12])
                 .align_y(Alignment::Start)
                 .style(move |theme: &Theme| {
-                    let colors = info_card::colors(theme, kind);
-                    container::Style::default()
-                        .background(colors.color)
-                        .color(colors.text)
+                    Surface::Banner(kind)
+                        .style(theme)
                         .border(Border::default().rounded(radius::BOX))
                 }),
         )

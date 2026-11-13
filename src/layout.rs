@@ -212,7 +212,7 @@ fn page_panel<'a, Message: 'a>(
         container(body)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::panel)
+            .style(theme::surface(theme::Surface::Page))
             .clip(true),
     ]
     .width(Length::Fill)

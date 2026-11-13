@@ -1,21 +1,16 @@
 use iced::{
-    Center, Color, Element, Length, Theme,
-    theme::palette::Pair,
+    Center, Element, Length, Theme,
     widget::{column, container, row, svg, text, text::Fragment, text::IntoFragment},
 };
 
-use crate::{icons::Icon, theme};
+use crate::{
+    icons::Icon,
+    theme::{self, Surface},
+};
 
 use super::{spacing, text::TextExt as _, text_size};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    Hint,
-    Info,
-    Error,
-    Warning,
-    Success,
-}
+pub use crate::theme::Tone as Kind;
 
 pub struct InfoCard<'a> {
     kind: Kind,
@@ -70,7 +65,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
         .height(height)
         .padding(16)
         .clip(true)
-        .style(move |theme| theme::surface(colors(theme, kind)))
+        .style(theme::surface(Surface::Banner(kind)))
         .into()
     }
 }
@@ -88,33 +83,6 @@ pub(super) fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
         .width(text_size::HEADING)
         .height(text_size::HEADING)
         .style(move |theme: &Theme, _| svg::Style {
-            color: Some(colors(theme, kind).text),
+            color: Some(Surface::Banner(kind).colors(theme).text),
         })
-}
-
-pub(super) fn colors(theme: &Theme, kind: Kind) -> Pair {
-    let colors = theme::colors(theme);
-
-    match kind {
-        Kind::Hint => Pair {
-            color: colors.chrome,
-            text: colors.text,
-        },
-        Kind::Info => Pair {
-            color: colors.info,
-            text: Color::WHITE,
-        },
-        Kind::Error => Pair {
-            color: colors.danger,
-            text: Color::WHITE,
-        },
-        Kind::Warning => Pair {
-            color: colors.warning,
-            text: Color::WHITE,
-        },
-        Kind::Success => Pair {
-            color: colors.success,
-            text: Color::WHITE,
-        },
-    }
 }

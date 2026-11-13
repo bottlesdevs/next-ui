@@ -226,7 +226,7 @@ pub(crate) fn shell<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a,
     )
     .width(Fill)
     .height(Fill)
-    .style(theme::panel)
+    .style(theme::surface(theme::Surface::Page))
     .clip(true)
     .into()
 }
