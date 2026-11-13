@@ -16,7 +16,21 @@ async-fs.workspace = true
 bottles-core.workspace = true
 bottles-plugin-host.workspace = true
 directories.workspace = true
-iced = { version = "0.14", features = ["advanced", "canvas", "svg", "image-without-codecs", "linux-theme-detection", "sipper", "tokio"] }
+iced = { version = "0.14", default-features = false, features = [
+    "wgpu",
+    "tiny-skia",
+    "crisp",
+    "web-colors",
+    "x11",
+    "wayland",
+    "linux-theme-detection",
+    "advanced",
+    "canvas",
+    "svg",
+    "image-without-codecs",
+    "sipper",
+    "tokio",
+] }
 keyvalues-parser.workspace = true
 next-config.workspace = true
 next-paths.workspace = true
