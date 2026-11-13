@@ -8,7 +8,7 @@ use iced::{
 };
 use next_ui::{
     Icon, chrome,
-    layout::{PaneContext, Side, side_panel},
+    layout::{self, PageBody, PaneContext, Side, side_panel},
     widget::{
         ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
         Popover, ProgressBar, RowGroup, Search, StatusPage, Tab, Tabs, Tag, TextExt as _, Title,
@@ -124,18 +124,20 @@ impl State {
                 .middle(tabs)
         });
         let body = match self.page {
-            Page::General => Ok(general(model)),
+            Page::General => PageBody::content(general(model)),
             Page::Addons => addons(model),
             Page::Plugins => plugins(model, self),
-            Page::About => Ok(about()),
+            Page::About => PageBody::content(about()),
         };
-        match body {
-            Ok(body) => parts::page(
-                header,
-                container(container(body).max_width(880)).center_x(Fill),
+        let body = match body {
+            PageBody::Content(content) => PageBody::Content(
+                container(container(content).max_width(880))
+                    .center_x(Fill)
+                    .into(),
             ),
-            Err(empty) => parts::status_page(header, empty),
-        }
+            placeholder => placeholder,
+        };
+        layout::page(header, body)
     }
 
     /// The open plugin: what it adds to Bottles, and Uninstall.
@@ -156,7 +158,7 @@ impl State {
                 .find(|plugin| &plugin.id == id)
         });
         let Some(plugin) = plugin else {
-            return parts::page(header, column![]);
+            return layout::page(header, PageBody::content(column![]));
         };
         // An update banner, the description, the author and the size of the
         // plugin's data have no source yet (`Model::plugin_update`,
@@ -206,14 +208,16 @@ impl State {
             Message::Act(Action::UninstallPlugin(plugin.id.clone())),
             Message::Dismiss,
         );
-        parts::page(
+        layout::page(
             header,
-            column![
-                container(hero).center_x(Fill).padding([spacing::MD, 0.0]),
-                adds,
-                container(uninstall).center_x(Fill),
-            ]
-            .spacing(spacing::LG),
+            PageBody::content(
+                column![
+                    container(hero).center_x(Fill).padding([spacing::MD, 0.0]),
+                    adds,
+                    container(uninstall).center_x(Fill),
+                ]
+                .spacing(spacing::LG),
+            ),
         )
     }
 }
@@ -271,19 +275,16 @@ fn general(model: &Model) -> Element<'_, Message> {
         .into()
 }
 
-/// A tab's scrolling content, or the status page shown when it has none.
-type Body<'a> = Result<Element<'a, Message>, Element<'a, Message>>;
-
-fn addons(model: &Model) -> Body<'_> {
+fn addons(model: &Model) -> PageBody<'_, Message> {
     let groups = model.release_groups();
     if groups.is_empty() {
-        return Err(StatusPage::new("Nothing downloaded")
-            .description("Runners and components you download appear here.")
-            .into());
+        let empty = StatusPage::new("Nothing downloaded")
+            .description("Runners and components you download appear here.");
+        return PageBody::placeholder(empty);
     }
     // Whether a bottle uses a release isn't known yet (`Model::release_users`),
     // so every downloaded release offers Remove.
-    Ok(groups
+    let content = groups
         .into_iter()
         .fold(column![].spacing(spacing::LG), |page, group| {
             let (title, icon) = match group.kind {
@@ -322,8 +323,8 @@ fn addons(model: &Model) -> Body<'_> {
                     .into_iter()
                     .fold(block, |block, release| block.row(available_row(release))),
             )
-        })
-        .into())
+        });
+    PageBody::content(content)
 }
 
 /// A release the catalogs offer: Download, or its progress while it
@@ -367,15 +368,15 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
     }
 }
 
-fn plugins<'a>(model: &'a Model, state: &'a State) -> Body<'a> {
+fn plugins<'a>(model: &'a Model, state: &'a State) -> PageBody<'a, Message> {
     let installed = model.installed_plugins();
     // The catalog of available plugins doesn't exist yet, and the manifests
     // have no description, author or update (`Model::plugin_about`,
     // `Model::plugin_update`), so the page lists installed plugins by name.
     if installed.is_empty() {
-        return Err(StatusPage::new("No plugins installed")
-            .description("Plugins add storefront accounts and libraries.")
-            .into());
+        let empty = StatusPage::new("No plugins installed")
+            .description("Plugins add storefront accounts and libraries.");
+        return PageBody::placeholder(empty);
     }
     let query = state.plugin_query.to_lowercase();
     let shown = installed
@@ -441,7 +442,7 @@ fn plugins<'a>(model: &'a Model, state: &'a State) -> Body<'a> {
         });
         column![heading, group].spacing(spacing::SM).into()
     };
-    Ok(column![toolbar, chips, list].spacing(spacing::MD).into())
+    PageBody::content(column![toolbar, chips, list].spacing(spacing::MD))
 }
 
 fn about<'a>() -> Element<'a, Message> {

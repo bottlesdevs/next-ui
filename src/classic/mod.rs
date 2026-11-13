@@ -3,14 +3,10 @@
 mod bottle;
 
 use bottles_core::{PrefixBackend, WineArch};
-use iced::{
-    Element, Fill,
-    widget::{column, container},
-};
+use iced::{Element, Fill, widget::column};
 use next_ui::{
     Icon, chrome,
-    layout::{PaneContext, Side, navigation_split, side_panel},
-    theme,
+    layout::{self, PageBody, PaneContext, Side, navigation_split, side_panel},
     widget::{Dialog, ListRow, Popover, Tab, Tabs, Title, WindowModal, header_button},
 };
 use uuid::Uuid;
@@ -263,7 +259,7 @@ impl State {
                 false,
             ),
         };
-        parts::body_page(header, body)
+        layout::page(header, body)
     }
 
     fn creation_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
@@ -284,7 +280,10 @@ impl State {
                         .on_press_maybe(can_create.then_some(Message::Create)),
                 )
         });
-        parts::page(header, bottle::creation(draft, model, can_create))
+        layout::page(
+            header,
+            PageBody::content(bottle::creation(draft, model, can_create)),
+        )
     }
 
     fn detail_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
@@ -343,13 +342,6 @@ impl State {
                 .subtitle("Snapshot management is coming later.")
                 .into(),
         };
-        let body = container(
-            column![parts::scroll_content(content), status]
-                .width(Fill)
-                .height(Fill),
-        )
-        .style(theme::panel)
-        .clip(true);
-        column![header, body].width(Fill).height(Fill).into()
+        layout::page_with_footer(header, PageBody::content(content), status)
     }
 }

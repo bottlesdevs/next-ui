@@ -7,7 +7,7 @@ use iced::{
 };
 use next_ui::{
     Icon, chrome,
-    layout::PaneContext,
+    layout::{self, PageBody, PaneContext},
     widget::{
         ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, RowGroup, TextExt as _, TextRow,
         Title, spacing,
@@ -112,7 +112,7 @@ impl State {
                 .middle(Title::new("Manage Profiles"))
         });
         let Some(editing) = self.editing(model) else {
-            return parts::page(header, column![]);
+            return layout::page(header, PageBody::content(column![]));
         };
         let profiles = &model.profiles;
         let deletable = profiles.profiles.len() > 1;
@@ -191,7 +191,7 @@ impl State {
         ]
         .spacing(spacing::SM);
 
-        parts::page(header, body)
+        layout::page(header, PageBody::content(body))
     }
 }
 

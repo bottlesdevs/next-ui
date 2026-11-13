@@ -7,6 +7,7 @@ use iced::{
 };
 use next_ui::{
     Icon,
+    layout::PageBody,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, CardAction, CycleRow, ExpanderRow,
         InfoRow, LogPanel, PickerRow, ProgressBar, RowGroup, SelectorRow, StatusBar, SwitcherRow,
@@ -19,7 +20,7 @@ use super::{Draft, Message};
 use crate::model::{Action, Activity, AvailableRelease, Bottle, Change, Model, Then, Verb};
 
 /// A row for every bottle and for every bottle being created.
-pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<'_, Message> {
+pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> PageBody<'_, Message> {
     let bottles = model.bottles();
     let creating = || {
         model
@@ -33,7 +34,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<
             })
     };
     if bottles.is_empty() && creating().next().is_none() {
-        return Err(next_ui::widget::StatusPage::new("No bottles yet")
+        let empty = next_ui::widget::StatusPage::new("No bottles yet")
             .description(
                 "A bottle is a Windows environment for the programs you install. Create one to \
                  get started.",
@@ -43,10 +44,10 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<
                     .icon(Icon::Plus)
                     .kind(next_ui::widget::ButtonKind::Accent)
                     .on_press(Message::New),
-            )
-            .into());
+            );
+        return PageBody::placeholder(empty);
     }
-    Ok(responsive(move |size| {
+    PageBody::content(responsive(move |size| {
         let bottles = bottles.iter().map(|bottle| {
             ActionRow::new(bottle.name, Message::Select(bottle.id))
                 .description(bottle.state.runner.name())
@@ -85,8 +86,7 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<
         )
         .center_x(Fill)
         .into()
-    })
-    .into())
+    }))
 }
 
 pub(super) fn creation<'a>(

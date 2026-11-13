@@ -4,7 +4,7 @@ use bottles_core::Slot;
 use iced::{Element, Fill, widget::text};
 use next_ui::{
     Icon, chrome,
-    layout::{self, PaneContext},
+    layout::{self, PageBody, PaneContext},
     widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing},
 };
 use uuid::Uuid;
@@ -108,14 +108,14 @@ impl State {
             |name| Message::Act(Action::InstallSuggestion(name)),
             true,
         );
-        parts::body_page(header, body)
+        layout::page(header, body)
     }
 
     fn detail_view<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
         let Some(program) = self.selected(model) else {
-            return parts::page(
+            return layout::page(
                 pane.header(Message::Window(chrome::Action::Drag), |header| header),
-                text("No program selected"),
+                PageBody::content(text("No program selected")),
             );
         };
         let stop = Message::Act(Action::Stop(program.prefix));
@@ -142,29 +142,31 @@ impl State {
         let switch = |slot, title, description| {
             component_switch(model, &program, slot, title, description, editable)
         };
-        parts::page(
+        layout::page(
             header,
-            iced::widget::column![
-                RowGroup::new()
-                    .row(InfoRow::new("Executable").description(program.spec.executable()))
-                    .row(InfoRow::new("Runner").description(program.state.runner.name())),
-                RowGroup::new()
-                    .title("Graphics")
-                    .row(switch(Slot::Dxvk, "DXVK", "Vulkan-based D3D9/D3D10/D3D11"))
-                    .row(switch(Slot::Vkd3d, "VKD3D", "Vulkan-based D3D12"))
-                    .row(switch(
-                        Slot::LatencyFlex,
-                        "LatencyFlex",
-                        "Lower input latency"
-                    )),
-                text(
-                    "Next always uses the newest downloaded release. Turning a component on \
+            PageBody::content(
+                iced::widget::column![
+                    RowGroup::new()
+                        .row(InfoRow::new("Executable").description(program.spec.executable()))
+                        .row(InfoRow::new("Runner").description(program.state.runner.name())),
+                    RowGroup::new()
+                        .title("Graphics")
+                        .row(switch(Slot::Dxvk, "DXVK", "Vulkan-based D3D9/D3D10/D3D11"))
+                        .row(switch(Slot::Vkd3d, "VKD3D", "Vulkan-based D3D12"))
+                        .row(switch(
+                            Slot::LatencyFlex,
+                            "LatencyFlex",
+                            "Lower input latency"
+                        )),
+                    text(
+                        "Next always uses the newest downloaded release. Turning a component on \
                      downloads it if needed."
-                )
-                .size(14)
-                .muted(),
-            ]
-            .spacing(spacing::SM),
+                    )
+                    .size(14)
+                    .muted(),
+                ]
+                .spacing(spacing::SM),
+            ),
         )
     }
 
