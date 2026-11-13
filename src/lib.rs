@@ -26,7 +26,7 @@ pub mod widget {
         artwork_card::{ArtworkCard, CardAction},
         avatar::{Avatar, AvatarShape},
         boxed_group::BoxedGroup,
-        button::{Button, ButtonKind},
+        button::{Button, ButtonKind, ButtonSize},
         card::Card,
         cycle_row::CycleRow,
         dialog::{Dialog, WindowModal},
