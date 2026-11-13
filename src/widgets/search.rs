@@ -1,7 +1,7 @@
 use iced::{
-    Alignment, Background, Border, Color, Element, Fill, Theme,
+    Alignment, Background, Border, Element, Fill, Theme,
     advanced::widget::Id,
-    widget::{button, column, container, row, scrollable, text, text_input},
+    widget::{button, column, container, row, scrollable, text},
 };
 
 use crate::icons::Icon;
@@ -12,6 +12,7 @@ use super::{
     popup::{AnchorMessage, Popup, PopupMessage},
     spacing,
     text::TextExt as _,
+    text_field::TextField,
 };
 
 pub enum SearchState<'a, Message> {
@@ -74,17 +75,11 @@ impl<'a, Message> Search<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message> {
     fn from(search: Search<'a, Message>) -> Self {
-        let mut input = text_input(search.placeholder, search.query)
-            .on_input(search.on_input)
+        let input = TextField::new(search.placeholder, search.query)
+            .on_input_maybe(Some(search.on_input))
             .on_submit_maybe(search.on_submit)
-            .width(Fill)
-            .padding(0)
-            .size(18)
-            .style(|theme, _| input_style(theme));
-
-        if let Some(id) = search.id {
-            input = input.id(id);
-        }
+            .size(18.0)
+            .id(search.id);
 
         let input = container(
             row![Icon::Search.view(), input]
@@ -185,32 +180,4 @@ fn search_style(theme: &Theme) -> container::Style {
         color: colors.border,
         text: colors.text,
     })
-}
-
-fn input_style(theme: &Theme) -> text_input::Style {
-    let colors = crate::theme::colors(theme);
-
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border::default(),
-        icon: colors.muted,
-        placeholder: colors.muted,
-        value: colors.text,
-        selection: colors.accent,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn input_keeps_the_original_border_and_selection() {
-        let theme = crate::theme::dark();
-        let colors = crate::theme::colors(&theme);
-        let style = input_style(&theme);
-
-        assert_eq!(style.border, Border::default());
-        assert_eq!(style.selection, colors.accent);
-    }
 }
