@@ -41,7 +41,7 @@ impl State {
         }
     }
 
-    pub fn update(&mut self, model: &Model, message: Message) -> Option<Request> {
+    pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
             Message::Control(control) => return Some(Request::Control(control)),
             Message::Window(action) => return Some(Request::Window(action)),
