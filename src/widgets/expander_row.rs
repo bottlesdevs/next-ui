@@ -1,49 +1,29 @@
-use iced::Element;
+use iced::{Element, widget::text::IntoFragment};
 
 use super::{list_row::ListRow, row_group::standalone_expander};
 
+/// A row that discloses more rows beneath it, like `AdwExpanderRow`.
 pub struct ExpanderRow<'a, Message> {
-    pub(crate) header: Header<'a, Message>,
+    pub(crate) header: ListRow<'a, Message>,
     pub(crate) columns: usize,
     pub(crate) content: Vec<Element<'a, Message>>,
 }
 
-pub(crate) enum Header<'a, Message> {
-    Labels {
-        title: &'a str,
-        description: &'a str,
-    },
-    Custom(ListRow<'a, Message>),
-}
+impl<'a, Message: 'a> ExpanderRow<'a, Message> {
+    pub fn new(title: impl IntoFragment<'a>) -> Self {
+        Self::with_header(ListRow::labeled(title).subtitle(""))
+    }
 
-impl<'a, Message> ExpanderRow<'a, Message> {
-    pub fn new(title: &'a str) -> Self {
+    pub fn with_header(header: impl Into<ListRow<'a, Message>>) -> Self {
         Self {
-            header: Header::Labels {
-                title,
-                description: "",
-            },
+            header: header.into(),
             columns: 1,
             content: Vec::new(),
         }
     }
 
-    pub fn with_header(header: impl Into<ListRow<'a, Message>>) -> Self {
-        Self {
-            header: Header::Custom(header.into()),
-            ..Self::new("")
-        }
-    }
-
-    pub fn description(mut self, description: &'a str) -> Self {
-        if let Header::Labels {
-            description: current,
-            ..
-        } = &mut self.header
-        {
-            *current = description;
-        }
-
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.header = self.header.subtitle(description);
         self
     }
 
@@ -61,14 +41,5 @@ impl<'a, Message> ExpanderRow<'a, Message> {
 impl<'a, Message: Clone + 'a> From<ExpanderRow<'a, Message>> for Element<'a, Message> {
     fn from(expander: ExpanderRow<'a, Message>) -> Self {
         standalone_expander(expander)
-    }
-}
-
-pub(crate) fn header_row<'a, Message: 'a>(header: Header<'a, Message>) -> ListRow<'a, Message> {
-    match header {
-        Header::Labels { title, description } => {
-            ListRow::new(super::list_row::labels(title, description))
-        }
-        Header::Custom(header) => header,
     }
 }

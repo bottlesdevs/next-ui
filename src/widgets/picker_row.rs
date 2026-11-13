@@ -1,48 +1,43 @@
-use iced::{
-    Element,
-    widget::text::{Fragment, IntoFragment},
-};
+use iced::{Element, widget::text::IntoFragment};
 
 use crate::icons::Icon;
 
-use super::list_row::{self, ListRow, labels};
+use super::list_row::ListRow;
 
-pub struct PickerRow<'a, Message> {
-    title: &'a str,
-    description: Fragment<'a>,
-    on_press: Option<Message>,
-}
+/// A pressable row that picks a file, shown by its folder icon.
+pub struct PickerRow<'a, Message>(ListRow<'a, Message>);
 
-impl<'a, Message> PickerRow<'a, Message> {
-    pub fn new(title: &'a str) -> Self {
-        Self {
-            title,
-            description: Fragment::Borrowed(""),
-            on_press: None,
-        }
+impl<'a, Message: 'a> PickerRow<'a, Message> {
+    pub fn new(title: impl IntoFragment<'a>) -> Self {
+        Self(
+            ListRow::labeled(title)
+                .subtitle("")
+                .trailing(Icon::Folder.view().width(25).height(20))
+                .on_press_maybe(None),
+        )
     }
 
-    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
-        self.description = description.into_fragment();
-        self
+    pub fn description(self, description: impl IntoFragment<'a>) -> Self {
+        Self(self.0.subtitle(description))
     }
 
-    pub fn on_press(mut self, on_press: Message) -> Self {
-        self.on_press = Some(on_press);
-        self
+    pub fn on_press(self, on_press: Message) -> Self {
+        Self(self.0.on_press(on_press))
     }
 
-    pub fn on_press_maybe(mut self, on_press: Option<Message>) -> Self {
-        self.on_press = on_press;
-        self
+    pub fn on_press_maybe(self, on_press: Option<Message>) -> Self {
+        Self(self.0.on_press_maybe(on_press))
     }
 }
 
 impl<'a, Message: Clone + 'a> From<PickerRow<'a, Message>> for Element<'a, Message> {
     fn from(picker: PickerRow<'a, Message>) -> Self {
-        let row = ListRow::new(labels(picker.title, picker.description))
-            .trailing(Icon::Folder.view().width(25).height(20));
+        picker.0.into()
+    }
+}
 
-        list_row::action(row, picker.on_press, false)
+impl<'a, Message> From<PickerRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(picker: PickerRow<'a, Message>) -> Self {
+        picker.0
     }
 }

@@ -1,34 +1,24 @@
-use iced::{
-    Element,
-    widget::text::{Fragment, IntoFragment},
-};
+use iced::{Element, widget::text::IntoFragment};
 
-use super::{
-    list_row::{ListRow, labels},
-    switcher::Switcher,
-};
+use super::{list_row::ListRow, switcher::Switcher};
 
 pub struct SwitcherRow<'a, Message> {
-    title: &'a str,
-    description: Fragment<'a>,
+    row: ListRow<'a, Message>,
     value: bool,
     on_toggle: Option<Box<dyn Fn(bool) -> Message + 'a>>,
-    accessory: Option<Element<'a, Message>>,
 }
 
-impl<'a, Message> SwitcherRow<'a, Message> {
-    pub fn new(title: &'a str, value: bool) -> Self {
+impl<'a, Message: 'a> SwitcherRow<'a, Message> {
+    pub fn new(title: impl IntoFragment<'a>, value: bool) -> Self {
         Self {
-            title,
-            description: Fragment::Borrowed(""),
+            row: ListRow::labeled(title).subtitle(""),
             value,
             on_toggle: None,
-            accessory: None,
         }
     }
 
     pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
-        self.description = description.into_fragment();
+        self.row = self.row.subtitle(description);
         self
     }
 
@@ -37,7 +27,7 @@ impl<'a, Message> SwitcherRow<'a, Message> {
     ///
     /// [`Popover`]: super::popover::Popover
     pub fn accessory(mut self, accessory: impl Into<Element<'a, Message>>) -> Self {
-        self.accessory = Some(accessory.into());
+        self.row = self.row.trailing(accessory);
         self
     }
 
@@ -60,10 +50,8 @@ impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for Element<'a, Mes
 
 impl<'a, Message: Clone + 'a> From<SwitcherRow<'a, Message>> for ListRow<'a, Message> {
     fn from(switcher: SwitcherRow<'a, Message>) -> Self {
-        let mut row = ListRow::new(labels(switcher.title, switcher.description));
-        if let Some(accessory) = switcher.accessory {
-            row = row.trailing(accessory);
-        }
-        row.trailing(Switcher::new(switcher.value).on_toggle_maybe(switcher.on_toggle))
+        switcher
+            .row
+            .trailing(Switcher::new(switcher.value).on_toggle_maybe(switcher.on_toggle))
     }
 }

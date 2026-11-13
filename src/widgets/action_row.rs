@@ -1,63 +1,41 @@
-use iced::{
-    Alignment, Element,
-    widget::{
-        Space, column, row, text,
-        text::{Fragment, IntoFragment},
-    },
-};
+use iced::{Element, widget::text::IntoFragment};
 
 use crate::icons::Icon;
 
-use super::{
-    list_row::{self, ListRow},
-    progress_ring::ProgressRing,
-    spacing,
-    text::TextExt as _,
-};
-
-enum State<Message> {
-    Ready(Message),
-    Disabled,
-    Progress(f32),
-}
+use super::{list_row::ListRow, progress_ring::ProgressRing};
 
 /// A row that activates as a whole, like `AdwActionRow`: a title and
 /// description between any number of leading and trailing widgets.
 ///
 /// Presses on a leading or trailing control go to that control, not the row.
 pub struct ActionRow<'a, Message> {
-    title: Fragment<'a>,
-    description: Fragment<'a>,
-    icon: Option<Icon>,
-    title_suffix: Vec<Element<'a, Message>>,
     row: ListRow<'a, Message>,
-    state: State<Message>,
-    selected: bool,
+    progress: Option<f32>,
 }
 
 impl<'a, Message: 'a> ActionRow<'a, Message> {
     pub fn new(title: impl IntoFragment<'a>, action: impl Into<Option<Message>>) -> Self {
         Self {
-            title: title.into_fragment(),
-            description: "".into_fragment(),
-            icon: None,
-            title_suffix: Vec::new(),
-            row: ListRow::new(Space::new()),
-            state: action.into().map_or(State::Disabled, State::Ready),
-            selected: false,
+            row: ListRow::labeled(title).on_press_maybe(action.into()),
+            progress: None,
         }
     }
 
     /// A row showing `progress` in a ring after its trailing widgets.
     pub fn progress(title: impl IntoFragment<'a>, progress: f32) -> Self {
         Self {
-            state: State::Progress(progress),
+            progress: Some(progress),
             ..Self::new(title, None)
         }
     }
 
+    /// Sets the line under the title; an empty one leaves the row a single
+    /// line unless it has an icon.
     pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
-        self.description = description.into_fragment();
+        let description = description.into_fragment();
+        if !description.is_empty() {
+            self.row = self.row.subtitle(description);
+        }
         self
     }
 
@@ -66,12 +44,12 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
     ///
     /// [`Tag`]: super::tag::Tag
     pub fn title_suffix(mut self, widget: impl Into<Element<'a, Message>>) -> Self {
-        self.title_suffix.push(widget.into());
+        self.row = self.row.title_suffix(widget);
         self
     }
 
     pub fn icon(mut self, icon: Icon) -> Self {
-        self.icon = Some(icon);
+        self.row = self.row.subtitle_icon(icon);
         self
     }
 
@@ -90,50 +68,23 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
         self
     }
 
-    pub(crate) fn grouped(mut self, corners: iced::border::Radius) -> Self {
-        self.row = self.row.grouped(corners);
-        self
-    }
-
     pub fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
+        self.row = self.row.selected(selected);
         self
     }
 }
 
 impl<'a, Message: Clone + 'a> From<ActionRow<'a, Message>> for Element<'a, Message> {
     fn from(action: ActionRow<'a, Message>) -> Self {
-        let mut description = row![].spacing(spacing::SM).align_y(Alignment::Center);
+        ListRow::from(action).into()
+    }
+}
 
-        if let Some(icon) = action.icon {
-            description = description.push(
-                icon.view()
-                    .width(list_row::BODY_SIZE)
-                    .height(list_row::BODY_SIZE),
-            );
+impl<'a, Message: 'a> From<ActionRow<'a, Message>> for ListRow<'a, Message> {
+    fn from(action: ActionRow<'a, Message>) -> Self {
+        match action.progress {
+            Some(progress) => action.row.trailing(ProgressRing::new(progress)),
+            None => action.row,
         }
-
-        let has_description = action.icon.is_some() || !action.description.is_empty();
-        description = description.push(text(action.description).size(list_row::BODY_SIZE).muted());
-
-        let title = row![text(action.title).label().medium()]
-            .extend(action.title_suffix)
-            .spacing(spacing::SM)
-            .align_y(Alignment::Center);
-        let mut labels = column![title].spacing(spacing::XS);
-        if has_description {
-            labels = labels.push(description);
-        }
-        let mut row = action.row.body(labels);
-        let on_press = match action.state {
-            State::Ready(message) => Some(message),
-            State::Disabled => None,
-            State::Progress(progress) => {
-                row = row.trailing(ProgressRing::new(progress));
-                None
-            }
-        };
-
-        list_row::action(row, on_press, action.selected)
     }
 }

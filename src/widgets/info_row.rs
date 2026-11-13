@@ -1,18 +1,11 @@
 use iced::{
-    Center, Element,
-    widget::{
-        column, row, text,
-        text::{Fragment, IntoFragment},
-    },
+    Element,
+    widget::text::{Fragment, IntoFragment},
 };
 
 use crate::icons::Icon;
 
-use super::{
-    list_row::{self, ListRow},
-    spacing,
-    text::TextExt as _,
-};
+use super::list_row::ListRow;
 
 pub struct InfoRow<'a> {
     title: Fragment<'a>,
@@ -48,15 +41,10 @@ impl<'a, Message: Clone + 'a> From<InfoRow<'a>> for Element<'a, Message> {
 
 impl<'a, Message: 'a> From<InfoRow<'a>> for ListRow<'a, Message> {
     fn from(info: InfoRow<'a>) -> Self {
-        let mut description = row![].spacing(spacing::SM).align_y(Center);
-        if let Some(icon) = info.icon {
-            description = description.push(
-                icon.view()
-                    .width(list_row::BODY_SIZE)
-                    .height(list_row::BODY_SIZE),
-            );
+        let row = ListRow::labeled(info.title).subtitle(info.description);
+        match info.icon {
+            Some(icon) => row.subtitle_icon(icon),
+            None => row,
         }
-        description = description.push(text(info.description).size(list_row::BODY_SIZE).muted());
-        ListRow::new(column![text(info.title).label().medium(), description].spacing(spacing::XS))
     }
 }
