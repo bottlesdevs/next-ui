@@ -444,6 +444,6 @@ impl Model {
 }
 
 /// How a release is named: its name and version, e.g. "DXVK 2.6".
-fn label(name: &str, version: &str) -> String {
+fn label(name: &str, version: &bottles_core::Version) -> String {
     format!("{name} {version}")
 }
