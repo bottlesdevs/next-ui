@@ -13,7 +13,7 @@ use super::{
         cycle_descendant_focus, descendant_is_focused, event_cursor, focus_first_descendant,
         unfocus_descendants,
     },
-    popup::{PopupMessage, forward},
+    popup::{AnchorMessage, PopupMessage, forward},
     spacing,
 };
 
@@ -33,9 +33,13 @@ pub(super) enum PopupFocusState {
     Focused,
 }
 
-pub(super) struct PopupFocus<'a> {
+pub(super) struct PopupFocus<'a, Message> {
     pub(super) state: &'a mut PopupFocusState,
-    pub(super) restore_anchor: &'a mut bool,
+    /// The anchor, which focus goes back to when the keyboard leaves the
+    /// panel.
+    pub(super) anchor: &'a mut dyn Widget<AnchorMessage<Message>, Theme, iced::Renderer>,
+    pub(super) anchor_tree: &'a mut Tree,
+    pub(super) anchor_layout: Layout<'a>,
 }
 
 /// Where a popup's panel goes relative to its anchor.
@@ -69,7 +73,7 @@ pub(super) struct PopupCore<'a, Message> {
     tree: &'a mut Tree,
     placement: Placement,
     open: &'a mut bool,
-    focus: PopupFocus<'a>,
+    focus: PopupFocus<'a, Message>,
 }
 
 impl<'a, Message> PopupCore<'a, Message> {
@@ -80,7 +84,7 @@ impl<'a, Message> PopupCore<'a, Message> {
         tree: &'a mut Tree,
         placement: Placement,
         open: &'a mut bool,
-        focus: PopupFocus<'a>,
+        focus: PopupFocus<'a, Message>,
     ) -> Self {
         Self {
             anchor,
@@ -94,21 +98,32 @@ impl<'a, Message> PopupCore<'a, Message> {
     }
 
     /// Closes the popup and returns whether `reason`'s event is used up by
-    /// that. Keyboard dismissals hand focus back to the anchor.
-    fn dismiss(&mut self, reason: DismissReason) -> bool {
+    /// that. Keyboard dismissals of a panel the keyboard is in hand focus
+    /// back to the anchor; after the mouse, nothing is left focused.
+    fn dismiss(&mut self, reason: DismissReason, renderer: &iced::Renderer) -> bool {
+        let in_panel = *self.focus.state != PopupFocusState::None;
         let (captured, restore) = match reason {
             DismissReason::FocusLost | DismissReason::OutsidePress => (false, false),
-            DismissReason::ContentMessage { keyboard } => (true, keyboard),
-            DismissReason::Escape => (true, true),
+            DismissReason::ContentMessage { keyboard } => (true, keyboard && in_panel),
+            DismissReason::Escape => (true, in_panel),
         };
 
         *self.open = false;
         *self.focus.state = PopupFocusState::None;
         if restore {
-            *self.focus.restore_anchor = true;
+            self.focus_anchor(renderer);
         }
 
         captured
+    }
+
+    fn focus_anchor(&mut self, renderer: &iced::Renderer) {
+        focus_first_descendant(
+            self.focus.anchor,
+            self.focus.anchor_tree,
+            self.focus.anchor_layout,
+            renderer,
+        );
     }
 
     /// Moves focus to the panel's first control, or along its controls from
@@ -127,7 +142,7 @@ impl<'a, Message> PopupCore<'a, Message> {
         } else {
             // Nothing in the panel takes focus, e.g. every item is disabled.
             *self.focus.state = PopupFocusState::None;
-            *self.focus.restore_anchor = true;
+            self.focus_anchor(renderer);
         }
     }
 }
@@ -259,7 +274,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         if let Some(reason) = dismissal(event, cursor, layout.bounds())
             .filter(|reason| !(on_anchor && *reason == DismissReason::OutsidePress))
         {
-            let captured = self.dismiss(reason);
+            let captured = self.dismiss(reason, renderer);
             unfocus_descendants(self.content, self.tree, layout, renderer);
 
             if captured {
@@ -304,24 +319,31 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             &self.viewport,
         );
 
+        let pointer_inside = matches!(event, Event::Mouse(_) | Event::Touch(_))
+            && event_cursor(event, cursor).is_over(layout.bounds());
         let lost_focus = *self.focus.state == PopupFocusState::Focused
             && !descendant_is_focused(self.content, self.tree, layout, renderer);
 
-        if lost_focus && panel_shell.is_empty() && !panel_shell.is_event_captured() {
-            self.dismiss(DismissReason::FocusLost);
+        if lost_focus && pointer_inside {
+            // A press in the panel takes focus off its controls, not the
+            // panel away.
+            *self.focus.state = PopupFocusState::None;
+        } else if lost_focus && panel_shell.is_empty() && !panel_shell.is_event_captured() {
+            self.dismiss(DismissReason::FocusLost, renderer);
             panel_shell.request_redraw();
         }
 
-        if matches!(event, Event::Mouse(_) | Event::Touch(_))
-            && event_cursor(event, cursor).is_over(layout.bounds())
-        {
+        if pointer_inside {
             panel_shell.capture_event();
         }
 
         if forward(shell, panel_shell) {
-            let captured = self.dismiss(DismissReason::ContentMessage {
-                keyboard: matches!(event, Event::Keyboard(_)),
-            });
+            let captured = self.dismiss(
+                DismissReason::ContentMessage {
+                    keyboard: matches!(event, Event::Keyboard(_)),
+                },
+                renderer,
+            );
             unfocus_descendants(self.content, self.tree, layout, renderer);
 
             if captured {

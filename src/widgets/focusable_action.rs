@@ -62,6 +62,15 @@ impl Interaction {
             self.focused = false;
             self.hovered = false;
         } else {
+            // Focus shows where the keyboard is: a press anywhere, this
+            // control included, hands over to the pointer.
+            if matches!(
+                press_started(event),
+                Some(PressOrigin::Mouse | PressOrigin::Touch(_))
+            ) {
+                self.focused = false;
+            }
+
             if matches!(event, Event::Mouse(mouse::Event::CursorLeft)) {
                 self.hovered = false;
             } else {
