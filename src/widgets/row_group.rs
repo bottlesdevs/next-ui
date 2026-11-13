@@ -1,28 +1,56 @@
 use iced::{
-    Background, Border, Element, Event, Length, Point, Rectangle, Shadow, Size, Theme, Vector,
+    Alignment, Background, Border, Element, Event, Length, Point, Rectangle, Shadow, Size, Theme,
+    Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
-    widget::{Grid, button, column, container, text},
+    border::Radius,
+    widget::{
+        Column, Grid, button, column, container, row, text,
+        text::{Fragment, IntoFragment},
+    },
 };
 
+use crate::icons::Icon;
+
 use super::{
-    draw_caret, expander_row::ExpanderRow, focusable_action::Interaction, spacing,
-    text::TextExt as _,
+    draw_caret, expander_row::ExpanderRow, focusable_action::Interaction, list_row::ListRow,
+    spacing, text::TextExt as _,
 };
 
 const RADIUS: f32 = 6.0;
+/// The outer corners of a boxed group.
+const BOXED_RADIUS: f32 = 8.0;
+/// The hairline between a boxed group's rows.
+const BOXED_GAP: f32 = 2.0;
 
+/// The toolkit's one group of rows, in either of two styles: separate cards
+/// in a grid under a heading, or one joined block (see [`BoxedGroup`]).
+///
+/// [`BoxedGroup`]: super::boxed_group::BoxedGroup
 pub struct RowGroup<'a, Message> {
-    title: Option<&'a str>,
-    description: Option<&'a str>,
+    title: Option<Fragment<'a>>,
+    description: Option<Fragment<'a>>,
     columns: usize,
+    style: Style,
     entries: Vec<Entry<'a, Message>>,
 }
 
+enum Style {
+    Separate,
+    /// Rows joined into one block under an optional heading row: only the
+    /// block's outer corners are rounded, and the rows sit a hairline apart.
+    Boxed {
+        icon: Option<Icon>,
+    },
+}
+
 enum Entry<'a, Message> {
-    Row(Element<'a, Message>),
+    Element(Element<'a, Message>),
+    /// A row kept unlowered so a boxed group can give it the corners its
+    /// place there needs.
+    Row(ListRow<'a, Message>),
     Expander(ExpanderRow<'a, Message>),
 }
 
@@ -32,17 +60,33 @@ impl<'a, Message: 'a> RowGroup<'a, Message> {
             title: None,
             description: None,
             columns: 1,
+            style: Style::Separate,
             entries: Vec::new(),
         }
     }
 
-    pub fn title(mut self, title: &'a str) -> Self {
-        self.title = Some(title);
+    pub(crate) fn boxed() -> Self {
+        Self {
+            style: Style::Boxed { icon: None },
+            ..Self::new()
+        }
+    }
+
+    pub fn title(mut self, title: impl IntoFragment<'a>) -> Self {
+        self.title = Some(title.into_fragment());
         self
     }
 
-    pub fn description(mut self, description: &'a str) -> Self {
-        self.description = Some(description);
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.description = Some(description.into_fragment());
+        self
+    }
+
+    /// Shows `icon` before a boxed group's title.
+    pub(crate) fn icon(mut self, icon: Icon) -> Self {
+        if let Style::Boxed { icon: current } = &mut self.style {
+            *current = Some(icon);
+        }
         self
     }
 
@@ -52,6 +96,11 @@ impl<'a, Message: 'a> RowGroup<'a, Message> {
     }
 
     pub fn row(mut self, row: impl Into<Element<'a, Message>>) -> Self {
+        self.entries.push(Entry::Element(row.into()));
+        self
+    }
+
+    pub(crate) fn list_row(mut self, row: impl Into<ListRow<'a, Message>>) -> Self {
         self.entries.push(Entry::Row(row.into()));
         self
     }
@@ -70,26 +119,87 @@ impl<'a, Message: 'a> Default for RowGroup<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Message> {
     fn from(group: RowGroup<'a, Message>) -> Self {
-        let rows = Element::new(RowGroupCore::new(group.entries, group.columns, false));
+        match group.style {
+            Style::Separate => separate(group),
+            Style::Boxed { icon } => boxed(group.title, icon, group.entries),
+        }
+    }
+}
 
-        let mut content = column![].spacing(spacing::SM);
+fn separate<'a, Message: Clone + 'a>(group: RowGroup<'a, Message>) -> Element<'a, Message> {
+    let rows = Element::new(RowGroupCore::new(group.entries, group.columns, false));
 
-        if group.title.is_some() || group.description.is_some() {
-            let mut heading = column![].spacing(spacing::XS);
+    let mut content = column![].spacing(spacing::SM);
 
-            if let Some(title) = group.title {
-                heading = heading.push(text(title).subtitle().medium());
-            }
+    if group.title.is_some() || group.description.is_some() {
+        let mut heading = column![].spacing(spacing::XS);
 
-            if let Some(description) = group.description {
-                heading = heading.push(text(description).detail().muted());
-            }
-
-            content = content.push(heading);
+        if let Some(title) = group.title {
+            heading = heading.push(text(title).subtitle().medium());
         }
 
-        content.push(rows).into()
+        if let Some(description) = group.description {
+            heading = heading.push(text(description).detail().muted());
+        }
+
+        content = content.push(heading);
     }
+
+    content.push(rows).into()
+}
+
+fn boxed<'a, Message: Clone + 'a>(
+    title: Option<Fragment<'a>>,
+    icon: Option<Icon>,
+    entries: Vec<Entry<'a, Message>>,
+) -> Element<'a, Message> {
+    let count = entries.len() + usize::from(title.is_some());
+    let corners = |index: usize| Radius {
+        top_left: if index == 0 { BOXED_RADIUS } else { 0.0 },
+        top_right: if index == 0 { BOXED_RADIUS } else { 0.0 },
+        bottom_left: if index + 1 == count {
+            BOXED_RADIUS
+        } else {
+            0.0
+        },
+        bottom_right: if index + 1 == count {
+            BOXED_RADIUS
+        } else {
+            0.0
+        },
+    };
+    let mut block = Column::new().spacing(BOXED_GAP).width(Length::Fill);
+    let mut index = 0;
+    if let Some(title) = title {
+        let mut heading = row![].spacing(spacing::SM).align_y(Alignment::Center);
+        if let Some(icon) = icon {
+            heading = heading.push(icon.view().width(18).height(18));
+        }
+        heading = heading.push(text(title).size(15).medium());
+        let radius = corners(index);
+        block = block.push(
+            container(heading)
+                .width(Length::Fill)
+                .padding([spacing::SM, spacing::LG])
+                .style(move |theme| {
+                    let colors = crate::theme::colors(theme);
+                    container::Style::default()
+                        .background(colors.surface)
+                        .color(colors.accent_muted)
+                        .border(Border::default().rounded(radius))
+                }),
+        );
+        index += 1;
+    }
+    for entry in entries {
+        block = block.push(match entry {
+            Entry::Row(row) => row.grouped(corners(index)).into(),
+            Entry::Element(element) => element,
+            Entry::Expander(expander) => standalone_expander(expander),
+        });
+        index += 1;
+    }
+    block.into()
 }
 
 struct RowGroupCore<'a, Message> {
@@ -111,9 +221,13 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
 
         for (header_index, entry) in entries.into_iter().enumerate() {
             match entry {
-                Entry::Row(row) => {
+                Entry::Element(row) => {
                     structure.push(None);
                     headers.push(row);
+                }
+                Entry::Row(row) => {
+                    structure.push(None);
+                    headers.push(row.into());
                 }
                 Entry::Expander(expander) => {
                     let ExpanderRow {
