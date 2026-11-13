@@ -311,24 +311,16 @@ fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: Butt
                 crate::theme::hint(theme)
             }
         }
-        ButtonKind::Secondary => {
-            if pressed {
-                Pair {
-                    color: colors.background,
-                    text: colors.muted,
-                }
+        ButtonKind::Secondary => Pair {
+            color: if pressed {
+                colors.window
             } else if active {
-                Pair {
-                    color: colors.surface_deep,
-                    text: colors.muted,
-                }
+                colors.background
             } else {
-                Pair {
-                    color: colors.deep_background,
-                    text: colors.muted,
-                }
-            }
-        }
+                colors.control
+            },
+            text: colors.accent_muted,
+        },
         ButtonKind::Surface => {
             let background = if pressed {
                 colors.selection
