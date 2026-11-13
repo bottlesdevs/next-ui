@@ -296,7 +296,11 @@ fn addons(model: &Model) -> Body<'_> {
                 |block, (id, label)| {
                     block.row(ListRow::new(text(label).label().medium()).trailing(
                         Popover::confirm(
-                            Button::new("Remove").icon(Icon::Trash),
+                            // The same size as the Download buttons beside it.
+                            Button::custom(text("Remove").size(15))
+                                .icon(Icon::Trash)
+                                .icon_size(16.0)
+                                .compact(),
                             "Remove this release?",
                             "You can download it again later.",
                             "Remove",
