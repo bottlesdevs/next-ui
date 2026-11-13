@@ -18,7 +18,9 @@ use super::{
     expander_row::ExpanderRow,
     list_row::ListRow,
     popup::PopupMessage,
-    radius, spacing,
+    radius,
+    size_group::SizeGroup,
+    spacing,
     text::TextExt as _,
     text_size,
 };
@@ -120,10 +122,12 @@ impl<'a, Message: 'a> Default for RowGroup<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Message> {
     fn from(group: RowGroup<'a, Message>) -> Self {
-        match group.style {
+        // Rows line up their bodies across the group.
+        SizeGroup::new(match group.style {
             Style::Separate => separate(group),
             Style::Boxed { icon } => boxed(group.title, icon, group.entries),
-        }
+        })
+        .into()
     }
 }
 
