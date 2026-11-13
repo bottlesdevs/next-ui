@@ -17,8 +17,7 @@ use uuid::Uuid;
 
 use crate::{
     add_program,
-    app::Request,
-    manage_profiles,
+    app::{Control, Request},
     model::{Action, Activity, Bottle, Experience, Model, Subject},
     parts,
 };
@@ -47,14 +46,13 @@ pub struct State {
     selected: Option<Uuid>,
     detail_tab: Detail,
     draft: Option<Draft>,
+    /// Whether the New Bottle pane is open. It shares the start side with the
+    /// shell's Add Program pane; each covers the buttons that open the other,
+    /// so only one is ever open.
     creation_open: bool,
-    /// The Add Program form, kept while its pane slides closed.
-    adding: Option<Box<add_program::State>>,
-    adding_open: bool,
     rename: Option<String>,
     /// The bottle a delete confirmation is open for.
     deleting: Option<Uuid>,
-    profiles: manage_profiles::State,
 }
 
 #[derive(Debug, Clone)]
@@ -77,12 +75,11 @@ pub enum Message {
     Dismiss,
     Act(Action),
     Window(chrome::Action),
-    Profiles(manage_profiles::Message),
+    Control(Control),
     OpenPreferences,
     /// Opens Add Program for a bottle, or from the Library for the selected
     /// or first bottle.
     AddProgram(Option<Uuid>),
-    Adding(add_program::Message),
 }
 
 impl State {
@@ -93,17 +90,14 @@ impl State {
             detail_tab: Detail::Programs,
             draft: None,
             creation_open: false,
-            adding: None,
-            adding_open: false,
             rename: None,
             deleting: None,
-            profiles: manage_profiles::State::default(),
         }
     }
 
     pub fn update(&mut self, model: &Model, message: Message) -> Option<Request> {
         match message {
-            Message::Profiles(message) => return self.profiles.update(model, message),
+            Message::Control(control) => return Some(Request::Control(control)),
             Message::Tab(tab) => self.tab = tab,
             Message::Select(id) => {
                 if self.selected != Some(id) {
@@ -119,8 +113,6 @@ impl State {
             }
             Message::New => {
                 self.creation_open = true;
-                self.adding_open = false;
-                self.adding = None;
                 self.draft = Some(Draft {
                     name: "Gaming paradise".into(),
                     runner: model.default_runner(),
@@ -136,26 +128,7 @@ impl State {
                 let Some(bottle) = bottle else {
                     return self.update(model, Message::New);
                 };
-                self.adding = Some(Box::new(add_program::State::new(
-                    add_program::Target::Bottle(bottle),
-                )));
-                self.adding_open = true;
-                self.creation_open = false;
-            }
-            Message::Adding(message) => {
-                let event = self.adding.as_mut()?.update(message)?;
-                return match event {
-                    add_program::Event::PickFile => Some(Request::PickProgram),
-                    add_program::Event::Window(action) => Some(Request::Window(action)),
-                    add_program::Event::Close => {
-                        self.adding_open = false;
-                        None
-                    }
-                    add_program::Event::Act(action) => {
-                        self.adding_open = false;
-                        Some(Request::Act(action))
-                    }
-                };
+                return Some(Request::AddProgram(add_program::Target::Bottle(bottle)));
             }
             Message::Name(name) => {
                 if let Some(draft) = &mut self.draft {
@@ -212,13 +185,8 @@ impl State {
         model.bottle(self.selected?)
     }
 
-    pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
-        let base = side_panel(
-            Side::End,
-            self.profiles.is_open(),
-            move |_| self.screen(model),
-            move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
-        );
+    pub fn view<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
+        let base = self.screen(model, pane);
         let dialog = self.deleting.and_then(|id| model.bottle(id)).map(|bottle| {
             Dialog::confirm(
                 format!("Delete {}?", bottle.name),
@@ -231,33 +199,26 @@ impl State {
         WindowModal::new(base).dialog(dialog).into()
     }
 
-    fn screen<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
+    fn screen<'a>(&'a self, model: &'a Model, outer: PaneContext) -> Element<'a, Message> {
         side_panel(
             Side::Start,
-            self.creation_open || self.adding_open,
-            move |pane| match self.tab {
-                TabKind::Bottles => navigation_split(
-                    pane,
-                    self.selected(model).is_some(),
-                    move |pane| self.primary_page(model, pane),
-                    move |pane| self.detail_page(model, pane),
-                ),
-                TabKind::Library => self.primary_page(model, pane),
+            self.creation_open,
+            // While New Bottle is closed, the shell's Add Program pane may be
+            // open on the same side, and it decides where this pane sits.
+            move |inner| {
+                let pane = if self.creation_open { inner } else { outer };
+                match self.tab {
+                    TabKind::Bottles => navigation_split(
+                        pane,
+                        self.selected(model).is_some(),
+                        move |pane| self.primary_page(model, pane),
+                        move |pane| self.detail_page(model, pane),
+                    ),
+                    TabKind::Library => self.primary_page(model, pane),
+                }
             },
-            // The pane keeps showing what it last opened with while it
-            // slides closed.
-            move |pane| match &self.adding {
-                Some(adding) => adding.view(model, pane).map(Message::Adding),
-                None => self.creation_page(model, pane),
-            },
+            move |pane| self.creation_page(model, pane),
         )
-    }
-
-    /// Takes the file chosen in the Add Program pane's picker.
-    pub fn picked(&mut self, file: std::path::PathBuf) {
-        if let Some(adding) = &mut self.adding {
-            adding.picked(file);
-        }
     }
 
     fn primary_page<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
@@ -272,7 +233,7 @@ impl State {
         .height(Fill);
         let has_bottles = !model.bottles().is_empty();
         let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
-            let header = parts::app_controls(header, model, pane, Message::Profiles, Message::Act);
+            let header = parts::app_controls(header, model, pane, Message::Control);
             let header = header.start(parts::app_menu(
                 Experience::Classic,
                 Message::OpenPreferences,
@@ -367,7 +328,7 @@ impl State {
                         .on_press_maybe((activity == Activity::Running).then_some(stop)),
                 )
                 .middle(tabs);
-            parts::app_controls(header, model, pane, Message::Profiles, Message::Act)
+            parts::app_controls(header, model, pane, Message::Control)
         });
         let status = bottle::status(&bottle, activity);
         let content = match self.detail_tab {

@@ -15,6 +15,7 @@ use next_ui::{
 use next_ui::{layout::PaneContext, widget::HeaderBar};
 
 use crate::{
+    app::Control,
     manage_profiles,
     model::{Action, Activity, Experience, Listing, Model, Target},
 };
@@ -279,23 +280,23 @@ pub fn app_controls<'a, Message: Clone + 'a>(
     header: HeaderBar<'a, Message>,
     model: &'a Model,
     pane: PaneContext,
-    profiles: impl Fn(manage_profiles::Message) -> Message + 'a,
-    act: impl Fn(Action) -> Message,
+    control: impl Fn(Control) -> Message + 'a,
 ) -> HeaderBar<'a, Message> {
     if !pane.is_at_end() {
         return header;
     }
-    let header = match downloads(model, act) {
+    let header = match downloads(model, &control) {
         Some(downloads) => header.end(downloads),
         None => header,
     };
-    header.end(manage_profiles::button(model).map(profiles))
+    header
+        .end(manage_profiles::button(model).map(move |message| control(Control::Profiles(message))))
 }
 
 /// The Downloads button and its popover, while any release downloads.
 fn downloads<'a, Message: Clone + 'a>(
     model: &'a Model,
-    act: impl Fn(Action) -> Message,
+    control: impl Fn(Control) -> Message,
 ) -> Option<Element<'a, Message>> {
     let downloads = model.downloads();
     if downloads.is_empty() {
@@ -340,7 +341,7 @@ fn downloads<'a, Message: Clone + 'a>(
             container(
                 card.push(
                     next_ui::widget::header_button("Cancel download", Icon::Cross)
-                        .on_press(act(Action::CancelDownload(download.id))),
+                        .on_press(control(Control::CancelDownload(download.id))),
                 ),
             )
             .padding(iced::Padding {
