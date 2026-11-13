@@ -71,7 +71,9 @@ impl State {
                 // The new profile becomes the selected one, so edit that.
                 self.editing = None;
                 self.name = None;
-                return Some(Request::Act(Action::CreateProfile));
+                return Some(Request::Act(Action::CreateProfile(
+                    "New Profile".to_owned(),
+                )));
             }
             Message::Name(name) => self.name = Some(name),
             Message::SaveName => {
