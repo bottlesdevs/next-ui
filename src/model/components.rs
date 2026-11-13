@@ -1,6 +1,6 @@
 //! The runner and component releases a bottle can use.
 
-use bottles_core::{AddonRole, Component, Slot, WineArch, compare_versions};
+use bottles_core::{AddonRole, Component, Slot, WineArch};
 use uuid::Uuid;
 
 use super::{
@@ -35,7 +35,7 @@ impl Model {
             .releases::<Component>()
             .filter(|release| release.slot() == slot)
             .collect::<Vec<_>>();
-        releases.sort_by(|left, right| compare_versions(right.version(), left.version()));
+        releases.sort_by(|left, right| right.version().cmp(left.version()));
         releases
             .into_iter()
             .map(|release| {
@@ -82,7 +82,7 @@ impl Model {
             .entries::<AddonRole>()
             .filter(|entry| role(entry.role()) && entry.is_supported() && !self.installed(entry))
             .collect::<Vec<_>>();
-        entries.sort_by(|left, right| compare_versions(right.version(), left.version()));
+        entries.sort_by(|left, right| right.version().cmp(left.version()));
         entries
             .into_iter()
             .take(AVAILABLE_LIMIT)
