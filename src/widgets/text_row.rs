@@ -1,6 +1,6 @@
 use iced::{
-    Background, Border, Center, Color, Element, Fill, Theme,
-    widget::{Id, column, row, svg, text, text_input},
+    Center, Element, Fill, Theme,
+    widget::{Id, column, row, svg, text},
 };
 
 use crate::icons::Icon;
@@ -9,6 +9,7 @@ use super::{
     list_row::{self, ListRow},
     spacing,
     text::TextExt as _,
+    text_field::TextField,
 };
 
 pub struct TextRow<'a, Message> {
@@ -90,20 +91,16 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
             value = value.push(icon_view(icon, list_row::BODY_SIZE, error));
         }
 
-        let mut input = text_input(text_row.placeholder, text_row.value)
-            .width(Fill)
-            .padding(0)
-            .size(list_row::BODY_SIZE)
-            .secure(text_row.secure)
-            .on_input_maybe(text_row.on_input)
-            .on_submit_maybe(text_row.on_submit)
-            .style(move |theme, _| input_style(theme, error));
-
-        if let Some(id) = text_row.id {
-            input = input.id(id);
-        }
-
-        value = value.push(input);
+        value = value.push(
+            TextField::new(text_row.placeholder, text_row.value)
+                .size(list_row::BODY_SIZE)
+                .secure(text_row.secure)
+                .on_input_maybe(text_row.on_input)
+                .on_submit_maybe(text_row.on_submit)
+                .id(text_row.id)
+                .error(error)
+                .muted(true),
+        );
 
         let mut labels = column![text(text_row.title).label().medium(), value]
             .width(Fill)
@@ -129,23 +126,6 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
     }
 }
 
-fn input_style(theme: &Theme, error: bool) -> text_input::Style {
-    let colors = crate::theme::colors(theme);
-
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border::default().color(if error {
-            colors.danger
-        } else {
-            Color::TRANSPARENT
-        }),
-        icon: colors.muted,
-        placeholder: colors.muted,
-        value: colors.muted,
-        selection: colors.accent,
-    }
-}
-
 fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a, Message> {
     icon.view()
         .width(size)
@@ -158,21 +138,4 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
             }),
         })
         .into()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn input_borders_match_the_original_visual_contract() {
-        let theme = crate::theme::dark();
-        let colors = crate::theme::colors(&theme);
-        let error = input_style(&theme, true);
-        let idle = input_style(&theme, false);
-
-        assert_eq!(error.border.color, colors.danger);
-        assert_eq!(error.border.width, 0.0);
-        assert_eq!(idle.border.width, 0.0);
-    }
 }
