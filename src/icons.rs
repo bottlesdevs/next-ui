@@ -124,6 +124,67 @@ impl Icon {
 #[include = "icons/*.svg"]
 struct Assets;
 
+/// An icon drawn in the text colour it inherits, so it follows the state of
+/// the control it sits in.
+pub(crate) struct Inherited {
+    handle: svg::Handle,
+    size: f32,
+}
+
+impl Icon {
+    pub(crate) fn inherited(self, size: f32) -> Inherited {
+        Inherited {
+            handle: self.handle(),
+            size,
+        }
+    }
+}
+
+impl<Message> iced::advanced::Widget<Message, Theme, iced::Renderer> for Inherited {
+    fn size(&self) -> iced::Size<iced::Length> {
+        iced::Size::new(self.size.into(), self.size.into())
+    }
+
+    fn layout(
+        &mut self,
+        _tree: &mut iced::advanced::widget::Tree,
+        _renderer: &iced::Renderer,
+        _limits: &iced::advanced::layout::Limits,
+    ) -> iced::advanced::layout::Node {
+        iced::advanced::layout::Node::new(iced::Size::new(self.size, self.size))
+    }
+
+    fn draw(
+        &self,
+        _tree: &iced::advanced::widget::Tree,
+        renderer: &mut iced::Renderer,
+        _theme: &Theme,
+        style: &iced::advanced::renderer::Style,
+        layout: iced::advanced::Layout<'_>,
+        _cursor: iced::mouse::Cursor,
+        _viewport: &iced::Rectangle,
+    ) {
+        use iced::advanced::svg::Renderer as _;
+
+        renderer.draw_svg(
+            iced::advanced::svg::Svg {
+                handle: self.handle.clone(),
+                color: Some(style.text_color),
+                rotation: 0.0.into(),
+                opacity: 1.0,
+            },
+            layout.bounds(),
+            layout.bounds(),
+        );
+    }
+}
+
+impl<'a, Message> From<Inherited> for iced::Element<'a, Message> {
+    fn from(icon: Inherited) -> Self {
+        Self::new(icon)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
