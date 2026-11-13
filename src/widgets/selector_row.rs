@@ -257,7 +257,8 @@ fn available_row<'a, Message: Clone + 'a>(
             // shows in place.
             KeepOpen::new(
                 Button::custom(text("Download").size(14))
-                    .trailing_icon(Icon::Download)
+                    .trailing_icon(Icon::Arrow)
+                    .icon_rotation(std::f32::consts::PI)
                     .icon_size(14.0)
                     .kind(ButtonKind::Secondary)
                     .compact()
