@@ -79,7 +79,8 @@ pub(crate) enum Action {
     RefreshCatalog,
     SwitchExperience(Experience),
     SelectProfile(Uuid),
-    CreateProfile,
+    /// Creates a profile named `name` and selects it.
+    CreateProfile(String),
     RenameProfile(Uuid, String),
     DeleteProfile(Uuid),
     Unlink(Uuid),
@@ -113,8 +114,8 @@ impl Model {
         match action {
             Action::Launch(target) => self.launch(target),
             Action::SelectProfile(id) => self.change_profiles(|profiles| profiles.select(id)),
-            Action::CreateProfile => self.change_profiles(|profiles| {
-                profiles.create("New Profile");
+            Action::CreateProfile(name) => self.change_profiles(move |profiles| {
+                profiles.create(&name);
                 Ok(())
             }),
             Action::RenameProfile(id, name) => {
