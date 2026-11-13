@@ -1,6 +1,7 @@
 //! Preferences: a full-window page with General, Addons, Plugins and About
 //! tabs.
 
+use bottles_core::Slot;
 use iced::{
     Alignment, Element, Fill,
     widget::{column, container, row, text},
@@ -17,7 +18,7 @@ use next_ui::{
 
 use crate::{
     app::Request,
-    model::{Action, AvailableRelease, Experience, InstalledPlugin, Listing, Model},
+    model::{Action, AvailableRelease, Experience, InstalledPlugin, Listing, Model, ReleaseKind},
     parts,
 };
 
@@ -285,14 +286,17 @@ fn addons(model: &Model) -> Body<'_> {
     Ok(groups
         .into_iter()
         .fold(column![].spacing(spacing::LG), |page, group| {
-            let icon = match group.title {
-                "Runners" => Icon::Run,
-                "WineBridge and UMU" => Icon::Computer,
-                "Dependencies" => Icon::Library,
-                _ => Icon::Chip,
+            let (title, icon) = match group.kind {
+                ReleaseKind::Runners => ("Runners", Icon::Run),
+                ReleaseKind::Component(Slot::Dxvk) => ("DXVK", Icon::Chip),
+                ReleaseKind::Component(Slot::Vkd3d) => ("VKD3D", Icon::Chip),
+                ReleaseKind::Component(Slot::Nvapi) => ("DXVK-NVAPI", Icon::Chip),
+                ReleaseKind::Component(Slot::LatencyFlex) => ("LatencyFlex", Icon::Chip),
+                ReleaseKind::Bridges => ("WineBridge and UMU", Icon::Computer),
+                ReleaseKind::Dependencies => ("Dependencies", Icon::Library),
             };
             let block = group.downloaded.into_iter().fold(
-                BoxedGroup::new().title(group.title).icon(icon),
+                BoxedGroup::new().title(title).icon(icon),
                 |block, (id, label)| {
                     block.row(
                         ListRow::new(text(label).label().medium()).trailing(Popover::confirm(
