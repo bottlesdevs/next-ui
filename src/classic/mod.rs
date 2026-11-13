@@ -11,7 +11,7 @@ use next_ui::{
     Icon, chrome,
     layout::{PaneContext, Side, navigation_split, side_panel},
     theme,
-    widget::{Dialog, Popover, PopoverItem, Tab, Tabs, Title, WindowModal, header_button},
+    widget::{Dialog, ListRow, Popover, Tab, Tabs, Title, WindowModal, header_button},
 };
 use uuid::Uuid;
 
@@ -312,11 +312,11 @@ impl State {
                     Message::Back,
                 ));
             }
-            let mut run = PopoverItem::new("Run a Program…").icon(Icon::RunProgram);
-            let mut delete = PopoverItem::new("Delete Bottle…").icon(Icon::Trash);
+            let mut run = ListRow::labeled("Run a Program…").leading_icon(Icon::RunProgram);
+            let mut delete = ListRow::labeled("Delete Bottle…").leading_icon(Icon::Trash);
             if activity.is_settled() {
-                run = run.on_select(Message::RunProgram(id));
-                delete = delete.on_select(Message::AskDelete(id));
+                run = run.on_press(Message::RunProgram(id));
+                delete = delete.on_press(Message::AskDelete(id));
             }
             let stop = Message::Act(Action::Stop(id));
             let header = header

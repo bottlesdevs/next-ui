@@ -1,14 +1,14 @@
 use iced::{
     Center, Element, Fill, Subscription, Task, Theme,
-    widget::{Space, column, container, grid, image, row, scrollable, text},
+    widget::{Space, column, container, grid, image, row, scrollable, text, tooltip},
 };
 use next_ui::{
     Icon, chrome, theme,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
         ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,
-        PopoverItem, ProgressRing, RowGroup, Search, SearchResult, SearchState, SelectorRow,
-        StatusBar, Switcher, SwitcherRow, Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
+        ProgressRing, RowGroup, Search, SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow,
+        Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
     },
 };
 
@@ -263,23 +263,33 @@ impl Gallery {
             .and_then(|selected| SELECTOR_OPTIONS.iter().find(|option| **option == selected));
         let popover = Popover::new(Button::new("Open menu").trailing_icon(Icon::DownCaret))
             .item(
-                PopoverItem::new("Current profile")
+                ListRow::labeled("Current profile")
                     .subtitle("Selected")
-                    .icon(Icon::Person)
+                    .leading_icon(Icon::Person)
                     .selected(true)
-                    .on_select(Message::Noop),
+                    .on_press(Message::Noop),
             )
             .item(
-                PopoverItem::new("Available account")
+                ListRow::labeled("Available account")
                     .subtitle("Trailing action is the only interactive target")
-                    .action("Link", Message::Noop),
+                    .trailing(
+                        Button::new("Link")
+                            .kind(ButtonKind::Surface)
+                            .on_press(Message::Noop),
+                    ),
             )
             .item(
-                PopoverItem::new("Unavailable account")
-                    .disabled_action("Taken")
-                    .tooltip(text("Already linked to another profile")),
+                ListRow::labeled("Unavailable account").trailing(
+                    tooltip(
+                        Button::new("Taken").kind(ButtonKind::Surface),
+                        text("Already linked to another profile"),
+                        tooltip::Position::Top,
+                    )
+                    .style(container::rounded_box)
+                    .padding(12),
+                ),
             )
-            .item(PopoverItem::new("Manage profiles").on_select(Message::Noop));
+            .item(ListRow::labeled("Manage profiles").on_press(Message::Noop));
         let popovers = column![popover].spacing(12);
         let fields = column![
             TextRow::new("Input Name", &self.text_rows[0])
@@ -520,9 +530,20 @@ impl Gallery {
             .iter()
             .filter(|(title, _, _)| title.to_lowercase().contains(&query))
             .map(|(title, action, action_icon)| {
-                SearchResult::new(title, Message::Noop)
-                    .icon(Icon::Bottles)
-                    .action(action, *action_icon, Message::Noop)
+                ListRow::labeled(*title)
+                    .leading_icon(Icon::Bottles)
+                    .trailing(
+                        Button::new(*action)
+                            .trailing_icon(*action_icon)
+                            .icon_rotation(if *action_icon == Icon::Arrow {
+                                std::f32::consts::PI
+                            } else {
+                                0.0
+                            })
+                            .kind(ButtonKind::Surface)
+                            .on_press(Message::Noop),
+                    )
+                    .on_press(Message::Noop)
             })
             .collect();
 

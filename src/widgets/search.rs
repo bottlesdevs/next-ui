@@ -1,58 +1,25 @@
 use iced::{
     Alignment, Background, Border, Color, Element, Fill, Theme,
     advanced::widget::Id,
-    widget::{column, container, row, scrollable, text, text_input},
+    widget::{button, column, container, row, scrollable, text, text_input},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    button::{Button, ButtonKind},
-    menu::{footer as panel_footer, overlay_item as menu_item, row_content},
+    focusable_action::FocusableAction,
+    list_row::{self, ListRow, Menu},
     popup::{AnchorMessage, Popup, PopupMessage},
     spacing,
     text::TextExt as _,
 };
 
-pub struct SearchResult<'a, Message> {
-    title: &'a str,
-    subtitle: Option<&'a str>,
-    icon: Option<Icon>,
-    on_select: Message,
-    action: Option<(&'a str, Icon, Message)>,
-}
-
-impl<'a, Message> SearchResult<'a, Message> {
-    pub fn new(title: &'a str, on_select: Message) -> Self {
-        Self {
-            title,
-            subtitle: None,
-            icon: None,
-            on_select,
-            action: None,
-        }
-    }
-
-    pub fn subtitle(mut self, subtitle: &'a str) -> Self {
-        self.subtitle = Some(subtitle);
-        self
-    }
-
-    pub fn icon(mut self, icon: Icon) -> Self {
-        self.icon = Some(icon);
-        self
-    }
-
-    pub fn action(mut self, label: &'a str, icon: Icon, message: Message) -> Self {
-        self.action = Some((label, icon, message));
-        self
-    }
-}
-
 pub enum SearchState<'a, Message> {
     Hidden,
     Loading,
-    Results(Vec<SearchResult<'a, Message>>),
+    /// Rows to pick from, each pressed as a whole and possibly holding a
+    /// trailing control.
+    Results(Vec<ListRow<'a, Message>>),
     Empty,
     Error(&'a str),
 }
@@ -148,12 +115,17 @@ fn panel<'a, Message: Clone + 'a>(
     let visible = !matches!(state, SearchState::Hidden);
     let mut focusable = matches!(&state, SearchState::Results(results) if !results.is_empty());
     let body: Element<'a, Message> = match state {
-        SearchState::Results(results) => {
-            container(column(results.into_iter().map(result_row)).width(Fill))
-                .width(Fill)
-                .padding(spacing::MD)
-                .into()
-        }
+        SearchState::Results(results) => container(
+            column(
+                results
+                    .into_iter()
+                    .map(|result| result.menu(Menu::Floating).into()),
+            )
+            .width(Fill),
+        )
+        .width(Fill)
+        .padding(spacing::MD)
+        .into(),
         SearchState::Loading => status_row("Searching…", false),
         SearchState::Empty => status_row("No results", false),
         SearchState::Error(error) => status_row(error, true),
@@ -163,7 +135,7 @@ fn panel<'a, Message: Clone + 'a>(
 
     if let Some((label, message)) = footer.filter(|_| visible) {
         focusable = true;
-        content = content.push(panel_footer(label, message));
+        content = content.push(footer_row(label, message));
     }
 
     (
@@ -173,26 +145,25 @@ fn panel<'a, Message: Clone + 'a>(
     )
 }
 
-fn result_row<'a, Message: Clone + 'a>(result: SearchResult<'a, Message>) -> Element<'a, Message> {
-    let mut content = row_content(result.title.into(), result.subtitle, result.icon);
-
-    if let Some((label, icon, message)) = result.action {
-        content = content.push(
-            Button::new(label)
-                .trailing_icon(icon)
-                .icon_rotation(if icon == Icon::Arrow {
-                    std::f32::consts::PI
-                } else {
-                    0.0
-                })
-                .kind(ButtonKind::Surface)
-                .on_press(message),
-        );
-    }
-
-    container(menu_item(content, Some(result.on_select), false))
-        .width(Fill)
-        .into()
+/// A row across the panel's foot, e.g. a fallback for when no result fits.
+fn footer_row<'a, Message: Clone + 'a>(label: &'a str, message: Message) -> Element<'a, Message> {
+    FocusableAction::new(
+        row![
+            text(label),
+            Icon::Arrow.view().rotation(std::f32::consts::PI)
+        ]
+        .spacing(spacing::SM)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding(spacing::MD)
+    .on_press_maybe(Some(message))
+    .style(|theme, state| button::Style {
+        background: Some(Background::Color(crate::theme::colors(theme).hover)),
+        border: Border::default().rounded(iced::border::bottom(6)),
+        ..list_row::menu_style(theme, state, Menu::Floating)
+    })
+    .into()
 }
 
 fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Message> {

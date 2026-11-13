@@ -1,18 +1,20 @@
 use std::cell::Cell;
 
 use iced::{
-    Element, Event, Length, Rectangle, Size, Theme, Vector,
+    Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
     keyboard::{self, key},
     touch,
+    widget::{Space, container},
 };
 
 use super::{
     anchored_overlay::{Placement, PopupCore, PopupFocus, PopupFocusState},
     focus::{descendant_is_focused, event_cursor, focus_first_descendant, unfocus_descendants},
+    spacing,
 };
 
 /// A message published from a popup's panel, saying whether it also closes
@@ -444,6 +446,20 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
             },
         ))))
     }
+}
+
+/// A hairline between groups of rows in a popup's list.
+pub(super) fn separator<'a, Message: 'a>() -> Element<'a, Message> {
+    container(
+        container(Space::new())
+            .width(Fill)
+            .height(1)
+            .style(|theme| {
+                container::Style::default().background(crate::theme::colors(theme).hover)
+            }),
+    )
+    .padding([spacing::XS, spacing::SM])
+    .into()
 }
 
 impl<'a, Message: Clone + 'a> From<Popup<'a, Message>> for Element<'a, Message> {

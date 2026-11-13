@@ -2,7 +2,7 @@ use iced::{
     Alignment, Background, Border, Element, Fill, Padding, Theme,
     border::Radius,
     widget::{
-        Column, Row as IcedRow, Space, button, container, row, text,
+        Column, Row as IcedRow, Space, button, container, row, svg, text,
         text::{Fragment, IntoFragment},
     },
 };
@@ -40,6 +40,18 @@ pub struct ListRow<'a, Message> {
     pressable: bool,
     on_press: Option<Message>,
     selected: bool,
+    menu: Option<Menu>,
+}
+
+/// The panel a row of a popup's list sits on. Such rows are compact, read
+/// muted until highlighted, highlight a step lighter than the panel, and
+/// check the selected one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Menu {
+    /// A floating panel, already filled with the selection colour.
+    Floating,
+    /// A panel continuing the row it hangs from, filled like a selected row.
+    Attached,
 }
 
 enum Body<'a, Message> {
@@ -90,12 +102,18 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             pressable: false,
             on_press: None,
             selected: false,
+            menu: None,
         }
     }
 
     pub fn leading(mut self, control: impl Into<Element<'a, Message>>) -> Self {
         self.leading.push(control.into());
         self
+    }
+
+    /// Leads the row with `icon`.
+    pub fn leading_icon(self, icon: Icon) -> Self {
+        self.leading(icon.view().width(20).height(20))
     }
 
     pub fn trailing(mut self, control: impl Into<Element<'a, Message>>) -> Self {
@@ -198,6 +216,13 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
+    /// Fits the row into a popup's list on `menu`.
+    pub(crate) fn menu(mut self, menu: Menu) -> Self {
+        self.menu = Some(menu);
+        self.padding = Padding::from([spacing::XS, spacing::MD]);
+        self
+    }
+
     pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
         self
@@ -212,17 +237,38 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
     fn into_content(self, disclosure: bool) -> Element<'a, Message> {
         let mut trailing = self.trailing;
 
+        if let Some(menu) = self.menu.filter(|_| self.selected) {
+            trailing.insert(
+                0,
+                Icon::Checkmark
+                    .view()
+                    .width(16)
+                    .height(16)
+                    .style(move |theme: &Theme, _| svg::Style {
+                        color: Some(match menu {
+                            Menu::Floating => crate::theme::colors(theme).accent,
+                            Menu::Attached => crate::theme::colors(theme).muted,
+                        }),
+                    })
+                    .into(),
+            );
+        }
+
         if disclosure {
             trailing.push(Space::new().width(20).height(20).into());
         }
 
         let body = match self.body {
             Body::Custom(body) => body,
-            Body::Labels(labels) => labels.into_element(),
+            Body::Labels(labels) => labels.into_element(self.menu.is_some()),
         };
 
         let row = IcedRow::new()
-            .spacing(spacing::MD)
+            .spacing(if self.menu.is_some() {
+                spacing::SM
+            } else {
+                spacing::MD
+            })
             .align_y(Alignment::Center)
             .extend(self.leading)
             .push(container(body).width(Fill))
@@ -238,9 +284,13 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
 }
 
 impl<'a, Message: 'a> Labels<'a, Message> {
-    /// The one place a row's title and subtitle are laid out.
-    fn into_element(self) -> Element<'a, Message> {
-        let mut title = text(self.title).label().medium();
+    /// The one place a row's title and subtitle are laid out; a `compact`
+    /// row's are lighter and smaller.
+    fn into_element(self, compact: bool) -> Element<'a, Message> {
+        let mut title = text(self.title).label();
+        if !compact {
+            title = title.medium();
+        }
         if self.dimmed {
             title = title.muted();
         }
@@ -256,7 +306,9 @@ impl<'a, Message: 'a> Labels<'a, Message> {
 
         let subtitle = self.subtitle.map(|subtitle| match subtitle {
             Subtitle::Text { text: line, icon } => {
-                let line = text(line).size(BODY_SIZE).muted();
+                let line = text(line)
+                    .size(if compact { 14.0 } else { BODY_SIZE })
+                    .muted();
                 match icon {
                     Some(icon) => row![icon.view().width(BODY_SIZE).height(BODY_SIZE), line]
                         .spacing(spacing::SM)
@@ -286,11 +338,21 @@ impl<'a, Message: 'a> Labels<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message> {
     fn from(mut row: ListRow<'a, Message>) -> Self {
-        let corners = row.corners;
+        let (corners, menu) = (row.corners, row.menu);
         let (pressable, on_press, selected) = (row.pressable, row.on_press.take(), row.selected);
         let content = row.into_content(false);
 
-        if pressable {
+        if let Some(menu) = menu {
+            FocusableAction::new(content)
+                .width(Fill)
+                .selected(selected)
+                .on_press_maybe(on_press)
+                .style(move |theme, state| button::Style {
+                    border: Border::default().rounded(corners),
+                    ..menu_style(theme, state, menu)
+                })
+                .into()
+        } else if pressable {
             FocusableAction::new(content)
                 .width(Fill)
                 .selected(selected)
@@ -333,6 +395,26 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
     button::Style {
         background: Some(Background::Color(color)),
         text_color: colors.text,
+        border: Border::default().rounded(6),
+        ..button::Style::default()
+    }
+}
+
+pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> button::Style {
+    let colors = crate::theme::colors(theme);
+    let highlighted =
+        state.enabled && (state.selected || state.hovered || state.pressed || state.focused);
+
+    button::Style {
+        background: highlighted.then_some(Background::Color(match menu {
+            Menu::Floating => colors.hover,
+            Menu::Attached => colors.selection,
+        })),
+        text_color: if highlighted {
+            colors.text
+        } else {
+            colors.muted
+        },
         border: Border::default().rounded(6),
         ..button::Style::default()
     }
