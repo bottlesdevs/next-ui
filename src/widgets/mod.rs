@@ -1,11 +1,10 @@
 pub mod action_tile;
 mod anchored_overlay;
+mod disclosure;
 pub(crate) mod focus;
 mod focusable_action;
 mod popup;
 mod style;
-
-use iced::{ContentFit, Point, Rectangle, Size, Theme, advanced::svg::Renderer as _};
 
 /// Shared spacing scale used by toolkit widgets and application layouts.
 pub mod spacing {
@@ -22,30 +21,6 @@ pub mod header {
     pub const INSET: f32 = super::spacing::SM;
     pub const CONTROL: f32 = 32.0;
     pub const ICON: f32 = 16.0;
-}
-
-fn draw_caret(renderer: &mut iced::Renderer, theme: &Theme, slot: Rectangle, expansion: f32) {
-    let handle = crate::icons::Icon::DownCaret.handle();
-    let Size { width, height } = renderer.measure_svg(&handle);
-    let size = ContentFit::Contain.fit(Size::new(width as f32, height as f32), slot.size());
-    let bounds = Rectangle::new(
-        Point::new(
-            slot.center_x() - size.width / 2.0,
-            slot.center_y() - size.height / 2.0,
-        ),
-        size,
-    );
-
-    renderer.draw_svg(
-        iced::advanced::svg::Svg {
-            handle,
-            color: Some(crate::theme::colors(theme).muted),
-            rotation: (std::f32::consts::PI * expansion).into(),
-            opacity: 1.0,
-        },
-        bounds,
-        slot,
-    );
 }
 
 pub mod action_row;
