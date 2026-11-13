@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use iced::{Element, widget::column};
 use next_ui::{
     Icon, chrome,
-    layout::PaneContext,
+    layout::{self, PageBody, PaneContext},
     widget::{PickerRow, TextRow, Title, spacing},
 };
 use uuid::Uuid;
@@ -144,18 +144,20 @@ impl State {
         if can_add {
             name = name.on_submit(Message::Add);
         }
-        parts::page(
+        layout::page(
             header,
-            column![
-                name,
-                PickerRow::new("File")
-                    .description(file)
-                    .on_press(Message::PickFile),
-                TextRow::new("Launch Options", &self.options)
-                    .placeholder("%command%")
-                    .on_input(Message::Options),
-            ]
-            .spacing(spacing::SM),
+            PageBody::content(
+                column![
+                    name,
+                    PickerRow::new("File")
+                        .description(file)
+                        .on_press(Message::PickFile),
+                    TextRow::new("Launch Options", &self.options)
+                        .placeholder("%command%")
+                        .on_input(Message::Options),
+                ]
+                .spacing(spacing::SM),
+            ),
         )
     }
 }

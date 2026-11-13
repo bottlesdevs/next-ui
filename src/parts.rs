@@ -2,7 +2,7 @@
 
 use iced::{
     Element, Fill,
-    widget::{Grid, Space, column, container, row, scrollable, stack, text},
+    widget::{Grid, Space, column, container, row, stack, text},
 };
 use next_ui::{
     Icon, theme,
@@ -12,27 +12,16 @@ use next_ui::{
     },
 };
 
-use next_ui::{layout::PaneContext, widget::HeaderBar};
+use next_ui::{
+    layout::{PageBody, PaneContext},
+    widget::HeaderBar,
+};
 
 use crate::{
     app::Control,
     manage_profiles,
     model::{Activity, Download, Experience, Listing, Model, Target},
 };
-
-/// A page body: content that scrolls, or a status page that fills the panel.
-pub type Body<'a, Message> = Result<Element<'a, Message>, Element<'a, Message>>;
-
-/// Builds a page from `body`, scrolling content or a centred status page.
-pub fn body_page<'a, Message: Clone + 'a>(
-    header: impl Into<Element<'a, Message>>,
-    body: Body<'a, Message>,
-) -> Element<'a, Message> {
-    match body {
-        Ok(content) => page(header, content),
-        Err(status) => status_page(header, status),
-    }
-}
 
 /// A card for every program and library entry whose title contains `query`,
 /// or a status page when there are none.
@@ -47,7 +36,7 @@ pub fn library_grid<'a, Message: Clone + 'a>(
     on_add: Message,
     on_install: impl Fn(&'static str) -> Message,
     searchable: bool,
-) -> Body<'a, Message> {
+) -> PageBody<'a, Message> {
     let query = query.to_lowercase();
     let mut notices = column![].spacing(spacing::SM);
     for (plugin, listing) in &model.sources.listings {
@@ -108,16 +97,16 @@ pub fn library_grid<'a, Message: Clone + 'a>(
                 .description("Nothing in your library matches your search.")
                 .into()
         };
-        Err(column![notices, empty].height(Fill).into())
+        PageBody::placeholder(column![notices, empty].height(Fill))
     } else {
-        Ok(notices
-            .push(
+        PageBody::content(
+            notices.push(
                 Grid::with_children(cards)
                     .fluid(400.0)
                     .spacing(spacing::SM)
                     .height(iced::widget::grid::aspect_ratio(3.0, 2.0)),
-            )
-            .into())
+            ),
+        )
     }
 }
 
@@ -182,58 +171,6 @@ fn suggestions<'a, Message: Clone + 'a>(
     .spacing(spacing::MD)
     .max_width(820);
     container(content).center(Fill).padding(24).into()
-}
-
-pub fn page<'a, Message: Clone + 'a>(
-    header: impl Into<Element<'a, Message>>,
-    body: impl Into<Element<'a, Message>>,
-) -> Element<'a, Message> {
-    column![
-        header.into(),
-        container(scroll_content(body))
-            .width(Fill)
-            .height(Fill)
-            .style(theme::panel)
-            .clip(true),
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
-}
-
-/// A page whose body fills the panel without scrolling, e.g. a
-/// [`StatusPage`](next_ui::widget::StatusPage) that centres itself.
-pub fn status_page<'a, Message: Clone + 'a>(
-    header: impl Into<Element<'a, Message>>,
-    body: impl Into<Element<'a, Message>>,
-) -> Element<'a, Message> {
-    column![
-        header.into(),
-        container(body)
-            .width(Fill)
-            .height(Fill)
-            .style(theme::panel)
-            .clip(true),
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
-}
-
-pub fn scroll_content<'a, Message: 'a>(
-    body: impl Into<Element<'a, Message>>,
-) -> Element<'a, Message> {
-    scrollable(container(body).padding(24).width(Fill))
-        .direction(scrollable::Direction::Vertical(
-            scrollable::Scrollbar::new()
-                .width(4)
-                .scroller_width(4)
-                .margin(6),
-        ))
-        .style(theme::scrollbar)
-        .width(Fill)
-        .height(Fill)
-        .into()
 }
 
 pub fn header_button<Message>(label: &str, icon: Icon, message: Message) -> Button<'_, Message> {
