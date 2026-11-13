@@ -132,9 +132,7 @@ impl Model {
                     }
                     Ok(())
                 };
-                Task::perform(uninstall, |result: Result<(), String>| {
-                    Message::Saved(result)
-                })
+                Task::perform(uninstall, Message::Completed)
             }
             Action::CancelDownload(id) => {
                 self.operations.cancel(&Subject::Addon(id));
