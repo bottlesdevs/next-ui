@@ -1,13 +1,12 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Length, Point, Rectangle, Shadow, Size, Theme,
-    Vector,
+    Alignment, Border, Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
     advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, tree},
+        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
+        widget::{Operation, Tree},
     },
     border::Radius,
     widget::{
-        Column, Grid, button, column, container, row, text,
+        Column, Grid, column, container, row, text,
         text::{Fragment, IntoFragment},
     },
 };
@@ -15,8 +14,12 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    draw_caret, expander_row::ExpanderRow, focusable_action::Interaction, list_row::ListRow,
-    spacing, text::TextExt as _,
+    disclosure::{self, Disclosure},
+    expander_row::ExpanderRow,
+    list_row::ListRow,
+    popup::PopupMessage,
+    spacing,
+    text::TextExt as _,
 };
 
 const RADIUS: f32 = 6.0;
@@ -127,7 +130,7 @@ impl<'a, Message: Clone + 'a> From<RowGroup<'a, Message>> for Element<'a, Messag
 }
 
 fn separate<'a, Message: Clone + 'a>(group: RowGroup<'a, Message>) -> Element<'a, Message> {
-    let rows = Element::new(RowGroupCore::new(group.entries, group.columns, false));
+    let rows = Element::new(RowGroupCore::new(group.entries, group.columns));
 
     let mut content = column![].spacing(spacing::SM);
 
@@ -202,114 +205,89 @@ fn boxed<'a, Message: Clone + 'a>(
     block.into()
 }
 
+/// The separate style's grid. An expander's panel opens under its whole line
+/// of the grid, spanning as many cells as its rows ask for, and closes any
+/// open panel it would overlap.
 struct RowGroupCore<'a, Message> {
-    children: Vec<Element<'a, Message>>,
-    header_count: usize,
-    expansions: Vec<Expansion>,
-    structure: Vec<Option<usize>>,
+    cells: Vec<Cell<'a, Message>>,
     columns: usize,
-    line_count: usize,
+}
+
+enum Cell<'a, Message> {
+    Row(Element<'a, Message>),
+    Expander(Disclosure<'a, Message>, Footprint),
 }
 
 impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
-    fn new(entries: Vec<Entry<'a, Message>>, columns: usize, standalone: bool) -> Self {
+    fn new(entries: Vec<Entry<'a, Message>>, columns: usize) -> Self {
         let columns = columns.max(1);
-        let mut headers = Vec::with_capacity(entries.len());
-        let mut bodies = Vec::new();
-        let mut expansions = Vec::new();
-        let mut structure = Vec::with_capacity(entries.len());
-
-        for (header_index, entry) in entries.into_iter().enumerate() {
-            match entry {
-                Entry::Element(row) => {
-                    structure.push(None);
-                    headers.push(row);
-                }
-                Entry::Row(row) => {
-                    structure.push(None);
-                    headers.push(row.into());
+        let cells = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| match entry {
+                Entry::Element(row) => Cell::Row(row),
+                Entry::Row(row) => Cell::Row(row.into()),
+                Entry::Expander(expander) if expander.content.is_empty() => {
+                    Cell::Row(expander.header.into())
                 }
                 Entry::Expander(expander) => {
-                    let ExpanderRow {
-                        header,
-                        columns: requested_columns,
-                        content,
-                    } = expander;
-
-                    if content.is_empty() {
-                        structure.push(None);
-                        headers.push(header.into());
-                        continue;
-                    }
-                    structure.push(Some(requested_columns));
-
-                    let header = header.into_disclosure_content();
-                    let content_columns = if standalone {
-                        requested_columns
-                    } else {
-                        requested_columns.min(columns)
-                    };
-                    let body: Element<'a, Message> = container(
-                        Grid::with_children(content)
-                            .columns(content_columns)
-                            .spacing(spacing::SM)
-                            .height(Length::Shrink),
-                    )
-                    .width(Length::Fill)
-                    .padding(spacing::MD)
-                    .style(panel_style)
-                    .into();
-
-                    headers.push(header);
-                    expansions.push(Expansion {
-                        header_index,
-                        content_index: bodies.len(),
-                        footprint: footprint(
-                            header_index,
-                            if standalone { 1 } else { requested_columns },
-                            columns,
-                        ),
-                    });
-                    bodies.push(body);
+                    let footprint = footprint(index, expander.columns, columns);
+                    Cell::Expander(disclosure(expander, columns), footprint)
                 }
-            }
-        }
+            })
+            .collect();
 
-        let header_count = headers.len();
+        Self { cells, columns }
+    }
+}
 
-        for expansion in &mut expansions {
-            expansion.content_index += header_count;
-        }
-
-        headers.extend(bodies);
-
-        Self {
-            children: headers,
-            header_count,
-            expansions,
-            structure,
-            columns,
-            line_count: header_count.div_ceil(columns),
+impl<'a, Message: Clone> Cell<'a, Message> {
+    fn widget(&self) -> &dyn Widget<Message, Theme, iced::Renderer> {
+        match self {
+            Self::Row(row) => row.as_widget(),
+            Self::Expander(disclosure, _) => disclosure,
         }
     }
+
+    fn widget_mut(&mut self) -> &mut dyn Widget<Message, Theme, iced::Renderer> {
+        match self {
+            Self::Row(row) => row.as_widget_mut(),
+            Self::Expander(disclosure, _) => disclosure,
+        }
+    }
+}
+
+/// An expander's header over its rows, laid out `columns` wide at most.
+fn disclosure<'a, Message: Clone + 'a>(
+    expander: ExpanderRow<'a, Message>,
+    columns: usize,
+) -> Disclosure<'a, Message> {
+    let panel: Element<'a, Message> = container(
+        Grid::with_children(expander.content)
+            .columns(expander.columns.min(columns))
+            .spacing(spacing::SM)
+            .height(Length::Shrink),
+    )
+    .width(Length::Fill)
+    .padding(spacing::MD)
+    .style(panel_style)
+    .into();
+
+    Disclosure::new(
+        expander.header.into_disclosure_content(),
+        panel.map(PopupMessage::Emit),
+    )
+    .gap(spacing::SM)
 }
 
 pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
     expander: ExpanderRow<'a, Message>,
 ) -> Element<'a, Message> {
-    Element::new(RowGroupCore::new(vec![Entry::Expander(expander)], 1, true))
-}
-
-fn expander_header_style(
-    theme: &Theme,
-    interaction: &Interaction,
-    expanded: bool,
-    bounds: Rectangle,
-    cursor: mouse::Cursor,
-) -> button::Style {
-    let mut state = interaction.state(true, false, bounds, cursor);
-    state.selected = expanded;
-    super::list_row::action_style(theme, state)
+    if expander.content.is_empty() {
+        return expander.header.into();
+    }
+    let columns = expander.columns;
+    disclosure(expander, columns).into()
 }
 
 fn panel_style(theme: &Theme) -> container::Style {
@@ -319,12 +297,6 @@ fn panel_style(theme: &Theme) -> container::Style {
         .background(colors.border)
         .color(colors.text)
         .border(Border::default().rounded(RADIUS))
-}
-
-struct Expansion {
-    header_index: usize,
-    content_index: usize,
-    footprint: Footprint,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,55 +316,55 @@ impl Footprint {
     }
 }
 
-#[derive(Default)]
-struct Disclosure {
-    open: bool,
-    interaction: Interaction,
-}
-
-#[derive(Default)]
-struct State {
-    disclosures: Vec<Disclosure>,
-    structure: Vec<Option<usize>>,
-}
-
-impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
+impl<'a, Message: Clone> RowGroupCore<'a, Message> {
+    fn footprints(&self) -> Vec<Option<Footprint>> {
+        self.cells
+            .iter()
+            .map(|cell| match cell {
+                Cell::Row(_) => None,
+                Cell::Expander(_, footprint) => Some(*footprint),
+            })
+            .collect()
     }
 
-    fn state(&self) -> tree::State {
-        tree::State::new(State {
-            disclosures: std::iter::repeat_with(Disclosure::default)
-                .take(self.expansions.len())
-                .collect(),
-            structure: self.structure.clone(),
-        })
+    fn open(&self, tree: &Tree) -> Vec<bool> {
+        self.cells
+            .iter()
+            .zip(&tree.children)
+            .map(|(cell, tree)| matches!(cell, Cell::Expander(..)) && disclosure::is_open(tree))
+            .collect()
     }
 
+    fn set_open(&self, tree: &mut Tree, open: &[bool]) {
+        for ((cell, tree), open) in self.cells.iter().zip(&mut tree.children).zip(open) {
+            if matches!(cell, Cell::Expander(..)) {
+                disclosure::set_open(tree, *open);
+            }
+        }
+    }
+}
+
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Message> {
     fn children(&self) -> Vec<Tree> {
-        self.children.iter().map(Tree::new).collect()
+        self.cells
+            .iter()
+            .map(|cell| Tree::new(cell.widget()))
+            .collect()
     }
 
     fn diff(&self, tree: &mut Tree) {
-        let state = tree.state.downcast_ref::<State>();
-        let structure_changed = state.structure != self.structure;
+        let widgets: Vec<_> = self.cells.iter().map(Cell::widget).collect();
+        tree.diff_children(&widgets);
 
-        if structure_changed {
-            tree.children = self.children();
-        } else {
-            tree.diff_children(&self.children);
+        // The grid may have changed under panels left open, e.g. to fewer
+        // columns: later panels win over the ones they now overlap.
+        let footprints = self.footprints();
+        let was_open = self.open(tree);
+        let mut open = vec![false; was_open.len()];
+        for (index, _) in was_open.iter().enumerate().filter(|(_, open)| **open) {
+            open_evicting(&mut open, &footprints, index);
         }
-
-        let state = tree.state.downcast_mut::<State>();
-        state.structure.clone_from(&self.structure);
-        if structure_changed {
-            state.disclosures = std::iter::repeat_with(Disclosure::default)
-                .take(self.expansions.len())
-                .collect();
-        } else {
-            reconcile_open(&mut state.disclosures, &self.expansions);
-        }
+        self.set_open(tree, &open);
     }
 
     fn size(&self) -> Size<Length> {
@@ -405,93 +377,83 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let state = tree.state.downcast_ref::<State>();
         let width = limits.max().width;
+        let max_height = limits.max().height;
         let cell_width = cell_width(width, self.columns);
-        let loose_header_limits = layout::Limits::new(
+        let loose = layout::Limits::new(
             Size::new(cell_width, 0.0),
-            Size::new(cell_width, limits.max().height),
+            Size::new(cell_width, max_height),
         );
-        let mut children: Vec<Option<layout::Node>> = std::iter::repeat_with(|| None)
-            .take(self.children.len())
-            .collect();
+        let mut nodes = Vec::with_capacity(self.cells.len());
+        let line_count = self.cells.len().div_ceil(self.columns);
         let mut top = 0.0;
 
-        for line in 0..self.line_count {
-            let header_start = line * self.columns;
-            let headers = header_start..(header_start + self.columns).min(self.header_count);
-            let header_height = headers
+        for line in 0..line_count {
+            let cells = line * self.columns..((line + 1) * self.columns).min(self.cells.len());
+            // Every header on a line is as tall as the tallest.
+            let header_height = cells
                 .clone()
                 .map(|index| {
-                    self.children[index]
-                        .as_widget_mut()
-                        .layout(&mut tree.children[index], renderer, &loose_header_limits)
-                        .size()
-                        .height
+                    let tree = &mut tree.children[index];
+                    match &mut self.cells[index] {
+                        Cell::Row(row) => row.as_widget_mut().layout(tree, renderer, &loose),
+                        Cell::Expander(disclosure, _) => {
+                            disclosure.layout_header(tree, renderer, &loose)
+                        }
+                    }
+                    .size()
+                    .height
                 })
                 .fold(0.0, f32::max);
-            let header_limits = layout::Limits::new(
+            let fixed = layout::Limits::new(
                 Size::new(cell_width, header_height),
                 Size::new(cell_width, header_height),
             );
-
-            for (column, index) in headers.enumerate() {
-                children[index] = Some(
-                    self.children[index]
-                        .as_widget_mut()
-                        .layout(&mut tree.children[index], renderer, &header_limits)
-                        .move_to(Point::new(column as f32 * (cell_width + spacing::SM), top)),
-                );
-            }
-
             let body_top = top + header_height + spacing::SM;
-            let mut body_height: f32 = 0.0;
-            let mut line_open = false;
+            let mut body_height: Option<f32> = None;
 
-            for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
-                if expansion.footprint.line != line || !disclosure.open {
-                    continue;
-                }
-
-                line_open = true;
-                let panel_width = footprint_width(expansion.footprint, cell_width);
-                let content_limits = layout::Limits::new(
-                    Size::new(panel_width, 0.0),
-                    Size::new(panel_width, limits.max().height),
-                );
-                let node = self.children[expansion.content_index]
-                    .as_widget_mut()
-                    .layout(
-                        &mut tree.children[expansion.content_index],
-                        renderer,
-                        &content_limits,
-                    )
-                    .move_to(Point::new(
-                        expansion.footprint.start as f32 * (cell_width + spacing::SM),
-                        body_top,
-                    ));
-                body_height = body_height.max(node.size().height);
-                children[expansion.content_index] = Some(node);
+            for (column, index) in cells.enumerate() {
+                let tree = &mut tree.children[index];
+                let position = Point::new(column as f32 * (cell_width + spacing::SM), top);
+                nodes.push(match &mut self.cells[index] {
+                    Cell::Row(row) => row
+                        .as_widget_mut()
+                        .layout(tree, renderer, &fixed)
+                        .move_to(position),
+                    Cell::Expander(disclosure, footprint) => {
+                        let header = disclosure
+                            .layout_header(tree, renderer, &fixed)
+                            .move_to(position);
+                        let panel = disclosure::is_open(tree).then(|| {
+                            let panel = disclosure
+                                .layout_panel(
+                                    tree,
+                                    renderer,
+                                    footprint_width(*footprint, cell_width),
+                                    max_height,
+                                )
+                                .move_to(Point::new(
+                                    footprint.start as f32 * (cell_width + spacing::SM),
+                                    body_top,
+                                ));
+                            body_height = Some(body_height.unwrap_or(0.0).max(panel.size().height));
+                            panel
+                        });
+                        disclosure::place(header, panel)
+                    }
+                });
             }
 
-            top += if line_open {
-                header_height + spacing::SM + body_height
-            } else {
-                header_height
-            };
-
-            if line + 1 < self.line_count {
+            top += header_height;
+            if let Some(body_height) = body_height {
+                top += spacing::SM + body_height;
+            }
+            if line + 1 < line_count {
                 top += spacing::SM;
             }
         }
 
-        layout::Node::with_children(
-            Size::new(width, top),
-            children
-                .into_iter()
-                .map(|child| child.unwrap_or_else(|| layout::Node::new(Size::ZERO)))
-                .collect(),
-        )
+        layout::Node::with_children(Size::new(width, top), nodes)
     }
 
     fn operate(
@@ -501,35 +463,33 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         renderer: &iced::Renderer,
         operation: &mut dyn Operation,
     ) {
-        let children: Vec<_> = layout.children().collect();
-        let order = visual_order(self.header_count, self.columns, &self.expansions);
-        let state = tree.state.downcast_mut::<State>();
+        let layouts: Vec<_> = layout.children().collect();
+        let columns = self.columns;
 
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
-            let mut expansion_index = 0;
-
-            for index in &order {
-                if self
-                    .expansions
-                    .get(expansion_index)
-                    .is_some_and(|expansion| expansion.header_index == *index)
-                {
-                    operation.focusable(
-                        None,
-                        children[*index].bounds(),
-                        &mut state.disclosures[expansion_index].interaction,
-                    );
-                    expansion_index += 1;
+            // In reading order: a line's headers, then the panels under it.
+            for ((cells, trees), layouts) in self
+                .cells
+                .chunks_mut(columns)
+                .zip(tree.children.chunks_mut(columns))
+                .zip(layouts.chunks(columns))
+            {
+                for ((cell, tree), layout) in cells.iter_mut().zip(trees.iter_mut()).zip(layouts) {
+                    match cell {
+                        Cell::Row(row) => {
+                            row.as_widget_mut()
+                                .operate(tree, *layout, renderer, operation);
+                        }
+                        Cell::Expander(disclosure, _) => {
+                            disclosure.operate_header(tree, *layout, renderer, operation);
+                        }
+                    }
                 }
-
-                if is_visible(children[*index]) {
-                    self.children[*index].as_widget_mut().operate(
-                        &mut tree.children[*index],
-                        children[*index],
-                        renderer,
-                        operation,
-                    );
+                for ((cell, tree), layout) in cells.iter_mut().zip(trees.iter_mut()).zip(layouts) {
+                    if let Cell::Expander(disclosure, _) = cell {
+                        disclosure.operate_panel(tree, *layout, renderer, operation);
+                    }
                 }
             }
         });
@@ -546,58 +506,23 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        for ((child, child_tree), child_layout) in self
-            .children
+        let was_open = self.open(tree);
+
+        for ((cell, tree), layout) in self
+            .cells
             .iter_mut()
             .zip(&mut tree.children)
             .zip(layout.children())
         {
-            if is_visible(child_layout) {
-                child.as_widget_mut().update(
-                    child_tree,
-                    event,
-                    child_layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    shell,
-                    viewport,
-                );
-            }
+            cell.widget_mut().update(
+                tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+            );
         }
 
-        let children: Vec<_> = layout.children().collect();
-        let state = tree.state.downcast_mut::<State>();
-        let activated = state
-            .disclosures
-            .iter_mut()
-            .zip(&self.expansions)
-            .enumerate()
-            .find_map(|(index, (disclosure, expansion))| {
-                disclosure
-                    .interaction
-                    .update(
-                        event,
-                        children[expansion.header_index]
-                            .bounds()
-                            .intersection(viewport)
-                            .unwrap_or(Rectangle {
-                                x: children[expansion.header_index].bounds().x,
-                                y: children[expansion.header_index].bounds().y,
-                                width: 0.0,
-                                height: 0.0,
-                            }),
-                        cursor,
-                        true,
-                        shell,
-                    )
-                    .then_some(index)
-            });
-
-        if let Some(index) = activated {
-            toggle_open(&mut state.disclosures, index, &self.expansions);
-            shell.invalidate_layout();
-            shell.request_redraw();
+        let mut open = self.open(tree);
+        if let Some(opened) = (0..open.len()).find(|&index| open[index] && !was_open[index]) {
+            open_evicting(&mut open, &self.footprints(), opened);
+            self.set_open(tree, &open);
         }
     }
 
@@ -609,40 +534,16 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        let mut result = mouse::Interaction::default();
-
-        for ((child, child_tree), child_layout) in self
-            .children
+        self.cells
             .iter()
             .zip(&tree.children)
             .zip(layout.children())
-        {
-            if is_visible(child_layout) {
-                result = result.max(child.as_widget().mouse_interaction(
-                    child_tree,
-                    child_layout,
-                    cursor,
-                    viewport,
-                    renderer,
-                ));
-            }
-        }
-
-        if result == mouse::Interaction::default()
-            && self.expansions.iter().any(|expansion| {
-                cursor.is_over(
-                    layout
-                        .children()
-                        .nth(expansion.header_index)
-                        .expect("expander header layout")
-                        .bounds(),
-                )
+            .map(|((cell, tree), layout)| {
+                cell.widget()
+                    .mouse_interaction(tree, layout, cursor, viewport, renderer)
             })
-        {
-            mouse::Interaction::Pointer
-        } else {
-            result
-        }
+            .max()
+            .unwrap_or_default()
     }
 
     fn draw(
@@ -650,105 +551,14 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         tree: &Tree,
         renderer: &mut iced::Renderer,
         theme: &Theme,
-        renderer_style: &renderer::Style,
+        style: &renderer::Style,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        let state = tree.state.downcast_ref::<State>();
-        let children: Vec<_> = layout.children().collect();
-        let colors = crate::theme::colors(theme);
-
-        for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
-            if !disclosure.open {
-                continue;
-            }
-
-            let header = children[expansion.header_index].bounds();
-            let panel = children[expansion.content_index].bounds();
-
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: Rectangle {
-                        x: header.x,
-                        y: header.y + header.height - RADIUS,
-                        width: header.width,
-                        height: panel.y - header.y - header.height + RADIUS * 2.0,
-                    },
-                    border: Border::default(),
-                    shadow: Shadow::default(),
-                    snap: true,
-                },
-                Background::Color(colors.border),
-            );
-
-            if header.x > panel.x {
-                fill_concave_corner(
-                    renderer,
-                    header.x,
-                    panel.y,
-                    true,
-                    colors.border,
-                    colors.background,
-                );
-            }
-
-            if header.x + header.width < panel.x + panel.width {
-                fill_concave_corner(
-                    renderer,
-                    header.x + header.width,
-                    panel.y,
-                    false,
-                    colors.border,
-                    colors.background,
-                );
-            }
-        }
-
-        for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
-            let bounds = children[expansion.header_index].bounds();
-            let style = expander_header_style(
-                theme,
-                &disclosure.interaction,
-                disclosure.open,
-                bounds,
-                cursor,
-            );
-
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds,
-                    border: style.border,
-                    shadow: style.shadow,
-                    snap: style.snap,
-                },
-                style
-                    .background
-                    .unwrap_or(Background::Color(iced::Color::TRANSPARENT)),
-            );
-        }
-
-        for (index, child_layout) in children.iter().copied().enumerate() {
-            if is_visible(child_layout) {
-                self.children[index].as_widget().draw(
-                    &tree.children[index],
-                    renderer,
-                    theme,
-                    renderer_style,
-                    child_layout,
-                    cursor,
-                    viewport,
-                );
-            }
-        }
-
-        for (expansion, disclosure) in self.expansions.iter().zip(&state.disclosures) {
-            draw_caret(
-                renderer,
-                theme,
-                disclosure_bounds(children[expansion.header_index].bounds()),
-                if disclosure.open { 1.0 } else { 0.0 },
-            );
+        for ((cell, tree), layout) in self.cells.iter().zip(&tree.children).zip(layout.children()) {
+            cell.widget()
+                .draw(tree, renderer, theme, style, layout, cursor, viewport);
         }
     }
 
@@ -761,18 +571,13 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
         translation: Vector,
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         let overlays = self
-            .children
+            .cells
             .iter_mut()
             .zip(&mut tree.children)
             .zip(layout.children())
-            .filter_map(|((child, state), child_layout)| {
-                if !is_visible(child_layout) {
-                    return None;
-                }
-
-                child
-                    .as_widget_mut()
-                    .overlay(state, child_layout, renderer, viewport, translation)
+            .filter_map(|((cell, tree), layout)| {
+                cell.widget_mut()
+                    .overlay(tree, layout, renderer, viewport, translation)
             })
             .collect::<Vec<_>>();
 
@@ -780,65 +585,8 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for RowGroupCore<'_, Messag
     }
 }
 
-fn is_visible(layout: Layout<'_>) -> bool {
-    let bounds = layout.bounds();
-    bounds.width > 0.0 && bounds.height > 0.0
-}
-
-fn disclosure_bounds(header: Rectangle) -> Rectangle {
-    const SIZE: f32 = 20.0;
-
-    Rectangle {
-        x: header.x + header.width - super::list_row::STANDARD_PADDING.right - SIZE,
-        y: header.center_y() - SIZE / 2.0,
-        width: SIZE,
-        height: SIZE,
-    }
-}
-
 fn cell_width(width: f32, columns: usize) -> f32 {
     (width - spacing::SM * (columns.saturating_sub(1) as f32)).max(0.0) / columns as f32
-}
-
-fn fill_concave_corner(
-    renderer: &mut iced::Renderer,
-    x: f32,
-    panel_y: f32,
-    extends_left: bool,
-    color: iced::Color,
-    background: iced::Color,
-) {
-    let clip_x = if extends_left { x - RADIUS } else { x };
-    let clip = Rectangle::new(
-        Point::new(clip_x, panel_y - RADIUS),
-        Size::new(RADIUS, RADIUS),
-    );
-    let cutout_x = if extends_left { x - RADIUS * 2.0 } else { x };
-    let cutout = Rectangle::new(
-        Point::new(cutout_x, panel_y - RADIUS * 2.0),
-        Size::new(RADIUS * 2.0, RADIUS * 2.0),
-    );
-
-    renderer.with_layer(clip, |renderer| {
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: clip,
-                border: Border::default(),
-                shadow: Shadow::default(),
-                snap: true,
-            },
-            Background::Color(color),
-        );
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: cutout,
-                border: Border::default().rounded(RADIUS),
-                shadow: Shadow::default(),
-                snap: true,
-            },
-            Background::Color(background),
-        );
-    });
 }
 
 fn footprint(header: usize, requested_span: usize, columns: usize) -> Footprint {
@@ -860,86 +608,37 @@ fn footprint_width(footprint: Footprint, cell_width: f32) -> f32 {
     span as f32 * cell_width + span.saturating_sub(1) as f32 * spacing::SM
 }
 
-fn visual_order(header_count: usize, columns: usize, expansions: &[Expansion]) -> Vec<usize> {
-    let mut order = Vec::with_capacity(header_count + expansions.len());
-
-    for line in 0..header_count.div_ceil(columns) {
-        let header_start = line * columns;
-        order.extend(header_start..(header_start + columns).min(header_count));
-        order.extend(
-            expansions
-                .iter()
-                .filter(|expansion| expansion.footprint.line == line)
-                .map(|expansion| expansion.content_index),
-        );
-    }
-
-    order
-}
-
-fn reconcile_open(disclosures: &mut [Disclosure], expansions: &[Expansion]) {
-    let open = disclosures
-        .iter_mut()
-        .enumerate()
-        .filter_map(|(index, disclosure)| std::mem::take(&mut disclosure.open).then_some(index))
-        .collect::<Vec<_>>();
-
-    for index in open {
-        toggle_open(disclosures, index, expansions);
-    }
-}
-
-fn toggle_open(disclosures: &mut [Disclosure], target: usize, expansions: &[Expansion]) {
-    if disclosures[target].open {
-        disclosures[target].open = false;
+/// Opens the panel of cell `target`, closing the open ones it overlaps.
+fn open_evicting(open: &mut [bool], footprints: &[Option<Footprint>], target: usize) {
+    let Some(target_footprint) = footprints[target] else {
         return;
-    }
+    };
 
-    let target_footprint = expansions[target].footprint;
-
-    for (disclosure, expansion) in disclosures.iter_mut().zip(expansions) {
-        if disclosure.open && expansion.footprint.overlaps(target_footprint) {
-            disclosure.open = false;
+    for (open, footprint) in open.iter_mut().zip(footprints) {
+        if footprint.is_some_and(|footprint| footprint.overlaps(target_footprint)) {
+            *open = false;
         }
     }
 
-    disclosures[target].open = true;
+    open[target] = true;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn expansions(columns: usize, specs: &[(usize, usize)]) -> Vec<Expansion> {
-        let header_count = specs.iter().map(|(header, _)| *header).max().unwrap_or(0) + 1;
-
-        specs
-            .iter()
-            .enumerate()
-            .map(|(index, (header, span))| Expansion {
-                header_index: *header,
-                content_index: header_count + index,
-                footprint: footprint(*header, *span, columns),
-            })
-            .collect()
-    }
-
     #[test]
-    fn toggles_keep_disjoint_panels_and_evict_overlaps() {
-        let expansions = expansions(3, &[(0, 1), (1, 2), (2, 3)]);
-        let mut disclosures: Vec<_> = std::iter::repeat_with(Disclosure::default)
-            .take(expansions.len())
-            .collect();
+    fn opening_keeps_disjoint_panels_and_evicts_overlaps() {
+        let footprints =
+            [(0, 1), (1, 2), (2, 3)].map(|(header, span)| Some(footprint(header, span, 3)));
+        let mut open = [false; 3];
 
-        toggle_open(&mut disclosures, 0, &expansions);
-        toggle_open(&mut disclosures, 1, &expansions);
-        assert!(disclosures[0].open && disclosures[1].open);
+        open_evicting(&mut open, &footprints, 0);
+        open_evicting(&mut open, &footprints, 1);
+        assert!(open[0] && open[1]);
 
-        toggle_open(&mut disclosures, 2, &expansions);
-        assert!(!disclosures[0].open && !disclosures[1].open && disclosures[2].open);
-
-        toggle_open(&mut disclosures, 2, &expansions);
-        assert!(disclosures.iter().all(|disclosure| !disclosure.open));
+        open_evicting(&mut open, &footprints, 2);
+        assert_eq!(open, [false, false, true]);
     }
 
     #[test]

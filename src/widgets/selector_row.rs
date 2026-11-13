@@ -1,21 +1,18 @@
 use iced::{
-    Alignment, Background, Border, Element, Event, Fill, Length, Point, Rectangle, Shadow, Size,
-    Theme, Vector,
+    Border, Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
     advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
+        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
-    keyboard::{self, key},
-    touch,
-    widget::{Column, button, column, container, row, scrollable, text},
+    widget::{Column, button, column, container, scrollable, text},
 };
 
 use crate::icons::Icon;
 
 use super::{
-    draw_caret,
-    focusable_action::{ActionState, FocusableAction, Interaction},
-    list_row::{self, ListRow, Menu},
+    disclosure::{self, Disclosure},
+    focusable_action::{FocusableAction, Interaction},
+    list_row::{ListRow, Menu},
     popup::{self, AnchorMessage, Popup, PopupMessage},
     spacing,
     switcher::Switcher,
@@ -179,38 +176,30 @@ where
         let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING))
             .width(Fill)
             .style(crate::theme::scrollbar);
-        // A popup hangs from the row: a hairline marks where the row ends.
-        let list: Element<'a, PopupMessage<Message>> = if popup {
-            column![
-                container(iced::widget::Space::new().height(1))
-                    .width(Fill)
-                    .style(|theme| {
-                        container::Style::default()
-                            .background(crate::theme::colors(theme).selection)
-                    }),
-                list,
-            ]
-            .into()
-        } else {
-            list.into()
-        };
+        // The options continue the row: a hairline marks where the row ends.
+        let list = column![
+            container(iced::widget::Space::new().height(1))
+                .width(Fill)
+                .style(|theme| {
+                    container::Style::default().background(crate::theme::colors(theme).selection)
+                }),
+            list,
+        ];
         let panel = container(list).width(Fill).style(move |theme| {
-            if popup {
-                let colors = crate::theme::colors(theme);
-                container::Style::default()
-                    .background(colors.border)
-                    .border(Border::default().rounded(iced::border::bottom(PANEL_RADIUS)))
-            } else {
-                container::Style::default()
-            }
+            container::Style::default()
+                .background(crate::theme::colors(theme).border)
+                .border(Border::default().rounded(iced::border::bottom(if popup {
+                    PANEL_RADIUS
+                } else {
+                    RADIUS
+                })))
         });
 
         if !popup {
-            return Element::new(Selector {
-                header,
-                panel: panel.into(),
-                enabled,
-            });
+            return Disclosure::new(header, panel)
+                .enabled(enabled)
+                .dismissible()
+                .into();
         }
 
         let anchor = FocusableAction::new(header.map(AnchorMessage::Emit))
@@ -238,349 +227,22 @@ fn section_heading<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
         .into()
 }
 
+/// The row of either mode: the title, the value under it, an optional
+/// switch, and room for the caret.
 fn header<'a, Message: 'a>(
     title: &'a str,
     value: String,
     icon: Option<Icon>,
     switch: Option<Element<'a, Message>>,
 ) -> Element<'a, Message> {
-    let mut value_row = row![].spacing(spacing::SM).align_y(Alignment::Center);
-
+    let mut row = ListRow::labeled(title).subtitle(value);
     if let Some(icon) = icon {
-        value_row = value_row.push(
-            icon.view()
-                .width(list_row::BODY_SIZE)
-                .height(list_row::BODY_SIZE),
-        );
+        row = row.subtitle_icon(icon);
     }
-
-    value_row = value_row.push(text(value).size(list_row::BODY_SIZE).muted());
-
-    let mut row = ListRow::new(
-        column![text(title).label().medium(), value_row]
-            .width(Fill)
-            .spacing(spacing::XS),
-    );
     if let Some(switch) = switch {
         row = row.trailing(switch);
     }
     row.into_disclosure_content()
-}
-
-/// A selector whose options push the content below down.
-struct Selector<'a, Message> {
-    header: Element<'a, Message>,
-    panel: Element<'a, PopupMessage<Message>>,
-    enabled: bool,
-}
-
-#[derive(Debug, Default)]
-struct State {
-    open: bool,
-    interaction: Interaction,
-}
-
-impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
-    }
-
-    fn state(&self) -> tree::State {
-        tree::State::new(State::default())
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.header), Tree::new(&self.panel)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.children[0].diff(&self.header);
-        tree.children[1].diff(&self.panel);
-
-        if !self.enabled {
-            tree.state.downcast_mut::<State>().open = false;
-        }
-    }
-
-    fn size(&self) -> Size<Length> {
-        Size::new(Length::Fill, Length::Shrink)
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &iced::Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        let limits = limits.width(Length::Fill).height(Length::Shrink);
-        let header = self
-            .header
-            .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, &limits);
-        let header_size = header.size();
-        let panel = if tree.state.downcast_ref::<State>().open {
-            self.panel
-                .as_widget_mut()
-                .layout(
-                    &mut tree.children[1],
-                    renderer,
-                    &layout::Limits::new(
-                        Size::new(header_size.width, 0.0),
-                        Size::new(
-                            header_size.width,
-                            (limits.max().height - header_size.height).max(0.0),
-                        ),
-                    ),
-                )
-                .move_to(Point::new(0.0, header_size.height))
-        } else {
-            layout::Node::new(Size::ZERO)
-        };
-        let size = Size::new(header_size.width, header_size.height + panel.size().height);
-
-        layout::Node::with_children(size, vec![header, panel])
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        let state = tree.state.downcast_mut::<State>();
-        let (header, panel) = layout_parts(layout);
-
-        if self.enabled {
-            operation.focusable(None, header.bounds(), &mut state.interaction);
-        }
-
-        operation.container(None, layout.bounds());
-        operation.traverse(&mut |operation| {
-            self.header
-                .as_widget_mut()
-                .operate(&mut tree.children[0], header, renderer, operation);
-
-            if state.open {
-                self.panel.as_widget_mut().operate(
-                    &mut tree.children[1],
-                    panel,
-                    renderer,
-                    operation,
-                );
-            }
-        });
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        let (header_layout, panel_layout) = layout_parts(layout);
-        let state = tree.state.downcast_mut::<State>();
-
-        if state.open {
-            let mut messages = Vec::new();
-            let mut panel_shell = Shell::new(&mut messages);
-            self.panel.as_widget_mut().update(
-                &mut tree.children[1],
-                event,
-                panel_layout,
-                cursor,
-                renderer,
-                clipboard,
-                &mut panel_shell,
-                viewport,
-            );
-
-            if popup::forward(shell, panel_shell) {
-                state.open = false;
-                shell.invalidate_layout();
-            }
-        }
-
-        self.header.as_widget_mut().update(
-            &mut tree.children[0],
-            event,
-            header_layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );
-
-        if state.interaction.update(
-            event,
-            header_layout
-                .bounds()
-                .intersection(viewport)
-                .unwrap_or_default(),
-            cursor,
-            self.enabled,
-            shell,
-        ) {
-            state.open = !state.open;
-            shell.invalidate_layout();
-            shell.request_redraw();
-        } else if state.open && dismisses(event, cursor, layout.bounds()) {
-            state.open = false;
-            shell.invalidate_layout();
-            shell.request_redraw();
-        }
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        let state = tree.state.downcast_ref::<State>();
-        let (header, panel) = layout_parts(layout);
-        let mut interaction = self.header.as_widget().mouse_interaction(
-            &tree.children[0],
-            header,
-            cursor,
-            viewport,
-            renderer,
-        );
-
-        if state.open {
-            interaction = interaction.max(self.panel.as_widget().mouse_interaction(
-                &tree.children[1],
-                panel,
-                cursor,
-                viewport,
-                renderer,
-            ));
-        }
-
-        if interaction == mouse::Interaction::default()
-            && self.enabled
-            && cursor.is_over(header.bounds())
-        {
-            mouse::Interaction::Pointer
-        } else {
-            interaction
-        }
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        let state = tree.state.downcast_ref::<State>();
-        let (header, panel) = layout_parts(layout);
-        let colors = crate::theme::colors(theme);
-
-        if state.open {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: layout.bounds(),
-                    border: Border::default().rounded(RADIUS),
-                    shadow: Shadow::default(),
-                    snap: true,
-                },
-                Background::Color(colors.border),
-            );
-        }
-
-        draw_header_fill(
-            renderer,
-            theme,
-            header.bounds(),
-            state
-                .interaction
-                .state(self.enabled, state.open, header.bounds(), cursor),
-            false,
-        );
-        self.header.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            &renderer::Style {
-                text_color: if self.enabled {
-                    colors.text
-                } else {
-                    colors.muted
-                },
-            },
-            header,
-            cursor,
-            viewport,
-        );
-        draw_caret(
-            renderer,
-            theme,
-            disclosure_bounds(header.bounds()),
-            f32::from(state.open),
-        );
-
-        if state.open {
-            self.panel.as_widget().draw(
-                &tree.children[1],
-                renderer,
-                theme,
-                style,
-                panel,
-                cursor,
-                viewport,
-            );
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: Rectangle {
-                        y: panel.bounds().y,
-                        height: 1.0,
-                        ..panel.bounds()
-                    },
-                    snap: true,
-                    ..renderer::Quad::default()
-                },
-                Background::Color(colors.selection),
-            );
-        }
-    }
-
-    fn overlay<'a>(
-        &'a mut self,
-        tree: &'a mut Tree,
-        layout: Layout<'a>,
-        renderer: &iced::Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        let state = tree.state.downcast_ref::<State>();
-        let (_, panel) = layout_parts(layout);
-
-        state
-            .open
-            .then(|| {
-                self.panel.as_widget_mut().overlay(
-                    &mut tree.children[1],
-                    panel,
-                    renderer,
-                    viewport,
-                    translation,
-                )
-            })?
-            .map(|overlay| overlay.map(&PopupMessage::into_inner))
-    }
 }
 
 /// A selector whose options open over the content below: the row and its
@@ -675,7 +337,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_
         let bounds = layout.bounds();
         let interaction = popup::anchor(tree).state.downcast_ref::<Interaction>();
 
-        draw_header_fill(
+        disclosure::draw_header(
             renderer,
             theme,
             bounds,
@@ -685,7 +347,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_
         self.popup
             .as_widget()
             .draw(tree, renderer, theme, style, layout, cursor, viewport);
-        draw_caret(renderer, theme, disclosure_bounds(bounds), f32::from(open));
+        disclosure::draw_caret(renderer, theme, bounds, open);
     }
 
     fn overlay<'a>(
@@ -699,66 +361,5 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_
         self.popup
             .as_widget_mut()
             .overlay(tree, layout, renderer, viewport, translation)
-    }
-}
-
-/// Fills the row of a selector, as a list row that is `selected` while its
-/// options show. An `attached` panel continues the row, so the row's bottom
-/// corners go.
-fn draw_header_fill(
-    renderer: &mut iced::Renderer,
-    theme: &Theme,
-    bounds: Rectangle,
-    state: ActionState,
-    attached: bool,
-) {
-    let mut style = list_row::action_style(theme, state);
-    if attached {
-        style.border = Border::default().rounded(iced::border::top(RADIUS));
-    }
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds,
-            border: style.border,
-            shadow: style.shadow,
-            snap: style.snap,
-        },
-        style
-            .background
-            .unwrap_or(Background::Color(iced::Color::TRANSPARENT)),
-    );
-}
-
-fn layout_parts(layout: Layout<'_>) -> (Layout<'_>, Layout<'_>) {
-    let mut children = layout.children();
-    (
-        children.next().expect("selector header"),
-        children.next().expect("selector panel"),
-    )
-}
-
-fn disclosure_bounds(header: Rectangle) -> Rectangle {
-    const SIZE: f32 = 20.0;
-
-    Rectangle {
-        x: header.x + header.width - list_row::STANDARD_PADDING.right - SIZE,
-        y: header.center_y() - SIZE / 2.0,
-        width: SIZE,
-        height: SIZE,
-    }
-}
-
-fn dismisses(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
-    match event {
-        Event::Mouse(mouse::Event::ButtonPressed(_)) => cursor
-            .position()
-            .is_some_and(|position| !bounds.contains(position)),
-        Event::Touch(touch::Event::FingerPressed { position, .. }) => !bounds.contains(*position),
-        Event::Keyboard(keyboard::Event::KeyPressed {
-            key: keyboard::Key::Named(key::Named::Escape),
-            repeat: false,
-            ..
-        }) => true,
-        _ => false,
     }
 }
