@@ -6,7 +6,6 @@
 
 use bottles_core::{
     Addon, AddonRole, CatalogEntry, Component, Runner, RunnerFlavor, Slot, Umu, WineBridge,
-    compare_versions,
 };
 use uuid::Uuid;
 
@@ -50,7 +49,8 @@ impl Model {
         supported()
             .filter(|entry| entry.name() == series)
             .max_by(|left, right| {
-                compare_versions(left.version(), right.version())
+                left.version()
+                    .cmp(right.version())
                     .then_with(|| left.id().cmp(&right.id()))
             })
     }
@@ -89,7 +89,7 @@ impl Model {
         runners.sort_by(|left, right| {
             left.name()
                 .cmp(right.name())
-                .then_with(|| compare_versions(right.version(), left.version()))
+                .then_with(|| right.version().cmp(left.version()))
                 .then_with(|| right.id().cmp(&left.id()))
         });
         runners
@@ -134,6 +134,8 @@ pub(crate) fn required_available(entries: &[CatalogEntry]) -> bool {
 /// The greatest version among releases of one series, with ties broken by identifier.
 fn newest<R>(releases: impl Iterator<Item = Addon<R>>) -> Option<Addon<R>> {
     releases.max_by(|left, right| {
-        compare_versions(left.version(), right.version()).then_with(|| left.id().cmp(&right.id()))
+        left.version()
+            .cmp(right.version())
+            .then_with(|| left.id().cmp(&right.id()))
     })
 }
