@@ -8,7 +8,10 @@ use uuid::Uuid;
 
 use next_ui::widget::{InfoCardKind, Notification as NotificationCard};
 
-use crate::{app::Message, model::Action};
+use crate::{
+    app::Message,
+    model::{Action, Model, Outcome, Refusal, Report, Subject, Verb},
+};
 
 /// How many notifications show before older ones fold away.
 const VISIBLE: usize = 2;
@@ -60,7 +63,80 @@ pub(crate) struct Notifications {
 }
 
 impl Notifications {
-    pub(crate) fn info(&mut self, message: impl Into<String>) {
+    /// Tells of what the model reports, if it's news.
+    pub(crate) fn report(&mut self, report: Report, model: &Model) {
+        match report {
+            Report::PluginFailed { id, error } => self.push(
+                Notification::new(
+                    InfoCardKind::Warning,
+                    "A plugin couldn’t load",
+                    format!("{id}: {error}"),
+                )
+                .action("Open Plugins", Follow::Plugins),
+            ),
+            Report::Finished {
+                subject: Subject::Addon(release),
+                verb: Verb::Fetch,
+                then,
+                result,
+            } => {
+                let name = model
+                    .release_label(release)
+                    .unwrap_or_else(|| "the release".to_owned());
+                match (result, then) {
+                    // Cancelling isn't news: the row the download was in
+                    // shows it gone.
+                    (Ok(Outcome::Cancelled), _) => {}
+                    (Ok(_), Some(Action::UseRelease { .. })) => {
+                        self.success(format!("{name} downloaded"), "It’s selected in the bottle.");
+                    }
+                    // Essentials show their progress where they were
+                    // started, so finishing needs no notification.
+                    (Ok(_), _) => {}
+                    (Err(error), then) => {
+                        let retry = match then {
+                            Some(Action::UseRelease { prefix, release }) => {
+                                Action::FetchRelease { prefix, release }
+                            }
+                            _ => Action::Download(release),
+                        };
+                        self.push(
+                            Notification::new(
+                                InfoCardKind::Error,
+                                "Error",
+                                format!("Couldn’t download {name}. {error}"),
+                            )
+                            .action("Retry", Follow::Act(retry)),
+                        );
+                    }
+                }
+            }
+            Report::Finished {
+                result: Err(error), ..
+            }
+            | Report::Error(error) => self.error(error),
+            Report::Finished { .. } => {}
+            Report::Refused(Refusal::NoRecipes(name)) => self.info(format!(
+                "Installing {name} needs bottle recipes, which aren’t available yet"
+            )),
+            Report::Refused(Refusal::ReleaseGone) => {
+                self.error("This release is no longer downloaded");
+            }
+            Report::Refused(Refusal::NoUmu) => {
+                self.error("Proton runners need UMU, which isn't downloaded");
+            }
+            Report::Refused(Refusal::NoRunner) => {
+                self.error("A runner is required to add a program");
+            }
+            Report::Refused(Refusal::NoRunnerOrWineBridge) => {
+                self.error("A runner and WineBridge are required to create a bottle");
+            }
+            Report::Refused(Refusal::ProgramGone) => self.error("This program no longer exists"),
+            Report::Refused(Refusal::PluginGone) => self.error("This plugin is no longer loaded"),
+        }
+    }
+
+    fn info(&mut self, message: impl Into<String>) {
         self.push(Notification::new(
             InfoCardKind::Info,
             "Information",
@@ -68,7 +144,7 @@ impl Notifications {
         ));
     }
 
-    pub(crate) fn success(&mut self, title: impl Into<String>, message: impl Into<String>) {
+    fn success(&mut self, title: impl Into<String>, message: impl Into<String>) {
         self.push(Notification::new(InfoCardKind::Success, title, message));
     }
 
@@ -76,7 +152,7 @@ impl Notifications {
         self.push(Notification::new(InfoCardKind::Error, "Error", message));
     }
 
-    pub(crate) fn push(&mut self, notification: Notification) {
+    fn push(&mut self, notification: Notification) {
         self.list.push(notification);
     }
 

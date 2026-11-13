@@ -14,7 +14,7 @@ use crate::{
     add_program, classic, manage_profiles,
     model::{self, Action, Boot, Experience, Model},
     next,
-    notifications::{self, Follow},
+    notifications::{self, Follow, Notifications},
     onboarding, preferences,
 };
 
@@ -33,6 +33,7 @@ enum State {
 /// The model, the shown screen, and the app-wide surfaces over it.
 struct Ready {
     model: Model,
+    notifications: Notifications,
     screen: Screen,
     /// Preferences, shown instead of the screen while open.
     preferences: Option<preferences::State>,
@@ -208,14 +209,17 @@ impl App {
                     } else {
                         Task::none()
                     };
-                    self.state = State::Ready(Box::new(Ready {
+                    let mut ready = Ready {
                         model,
+                        notifications: Notifications::default(),
                         screen,
                         preferences: None,
                         profiles: manage_profiles::State::default(),
                         adding: None,
                         adding_open: false,
-                    }));
+                    };
+                    ready.notify();
+                    self.state = State::Ready(Box::new(ready));
                     return Task::batch([watch.map(Message::Model), close]);
                 }
                 Err(error) => {
@@ -251,8 +255,8 @@ impl App {
                 State::Failed(error) => status("Could not start Bottles", error),
                 State::Ready(ready) => {
                     let mut layers = stack![ready.view()].width(Fill).height(Fill);
-                    if !ready.model.notifications.is_empty() {
-                        layers = layers.push(notifications::layer(&ready.model.notifications));
+                    if !ready.notifications.is_empty() {
+                        layers = layers.push(notifications::layer(&ready.notifications));
                     }
                     layers.into()
                 }
@@ -264,15 +268,28 @@ impl App {
 
 impl Ready {
     fn update(&mut self, message: Message, closing: bool) -> Task<Message> {
+        let task = self.handle(message, closing);
+        self.notify();
+        task
+    }
+
+    /// Turns what the model reported into notifications.
+    fn notify(&mut self) {
+        for report in self.model.take_reports() {
+            self.notifications.report(report, &self.model);
+        }
+    }
+
+    fn handle(&mut self, message: Message, closing: bool) -> Task<Message> {
         let model = &mut self.model;
         let request = match message {
             Message::Model(message) => return model.update(message).map(Message::Model),
             Message::DismissNotification(id) => {
-                model.notifications.dismiss(id);
+                self.notifications.dismiss(id);
                 None
             }
             Message::CopyNotification(id) => {
-                return match model.notifications.get(id) {
+                return match self.notifications.get(id) {
                     Some(notification) => iced::clipboard::write(format!(
                         "{}\n\n{}",
                         notification.title, notification.message
@@ -291,7 +308,7 @@ impl Ready {
                         || file.display().to_string(),
                         |name| name.to_string_lossy().into_owned(),
                     );
-                    model.notifications.error(format!(
+                    self.notifications.error(format!(
                         "{name} isn’t a Windows program. Pick the program’s .exe \
                          file, and extract the archive first if it came in one."
                     ));
@@ -312,20 +329,20 @@ impl Ready {
             }
             Message::Picked(_, None) => None,
             Message::ExpandNotifications => {
-                model.notifications.toggle_expanded();
+                self.notifications.toggle_expanded();
                 None
             }
             Message::DismissAllNotifications => {
-                model.notifications.dismiss_all();
+                self.notifications.dismiss_all();
                 None
             }
             _ if closing => None,
             Message::FollowNotification(id) => {
-                let follow = model
+                let follow = self
                     .notifications
                     .get(id)
                     .and_then(|notification| notification.action.clone());
-                model.notifications.dismiss(id);
+                self.notifications.dismiss(id);
                 match follow.map(|(_, follow)| follow) {
                     Some(Follow::Act(action)) => Some(Request::Act(action)),
                     Some(Follow::Plugins) => {
