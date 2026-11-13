@@ -9,7 +9,7 @@ use iced::{
 use super::{
     button::{Button, ButtonKind},
     info_card::{self, Kind},
-    spacing,
+    radius, spacing,
     text::TextExt as _,
 };
 use crate::icons::Icon;
@@ -104,7 +104,7 @@ impl<'a, Message: Clone + 'a> From<Notification<'a, Message>> for Element<'a, Me
                     container::Style::default()
                         .background(colors.color)
                         .color(colors.text)
-                        .border(Border::default().rounded(8))
+                        .border(Border::default().rounded(radius::BOX))
                 }),
         )
     }

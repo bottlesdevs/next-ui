@@ -7,6 +7,7 @@ use iced::{
     widget::{Space, column, container, image, row, stack, text},
 };
 
+use super::radius;
 use crate::{icons::Icon, widgets::button::ButtonKind};
 
 use super::{button::Button, card::Card, spacing, text::TextExt as _};
@@ -136,7 +137,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                 .width(Fill)
                 .height(Fill)
                 .content_fit(ContentFit::Cover)
-                .border_radius(6)
+                .border_radius(radius::ROW)
                 .into(),
             None => Space::new().width(Fill).height(Fill).into(),
         };
@@ -147,7 +148,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             .style(|theme: &Theme| {
                 container::Style::default()
                     .background(crate::theme::colors(theme).raised)
-                    .border(iced::Border::default().rounded(iced::border::top(6)))
+                    .border(iced::Border::default().rounded(iced::border::top(radius::ROW)))
             });
         let labels = container(
             column![

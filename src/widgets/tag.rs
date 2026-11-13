@@ -3,6 +3,7 @@ use iced::{
     widget::{container, text, text::IntoFragment},
 };
 
+use super::radius;
 use super::text::TextExt as _;
 
 /// A short label describing what something is, e.g. "Account" or "Library".
@@ -28,7 +29,7 @@ impl<'a, Message: 'a> From<Tag<'a>> for Element<'a, Message> {
                 container::Style::default()
                     .background(colors.raised)
                     .color(colors.accent_muted)
-                    .border(Border::default().rounded(6))
+                    .border(Border::default().rounded(radius::ROW))
             })
             .into()
     }

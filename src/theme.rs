@@ -1,5 +1,6 @@
 //! Semantic colors for the toolkit.
 
+use crate::widgets::radius;
 use iced::{
     Background, Border, Color, Theme as IcedTheme,
     theme::{
@@ -277,7 +278,7 @@ pub(crate) fn surface(colors: Pair) -> container::Style {
     container::Style::default()
         .color(colors.text)
         .background(colors.color)
-        .border(Border::default().rounded(6))
+        .border(Border::default().rounded(radius::ROW))
 }
 
 /// Styles a scrollbar using semantic muted colors.
@@ -288,7 +289,7 @@ pub fn scrollbar(theme: &IcedTheme, status: scrollable::Status) -> scrollable::S
         border: Border::default(),
         scroller: scrollable::Scroller {
             background: Background::Color(muted(theme)),
-            border: Border::default().rounded(999),
+            border: Border::default().rounded(radius::PILL),
         },
     };
 

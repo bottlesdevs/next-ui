@@ -74,7 +74,7 @@ pub fn window_frame<'a, Message: Clone + 'a>(
             container::Style {
                 background: Some(Background::Color(colors.chrome)),
                 border: Border::default()
-                    .rounded(6)
+                    .rounded(crate::widgets::radius::ROW)
                     .color(colors.chrome_border)
                     .width(1),
                 ..container::Style::default()

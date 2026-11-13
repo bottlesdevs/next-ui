@@ -14,7 +14,7 @@ use super::{
     focusable_action::{FocusableAction, Interaction},
     list_row::{ListRow, Menu},
     popup::{self, AnchorMessage, Popup, PopupMessage},
-    spacing,
+    radius, spacing,
     switcher::Switcher,
     text::TextExt as _,
 };
@@ -22,9 +22,6 @@ use super::{
 const PANEL_PADDING: [f32; 2] = [spacing::SM, spacing::SM];
 /// Options read smaller than the row's title, as a list under it.
 const OPTION_SIZE: f32 = 15.0;
-const RADIUS: f32 = 6.0;
-/// The free corners of a popup panel, rounder than the row it hangs from.
-const PANEL_RADIUS: f32 = 8.0;
 
 /// An in-flow row that selects one value from a connected option panel.
 pub struct SelectorRow<'a, T, Message> {
@@ -189,9 +186,9 @@ where
             container::Style::default()
                 .background(crate::theme::colors(theme).raised)
                 .border(Border::default().rounded(iced::border::bottom(if popup {
-                    PANEL_RADIUS
+                    radius::BOX
                 } else {
-                    RADIUS
+                    radius::ROW
                 })))
         });
 

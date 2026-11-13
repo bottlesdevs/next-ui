@@ -11,14 +11,12 @@ use crate::icons::Icon;
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
-    spacing,
+    radius, spacing,
     text::TextExt as _,
 };
 
 #[doc(hidden)]
 pub const BODY_SIZE: f32 = 16.0;
-/// The corner radius of a row standing on its own.
-const RADIUS: f32 = 6.0;
 
 pub(crate) const STANDARD_PADDING: Padding = Padding {
     top: spacing::MD,
@@ -98,7 +96,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             leading: Vec::new(),
             trailing: Vec::new(),
             padding: STANDARD_PADDING,
-            corners: Radius::new(RADIUS),
+            corners: Radius::new(radius::ROW),
             pressable: false,
             on_press: None,
             selected: false,
@@ -395,7 +393,7 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
     button::Style {
         background: Some(Background::Color(color)),
         text_color: colors.text,
-        border: Border::default().rounded(6),
+        border: Border::default().rounded(radius::ROW),
         ..button::Style::default()
     }
 }
@@ -415,7 +413,7 @@ pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> butto
         } else {
             colors.muted
         },
-        border: Border::default().rounded(6),
+        border: Border::default().rounded(radius::ROW),
         ..button::Style::default()
     }
 }

@@ -18,13 +18,10 @@ use super::{
     expander_row::ExpanderRow,
     list_row::ListRow,
     popup::PopupMessage,
-    spacing,
+    radius, spacing,
     text::TextExt as _,
 };
 
-const RADIUS: f32 = 6.0;
-/// The outer corners of a boxed group.
-const BOXED_RADIUS: f32 = 8.0;
 /// The hairline between a boxed group's rows.
 const BOXED_GAP: f32 = 2.0;
 
@@ -158,18 +155,10 @@ fn boxed<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let count = entries.len() + usize::from(title.is_some());
     let corners = |index: usize| Radius {
-        top_left: if index == 0 { BOXED_RADIUS } else { 0.0 },
-        top_right: if index == 0 { BOXED_RADIUS } else { 0.0 },
-        bottom_left: if index + 1 == count {
-            BOXED_RADIUS
-        } else {
-            0.0
-        },
-        bottom_right: if index + 1 == count {
-            BOXED_RADIUS
-        } else {
-            0.0
-        },
+        top_left: if index == 0 { radius::BOX } else { 0.0 },
+        top_right: if index == 0 { radius::BOX } else { 0.0 },
+        bottom_left: if index + 1 == count { radius::BOX } else { 0.0 },
+        bottom_right: if index + 1 == count { radius::BOX } else { 0.0 },
     };
     let mut block = Column::new().spacing(BOXED_GAP).width(Length::Fill);
     let mut index = 0;
@@ -296,7 +285,7 @@ fn panel_style(theme: &Theme) -> container::Style {
     container::Style::default()
         .background(colors.raised)
         .color(colors.text)
-        .border(Border::default().rounded(RADIUS))
+        .border(Border::default().rounded(radius::ROW))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

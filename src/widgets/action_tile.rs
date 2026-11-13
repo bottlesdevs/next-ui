@@ -4,8 +4,8 @@ use iced::{
 };
 
 use super::focusable_action::{ActionState, FocusableAction};
+use super::radius;
 
-const BORDER_RADIUS: f32 = 6.0;
 const BORDER_WIDTH: f32 = 2.0;
 const DASH_PATTERN: &[f32] = &[6.0, 6.0];
 
@@ -97,7 +97,7 @@ fn style(theme: &Theme, state: ActionState) -> button::Style {
             None
         },
         text_color: colors.text,
-        border: Border::default().rounded(BORDER_RADIUS),
+        border: Border::default().rounded(radius::ROW),
         ..button::Style::default()
     }
 }
@@ -123,7 +123,7 @@ impl<Message> canvas::Program<Message> for Outline {
                 (bounds.width - inset * 2.0).max(0.0),
                 (bounds.height - inset * 2.0).max(0.0),
             ),
-            border::Radius::from(BORDER_RADIUS),
+            border::Radius::from(radius::ROW),
         );
 
         frame.stroke(
