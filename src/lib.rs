@@ -46,6 +46,7 @@ pub mod widget {
         row_group::RowGroup,
         search::{Search, SearchState},
         selector_row::SelectorRow,
+        size_group::{Shared, SizeGroup},
         spacing,
         status_bar::{LogPanel, StatusBar},
         status_page::StatusPage,

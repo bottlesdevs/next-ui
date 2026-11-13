@@ -11,10 +11,18 @@ use crate::icons::Icon;
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
-    radius, spacing,
+    radius,
+    size_group::{Key, Shared},
+    spacing,
     text::TextExt as _,
     text_size,
 };
+
+/// The width rows' trailing controls share within a [`SizeGroup`], so
+/// their bodies line up.
+///
+/// [`SizeGroup`]: super::size_group::SizeGroup
+pub(crate) const TRAILING: Key = "list-row-trailing";
 
 pub(crate) const STANDARD_PADDING: Padding = Padding {
     top: spacing::MD,
@@ -259,16 +267,24 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             Body::Labels(labels) => labels.into_element(self.menu.is_some()),
         };
 
-        let row = IcedRow::new()
-            .spacing(if self.menu.is_some() {
-                spacing::SM
-            } else {
-                spacing::MD
-            })
+        let gap = if self.menu.is_some() {
+            spacing::SM
+        } else {
+            spacing::MD
+        };
+        let mut row = IcedRow::new()
+            .spacing(gap)
             .align_y(Alignment::Center)
             .extend(self.leading)
-            .push(container(body).width(Fill))
-            .extend(trailing);
+            .push(container(body).width(Fill));
+        if !trailing.is_empty() {
+            row = row.push(Shared::new(
+                TRAILING,
+                IcedRow::with_children(trailing)
+                    .spacing(gap)
+                    .align_y(Alignment::Center),
+            ));
+        }
 
         container(row)
             .width(Fill)

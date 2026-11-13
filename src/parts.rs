@@ -8,7 +8,8 @@ use next_ui::{
     Icon, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
-        ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size,
+        ProgressBar, ProgressRing, Shared, SizeGroup, StatusPage, TextExt as _, radius, spacing,
+        text_size,
     },
 };
 
@@ -277,11 +278,12 @@ fn downloads<'a, Message: Clone + 'a>(
                 body = body.push(
                     container(ProgressBar::new(progress)).padding(iced::Padding::ZERO.top(6)),
                 );
-                card = card.push(body).push(
+                card = card.push(body).push(Shared::new(
+                    "download-percentage",
                     text(format!("{}%", (progress * 100.0).round()))
                         .size(text_size::HEADING)
                         .medium(),
-                );
+                ));
             } else {
                 card = card.push(body);
             }
@@ -302,7 +304,7 @@ fn downloads<'a, Message: Clone + 'a>(
         });
     Some(
         Popover::new(trigger)
-            .content(column(rows).spacing(8))
+            .content(SizeGroup::new(column(rows).spacing(8)))
             .width(420.0)
             .into(),
     )
