@@ -263,7 +263,7 @@ impl Model {
                 // (`Model::new_shortcuts`).
                 Ok(handle) => {
                     let group = Uuid::new_v4();
-                    let spec = ProgramSpec::new(wine_path(&executable));
+                    let spec = ProgramSpec::new(executable.display().to_string());
                     self.start(
                         Subject::Program { prefix, group },
                         Verb::Launch,
@@ -477,24 +477,19 @@ impl Model {
     }
 }
 
-/// The path Wine reaches host path `path` by, through the `Z:` drive that
-/// maps the host root.
-fn wine_path(path: &Path) -> String {
-    format!("Z:{}", path.display()).replace('/', "\\")
-}
-
 /// How Wine launches host file `executable`: from its own folder, with the
 /// Launch Options' words as arguments. `%command%` stands for the program,
-/// as in Steam's launch options, and isn't passed on.
+/// as in Steam's launch options, and isn't passed on. Wine takes host paths
+/// as they are.
 fn program_spec(executable: &Path, options: &str) -> ProgramSpec {
-    let spec = ProgramSpec::new(wine_path(executable)).with_args(
+    let spec = ProgramSpec::new(executable.display().to_string()).with_args(
         options
             .split_whitespace()
             .filter(|word| *word != "%command%")
             .map(str::to_owned),
     );
     match executable.parent() {
-        Some(folder) => spec.with_working_directory(wine_path(folder)),
+        Some(folder) => spec.with_working_directory(folder.display().to_string()),
         None => spec,
     }
 }
