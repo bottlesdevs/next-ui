@@ -7,7 +7,7 @@ use iced::{
     animation::{Animation, Easing},
     gradient,
     time::Instant,
-    widget::responsive,
+    widget::{column, container, responsive, scrollable},
     window,
 };
 
@@ -140,6 +140,84 @@ pub fn side_panel<'a, Message: 'a>(
     panel: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
 ) -> Element<'a, Message> {
     adaptive_split(Kind::SidePanel(side), open, base, panel)
+}
+
+/// What fills a page below its header.
+pub enum PageBody<'a, Message> {
+    /// Content that scrolls, padded in the page column.
+    Content(Element<'a, Message>),
+    /// A placeholder such as an empty state, which fills the pane unscrolled
+    /// so it can centre itself.
+    Placeholder(Element<'a, Message>),
+}
+
+/// A page: `header` over a panel holding `body`.
+pub fn page<'a, Message: 'a>(
+    header: impl Into<Element<'a, Message>>,
+    body: PageBody<'a, Message>,
+) -> Element<'a, Message> {
+    page_panel(header, body.view())
+}
+
+/// A page whose panel ends in `footer`, which stays put while the body
+/// scrolls above it.
+pub fn page_with_footer<'a, Message: 'a>(
+    header: impl Into<Element<'a, Message>>,
+    body: PageBody<'a, Message>,
+    footer: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    page_panel(
+        header,
+        column![body.view(), footer.into()]
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+}
+
+impl<'a, Message: 'a> PageBody<'a, Message> {
+    pub fn content(content: impl Into<Element<'a, Message>>) -> Self {
+        Self::Content(content.into())
+    }
+
+    pub fn placeholder(placeholder: impl Into<Element<'a, Message>>) -> Self {
+        Self::Placeholder(placeholder.into())
+    }
+
+    fn view(self) -> Element<'a, Message> {
+        match self {
+            Self::Content(content) => {
+                scrollable(container(content).padding(24).width(Length::Fill))
+                    .direction(scrollable::Direction::Vertical(
+                        scrollable::Scrollbar::new()
+                            .width(4)
+                            .scroller_width(4)
+                            .margin(6),
+                    ))
+                    .style(theme::scrollbar)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            }
+            Self::Placeholder(placeholder) => placeholder,
+        }
+    }
+}
+
+fn page_panel<'a, Message: 'a>(
+    header: impl Into<Element<'a, Message>>,
+    body: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    column![
+        header.into(),
+        container(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::panel)
+            .clip(true),
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 fn adaptive_split<'a, Message: 'a>(
