@@ -7,7 +7,7 @@ use iced::{
 use next_ui::{
     Icon, theme,
     widget::{
-        ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, Popover, PopoverItem,
+        ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
         ProgressBar, ProgressRing, StatusPage, TextExt as _, spacing,
     },
 };
@@ -256,18 +256,18 @@ pub fn app_menu<'a, Message: Clone + 'a>(
         Icon::EllipsisVertical,
     ))
     .item(
-        PopoverItem::new("Preferences")
-            .icon(Icon::Gear)
-            .on_select(preferences),
+        ListRow::labeled("Preferences")
+            .leading_icon(Icon::Gear)
+            .on_press(preferences),
     );
     if other.is_available() {
         menu = menu.item(
-            PopoverItem::new(match other {
+            ListRow::labeled(match other {
                 Experience::Next => "Switch to Next",
                 Experience::Classic => "Switch to Classic",
             })
-            .icon(Icon::Refresh)
-            .on_select(switch(other)),
+            .leading_icon(Icon::Refresh)
+            .on_press(switch(other)),
         );
     }
     menu.into()

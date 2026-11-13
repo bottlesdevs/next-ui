@@ -9,8 +9,8 @@ use next_ui::{
     Icon, chrome,
     layout::PaneContext,
     widget::{
-        ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, PopoverItem, RowGroup,
-        TextExt as _, TextRow, Title, spacing,
+        ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, RowGroup, TextExt as _, TextRow,
+        Title, spacing,
     },
 };
 use uuid::Uuid;
@@ -213,20 +213,20 @@ pub fn button(model: &Model) -> Element<'_, Message> {
     for profile in &profiles.profiles {
         let active = profile.id == profiles.selected;
         menu = menu.item(
-            PopoverItem::new(profile.name.as_str())
+            ListRow::labeled(profile.name.as_str())
                 .subtitle(accounts(profile))
                 .leading(Avatar::new(initial(&profile.name)).active(active))
                 .selected(active)
-                .on_select(Message::Select(profile.id)),
+                .on_press(Message::Select(profile.id)),
         );
     }
     // The icon takes the avatars' column, so the label lines up with the
     // profile names above it.
     menu.separator()
         .item(
-            PopoverItem::new("Manage Profiles")
+            ListRow::labeled("Manage Profiles")
                 .leading(iced::widget::container(Icon::People.view()).center(44))
-                .on_select(Message::Open),
+                .on_press(Message::Open),
         )
         .into()
 }

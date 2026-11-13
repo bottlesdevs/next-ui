@@ -15,8 +15,7 @@ use crate::icons::Icon;
 use super::{
     draw_caret,
     focusable_action::{ActionState, FocusableAction, Interaction},
-    list_row::{self, ListRow},
-    menu::{self, item as menu_item},
+    list_row::{self, ListRow, Menu},
     popup::{self, AnchorMessage, Popup, PopupMessage},
     spacing,
     switcher::Switcher,
@@ -147,13 +146,12 @@ where
                 .as_ref()
                 .map(|on_selected| PopupMessage::Close(on_selected(option.clone())));
 
-            let current = selected == Some(option);
-            let mut content =
-                row![text(label(option)).size(OPTION_SIZE).width(Fill)].align_y(Alignment::Center);
-            if current {
-                content = content.push(Icon::Checkmark.view().width(16).height(16));
-            }
-            menu_item(container(content).padding([6, 0]), message, current).into()
+            ListRow::new(text(label(option)).size(OPTION_SIZE))
+                .menu(Menu::Attached)
+                .padding([spacing::SM, spacing::MD])
+                .selected(selected == Some(option))
+                .on_press_maybe(message)
+                .into()
         });
         let mut list = Column::new().width(Fill);
         if let Some(title) = selector
@@ -166,7 +164,7 @@ where
         let mut above = !selector.options.is_empty();
         for (title, rows) in selector.sections {
             if above {
-                list = list.push(menu::separator());
+                list = list.push(popup::separator());
             }
             above = true;
             list = list
