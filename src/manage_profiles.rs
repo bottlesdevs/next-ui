@@ -1,5 +1,5 @@
 //! The profile button in the header, its switching menu, and the Manage
-//! Profiles side pane. Shared by both experiences.
+//! Profiles side pane, which the shell owns.
 
 use iced::{
     Alignment, Element, Fill,

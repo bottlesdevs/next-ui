@@ -4,15 +4,14 @@ use bottles_core::Slot;
 use iced::{Element, Fill, widget::text};
 use next_ui::{
     Icon, chrome,
-    layout::{self, PaneContext, Side},
+    layout::{self, PaneContext},
     widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing},
 };
 use uuid::Uuid;
 
 use crate::{
     add_program,
-    app::Request,
-    manage_profiles,
+    app::{Control, Request},
     model::{Action, Activity, Experience, Model, Program, Subject},
     parts,
 };
@@ -20,10 +19,6 @@ use crate::{
 pub struct State {
     query: String,
     selected: Option<Uuid>,
-    profiles: manage_profiles::State,
-    /// The Add Program form, kept while its pane slides closed.
-    adding: Option<Box<add_program::State>>,
-    adding_open: bool,
 }
 
 #[derive(Clone)]
@@ -33,10 +28,9 @@ pub enum Message {
     Back,
     Act(Action),
     Window(chrome::Action),
-    Profiles(manage_profiles::Message),
+    Control(Control),
     OpenPreferences,
     AddProgram,
-    Adding(add_program::Message),
 }
 
 impl State {
@@ -44,22 +38,12 @@ impl State {
         Self {
             query: String::new(),
             selected: None,
-            profiles: manage_profiles::State::default(),
-            adding: None,
-            adding_open: false,
-        }
-    }
-
-    /// Takes the file chosen in the Add Program pane's picker.
-    pub fn picked(&mut self, file: std::path::PathBuf) {
-        if let Some(adding) = &mut self.adding {
-            adding.picked(file);
         }
     }
 
     pub fn update(&mut self, model: &Model, message: Message) -> Option<Request> {
         match message {
-            Message::Profiles(message) => return self.profiles.update(model, message),
+            Message::Control(control) => return Some(Request::Control(control)),
             Message::Window(action) => return Some(Request::Window(action)),
             Message::OpenPreferences => return Some(Request::OpenPreferences),
             Message::Act(action) => return Some(Request::Act(action)),
@@ -67,54 +51,19 @@ impl State {
             Message::Select(id) => self.selected = Some(id),
             Message::Back => self.selected = None,
             Message::AddProgram => {
-                self.adding = Some(Box::new(add_program::State::new(
-                    add_program::Target::Standalone,
-                )));
-                self.adding_open = true;
-            }
-            Message::Adding(message) => {
-                let event = self.adding.as_mut()?.update(message)?;
-                return match event {
-                    add_program::Event::PickFile => Some(Request::PickProgram),
-                    add_program::Event::Window(action) => Some(Request::Window(action)),
-                    add_program::Event::Close => {
-                        self.adding_open = false;
-                        None
-                    }
-                    add_program::Event::Act(action) => {
-                        self.adding_open = false;
-                        Some(Request::Act(action))
-                    }
-                };
+                return Some(Request::AddProgram(add_program::Target::Standalone));
             }
         }
         None
     }
 
-    pub fn view<'a>(&'a self, model: &'a Model) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
         let selected = self.selected(model).is_some();
-        layout::side_panel(
-            Side::End,
-            self.profiles.is_open(),
-            move |_| {
-                layout::side_panel(
-                    Side::Start,
-                    self.adding_open,
-                    move |pane| {
-                        layout::navigation_split(
-                            pane,
-                            selected,
-                            move |pane| self.programs_view(model, pane, selected),
-                            move |pane| self.detail_view(model, pane),
-                        )
-                    },
-                    move |pane| match &self.adding {
-                        Some(adding) => adding.view(model, pane).map(Message::Adding),
-                        None => iced::widget::column![].into(),
-                    },
-                )
-            },
-            move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
+        layout::navigation_split(
+            pane,
+            selected,
+            move |pane| self.programs_view(model, pane, selected),
+            move |pane| self.detail_view(model, pane),
         )
     }
 
@@ -139,7 +88,7 @@ impl State {
             } else {
                 header
             };
-            let header = parts::app_controls(header, model, pane, Message::Profiles, Message::Act);
+            let header = parts::app_controls(header, model, pane, Message::Control);
             header.middle(
                 iced::widget::container(Search::new(
                     "Search library",
@@ -185,7 +134,7 @@ impl State {
                 parts::header_button("Stop program", Icon::Power, stop.clone())
                     .on_press_maybe(running.then_some(stop)),
             );
-            parts::app_controls(header, model, pane, Message::Profiles, Message::Act)
+            parts::app_controls(header, model, pane, Message::Control)
         });
         let editable = model
             .activity(&Subject::Prefix(program.prefix))

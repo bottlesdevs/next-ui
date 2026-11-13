@@ -3,11 +3,15 @@
 use std::fmt;
 
 use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
-use next_ui::{chrome, theme};
+use next_ui::{
+    chrome,
+    layout::{PaneContext, Side, side_panel},
+    theme,
+};
 use uuid::Uuid;
 
 use crate::{
-    classic,
+    add_program, classic, manage_profiles,
     model::{self, Action, Boot, Experience, Model},
     next,
     notifications::{self, Follow},
@@ -23,15 +27,26 @@ pub(crate) struct App {
 enum State {
     Loading,
     Failed(String),
-    Ready { model: Box<Model>, screen: Screen },
+    Ready(Box<Ready>),
+}
+
+/// The model, the shown screen, and the app-wide surfaces over it.
+struct Ready {
+    model: Model,
+    screen: Screen,
+    /// Preferences, shown instead of the screen while open.
+    preferences: Option<preferences::State>,
+    /// The Manage Profiles pane at the end side.
+    profiles: manage_profiles::State,
+    /// The Add Program pane at the start side, kept while it slides closed.
+    adding: Option<add_program::State>,
+    adding_open: bool,
 }
 
 enum Screen {
     Onboarding(onboarding::State),
     Classic(classic::State),
     Next(next::State),
-    /// Preferences, and the screen to return to.
-    Preferences(preferences::State, Box<Screen>),
 }
 
 impl Screen {
@@ -49,8 +64,18 @@ pub(crate) enum Request {
     Window(chrome::Action),
     OpenPreferences,
     ClosePreferences,
-    /// Opens the file picker for the Add Program pane.
-    PickProgram,
+    /// Opens the Add Program pane for programs going to `target`.
+    AddProgram(add_program::Target),
+    /// Passes on what an app-wide header control sent.
+    Control(Control),
+}
+
+/// What the app-wide header controls send. Screens place the controls, as
+/// only they build their headers, and pass this on unread.
+#[derive(Debug, Clone)]
+pub(crate) enum Control {
+    Profiles(manage_profiles::Message),
+    CancelDownload(Uuid),
 }
 
 #[derive(Clone)]
@@ -72,6 +97,8 @@ pub(crate) enum Message {
     Classic(classic::Message),
     Next(next::Message),
     Preferences(preferences::Message),
+    Profiles(manage_profiles::Message),
+    Adding(add_program::Message),
 }
 
 impl fmt::Debug for Message {
@@ -92,6 +119,8 @@ impl fmt::Debug for Message {
             Self::Classic(_) => "Classic",
             Self::Next(_) => "Next",
             Self::Preferences(_) => "Preferences",
+            Self::Profiles(_) => "Profiles",
+            Self::Adding(_) => "Adding",
         })
     }
 }
@@ -117,7 +146,7 @@ impl App {
 
     pub(crate) fn subscription(&self) -> Subscription<Message> {
         let model = match &self.state {
-            State::Ready { model, .. } => model.subscription().map(Message::Model),
+            State::Ready(ready) => ready.model.subscription().map(Message::Model),
             State::Loading | State::Failed(_) => Subscription::none(),
         };
         Subscription::batch([
@@ -138,7 +167,7 @@ impl App {
                 match &self.state {
                     State::Loading => {}
                     State::Failed(_) => return iced::exit(),
-                    State::Ready { model, .. } => return shutdown(model),
+                    State::Ready(ready) => return shutdown(&ready.model),
                 }
             }
             Message::Window(action) => {
@@ -165,10 +194,14 @@ impl App {
                     } else {
                         Task::none()
                     };
-                    self.state = State::Ready {
-                        model: Box::new(model),
+                    self.state = State::Ready(Box::new(Ready {
+                        model,
                         screen,
-                    };
+                        preferences: None,
+                        profiles: manage_profiles::State::default(),
+                        adding: None,
+                        adding_open: false,
+                    }));
                     return Task::batch([watch.map(Message::Model), close]);
                 }
                 Err(error) => {
@@ -185,129 +218,10 @@ impl App {
                 return iced::exit();
             }
             message => {
-                let State::Ready { model, screen } = &mut self.state else {
+                let State::Ready(ready) = &mut self.state else {
                     return Task::none();
                 };
-                let request = match message {
-                    Message::Model(message) => {
-                        return model.update(message).map(Message::Model);
-                    }
-                    Message::DismissNotification(id) => {
-                        model.notifications.dismiss(id);
-                        None
-                    }
-                    Message::CopyNotification(id) => {
-                        return match model.notifications.get(id) {
-                            Some(notification) => iced::clipboard::write(format!(
-                                "{}\n\n{}",
-                                notification.title, notification.message
-                            )),
-                            None => Task::none(),
-                        };
-                    }
-                    Message::ProgramPicked(Some(file)) => {
-                        let windows = file.extension().is_some_and(|extension| {
-                            ["exe", "msi", "bat"]
-                                .iter()
-                                .any(|known| extension.eq_ignore_ascii_case(known))
-                        });
-                        if !windows {
-                            let name = file.file_name().map_or_else(
-                                || file.display().to_string(),
-                                |name| name.to_string_lossy().into_owned(),
-                            );
-                            model.notifications.error(format!(
-                                "{name} isn’t a Windows program. Pick the program’s .exe \
-                                 file, and extract the archive first if it came in one."
-                            ));
-                        } else {
-                            match screen {
-                                Screen::Classic(state) => state.picked(file),
-                                Screen::Next(state) => state.picked(file),
-                                _ => {}
-                            }
-                        }
-                        None
-                    }
-                    Message::ProgramPicked(None) => None,
-                    Message::ExpandNotifications => {
-                        model.notifications.toggle_expanded();
-                        None
-                    }
-                    Message::DismissAllNotifications => {
-                        model.notifications.dismiss_all();
-                        None
-                    }
-                    _ if self.closing => None,
-                    Message::FollowNotification(id) => {
-                        let follow = model
-                            .notifications
-                            .get(id)
-                            .and_then(|notification| notification.action.clone());
-                        model.notifications.dismiss(id);
-                        match follow.map(|(_, follow)| follow) {
-                            Some(Follow::Act(action)) => Some(Request::Act(action)),
-                            Some(Follow::Plugins) => {
-                                open_preferences(screen, preferences::Page::Plugins);
-                                None
-                            }
-                            None => None,
-                        }
-                    }
-                    Message::Onboarding(message) => match screen {
-                        Screen::Onboarding(state) => state.update(message),
-                        _ => None,
-                    },
-                    Message::Classic(message) => match screen {
-                        Screen::Classic(state) => state.update(model, message),
-                        _ => None,
-                    },
-                    Message::Next(message) => match screen {
-                        Screen::Next(state) => state.update(model, message),
-                        _ => None,
-                    },
-                    Message::Preferences(message) => match screen {
-                        Screen::Preferences(state, _) => state.update(message),
-                        _ => None,
-                    },
-                    Message::Booted(_)
-                    | Message::ThemeChanged(_)
-                    | Message::Window(_)
-                    | Message::ShutdownFinished(_) => unreachable!(),
-                };
-                match request {
-                    Some(Request::Window(action)) => return Task::done(Message::Window(action)),
-                    Some(Request::Act(action)) => {
-                        if let Action::SwitchExperience(experience) = action {
-                            match screen {
-                                Screen::Preferences(_, back) => **back = Screen::new(experience),
-                                screen => *screen = Screen::new(experience),
-                            }
-                        }
-                        return model.perform(action).map(Message::Model);
-                    }
-                    Some(Request::PickProgram) => {
-                        return Task::perform(
-                            rfd::AsyncFileDialog::new()
-                                .set_title("Add a Program")
-                                .add_filter("Windows programs", &["exe", "msi", "bat"])
-                                .add_filter("All files", &["*"])
-                                .pick_file(),
-                            |file| Message::ProgramPicked(file.map(|file| file.path().to_owned())),
-                        );
-                    }
-                    Some(Request::OpenPreferences) => {
-                        open_preferences(screen, preferences::Page::default());
-                    }
-                    Some(Request::ClosePreferences) => {
-                        if let Screen::Preferences(_, back) =
-                            std::mem::replace(screen, Screen::Classic(classic::State::new()))
-                        {
-                            *screen = *back;
-                        }
-                    }
-                    None => {}
-                }
+                return ready.update(message, self.closing);
             }
         }
         Task::none()
@@ -321,18 +235,10 @@ impl App {
             match &self.state {
                 State::Loading => status("Bottles Next", "Loading…"),
                 State::Failed(error) => status("Could not start Bottles", error),
-                State::Ready { model, screen } => {
-                    let content = match screen {
-                        Screen::Onboarding(state) => state.view(model).map(Message::Onboarding),
-                        Screen::Classic(state) => state.view(model).map(Message::Classic),
-                        Screen::Next(state) => state.view(model).map(Message::Next),
-                        Screen::Preferences(state, _) => {
-                            state.view(model).map(Message::Preferences)
-                        }
-                    };
-                    let mut layers = stack![content].width(Fill).height(Fill);
-                    if !model.notifications.is_empty() {
-                        layers = layers.push(notifications::layer(&model.notifications));
+                State::Ready(ready) => {
+                    let mut layers = stack![ready.view()].width(Fill).height(Fill);
+                    if !ready.model.notifications.is_empty() {
+                        layers = layers.push(notifications::layer(&ready.model.notifications));
                     }
                     layers.into()
                 }
@@ -342,14 +248,189 @@ impl App {
     }
 }
 
-/// Shows Preferences at `page`, over the current screen unless it's already
-/// open.
-fn open_preferences(screen: &mut Screen, page: preferences::Page) {
-    match screen {
-        Screen::Preferences(state, _) => *state = preferences::State::at(page),
-        screen => {
-            let back = std::mem::replace(screen, Screen::Classic(classic::State::new()));
-            *screen = Screen::Preferences(preferences::State::at(page), Box::new(back));
+impl Ready {
+    fn update(&mut self, message: Message, closing: bool) -> Task<Message> {
+        let model = &mut self.model;
+        let request = match message {
+            Message::Model(message) => return model.update(message).map(Message::Model),
+            Message::DismissNotification(id) => {
+                model.notifications.dismiss(id);
+                None
+            }
+            Message::CopyNotification(id) => {
+                return match model.notifications.get(id) {
+                    Some(notification) => iced::clipboard::write(format!(
+                        "{}\n\n{}",
+                        notification.title, notification.message
+                    )),
+                    None => Task::none(),
+                };
+            }
+            Message::ProgramPicked(Some(file)) => {
+                let windows = file.extension().is_some_and(|extension| {
+                    ["exe", "msi", "bat"]
+                        .iter()
+                        .any(|known| extension.eq_ignore_ascii_case(known))
+                });
+                if !windows {
+                    let name = file.file_name().map_or_else(
+                        || file.display().to_string(),
+                        |name| name.to_string_lossy().into_owned(),
+                    );
+                    model.notifications.error(format!(
+                        "{name} isn’t a Windows program. Pick the program’s .exe \
+                         file, and extract the archive first if it came in one."
+                    ));
+                } else if let Some(adding) = &mut self.adding {
+                    adding.picked(file);
+                }
+                None
+            }
+            Message::ProgramPicked(None) => None,
+            Message::ExpandNotifications => {
+                model.notifications.toggle_expanded();
+                None
+            }
+            Message::DismissAllNotifications => {
+                model.notifications.dismiss_all();
+                None
+            }
+            _ if closing => None,
+            Message::FollowNotification(id) => {
+                let follow = model
+                    .notifications
+                    .get(id)
+                    .and_then(|notification| notification.action.clone());
+                model.notifications.dismiss(id);
+                match follow.map(|(_, follow)| follow) {
+                    Some(Follow::Act(action)) => Some(Request::Act(action)),
+                    Some(Follow::Plugins) => {
+                        self.preferences = Some(preferences::State::at(preferences::Page::Plugins));
+                        None
+                    }
+                    None => None,
+                }
+            }
+            Message::Onboarding(message) => match &mut self.screen {
+                Screen::Onboarding(state) => state.update(message),
+                _ => None,
+            },
+            Message::Classic(message) => match &mut self.screen {
+                Screen::Classic(state) => state.update(model, message),
+                _ => None,
+            },
+            Message::Next(message) => match &mut self.screen {
+                Screen::Next(state) => state.update(model, message),
+                _ => None,
+            },
+            Message::Preferences(message) => self
+                .preferences
+                .as_mut()
+                .and_then(|preferences| preferences.update(message)),
+            Message::Profiles(message) => self.profiles.update(model, message),
+            Message::Adding(message) => match self
+                .adding
+                .as_mut()
+                .and_then(|adding| adding.update(message))
+            {
+                None => None,
+                Some(add_program::Event::PickFile) => {
+                    return Task::perform(
+                        rfd::AsyncFileDialog::new()
+                            .set_title("Add a Program")
+                            .add_filter("Windows programs", &["exe", "msi", "bat"])
+                            .add_filter("All files", &["*"])
+                            .pick_file(),
+                        |file| Message::ProgramPicked(file.map(|file| file.path().to_owned())),
+                    );
+                }
+                Some(add_program::Event::Window(action)) => Some(Request::Window(action)),
+                Some(add_program::Event::Close) => {
+                    self.adding_open = false;
+                    None
+                }
+                Some(add_program::Event::Act(action)) => {
+                    self.adding_open = false;
+                    Some(Request::Act(action))
+                }
+            },
+            Message::Booted(_)
+            | Message::ThemeChanged(_)
+            | Message::Window(_)
+            | Message::ShutdownFinished(_) => unreachable!(),
+        };
+        match request {
+            Some(request) => self.request(request),
+            None => Task::none(),
+        }
+    }
+
+    fn request(&mut self, request: Request) -> Task<Message> {
+        match request {
+            Request::Window(action) => return Task::done(Message::Window(action)),
+            Request::Act(action) => {
+                if let Action::SwitchExperience(experience) = action {
+                    // The panes belong to the screen they were opened from.
+                    self.screen = Screen::new(experience);
+                    self.profiles = manage_profiles::State::default();
+                    self.adding = None;
+                    self.adding_open = false;
+                }
+                return self.model.perform(action).map(Message::Model);
+            }
+            Request::OpenPreferences => {
+                self.preferences = Some(preferences::State::default());
+            }
+            Request::ClosePreferences => self.preferences = None,
+            Request::AddProgram(target) => {
+                self.adding = Some(add_program::State::new(target));
+                self.adding_open = true;
+            }
+            Request::Control(Control::Profiles(message)) => {
+                if let Some(request) = self.profiles.update(&self.model, message) {
+                    return self.request(request);
+                }
+            }
+            Request::Control(Control::CancelDownload(id)) => {
+                return self.request(Request::Act(Action::CancelDownload(id)));
+            }
+        }
+        Task::none()
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        let model = &self.model;
+        if let Some(preferences) = &self.preferences {
+            return preferences.view(model).map(Message::Preferences);
+        }
+        // Nothing during onboarding opens a pane.
+        if let Screen::Onboarding(state) = &self.screen {
+            return state.view(model).map(Message::Onboarding);
+        }
+        side_panel(
+            Side::End,
+            self.profiles.is_open(),
+            move |_| {
+                side_panel(
+                    Side::Start,
+                    self.adding_open,
+                    move |pane| self.screen(pane),
+                    move |pane| match &self.adding {
+                        Some(adding) => adding.view(model, pane).map(Message::Adding),
+                        None => iced::widget::column![].into(),
+                    },
+                )
+            },
+            move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
+        )
+    }
+
+    fn screen(&self, pane: PaneContext) -> Element<'_, Message> {
+        let model = &self.model;
+        match &self.screen {
+            Screen::Onboarding(state) => state.view(model).map(Message::Onboarding),
+            Screen::Classic(state) => state.view(model, pane).map(Message::Classic),
+            Screen::Next(state) => state.view(model, pane).map(Message::Next),
         }
     }
 }
