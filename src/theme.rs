@@ -255,30 +255,70 @@ pub fn application(theme: &IcedTheme) -> ApplicationStyle {
     }
 }
 
-/// Styles a standard application panel.
-pub fn panel(theme: &IcedTheme) -> container::Style {
-    let colors = colors(theme);
-    surface(pair(colors.page, colors.text))
+/// The filled, rounded roles a container takes. The design is flat: a fill
+/// further up the ramp, never a shadow or an outline, sets a surface apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Surface {
+    /// A page or panel.
+    Page,
+    /// A row or card on a page.
+    Card,
+    /// A block on a card, e.g. a tag or a field.
+    Raised,
+    /// A raised box that holds content of its own, e.g. a card in a popover.
+    Boxed,
+    /// A panel floating over the page, e.g. a menu: a step above the rows it
+    /// covers.
+    Overlay,
+    /// A banner, filled by what it reports.
+    Banner(Tone),
 }
 
-pub(crate) fn card(theme: &IcedTheme) -> container::Style {
-    let colors = colors(theme);
-    surface(pair(colors.card, colors.text))
+/// What a banner reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tone {
+    Hint,
+    Info,
+    Error,
+    Warning,
+    Success,
 }
 
-/// A panel floating over the page, e.g. a menu. The design is flat, so a
-/// fill a step lighter than the rows it covers, not a shadow or an outline,
-/// sets it apart.
-pub(crate) fn overlay(theme: &IcedTheme) -> container::Style {
-    let colors = colors(theme);
-    surface(pair(colors.selected, colors.text))
+impl Surface {
+    /// The fill and the text color on it.
+    pub fn colors(self, theme: &IcedTheme) -> Pair {
+        let colors = colors(theme);
+        let on = |color| pair(color, colors.text);
+
+        match self {
+            Self::Page => on(colors.page),
+            Self::Card => on(colors.card),
+            Self::Raised | Self::Boxed => on(colors.raised),
+            Self::Overlay => on(colors.selected),
+            Self::Banner(Tone::Hint) => on(colors.chrome),
+            Self::Banner(Tone::Info) => pair(colors.info, WHITE),
+            Self::Banner(Tone::Error) => pair(colors.danger, WHITE),
+            Self::Banner(Tone::Warning) => pair(colors.warning, WHITE),
+            Self::Banner(Tone::Success) => pair(colors.success, WHITE),
+        }
+    }
+
+    pub fn style(self, theme: &IcedTheme) -> container::Style {
+        let colors = self.colors(theme);
+
+        container::Style::default()
+            .color(colors.text)
+            .background(colors.color)
+            .border(Border::default().rounded(match self {
+                Self::Boxed => radius::BOX,
+                _ => radius::ROW,
+            }))
+    }
 }
 
-pub(crate) fn surface(colors: Pair) -> container::Style {
-    container::Style::default()
-        .color(colors.text)
-        .background(colors.color)
-        .border(Border::default().rounded(radius::ROW))
+/// Styles a container as `role`, for `container(..).style(surface(..))`.
+pub fn surface(role: Surface) -> impl Fn(&IcedTheme) -> container::Style {
+    move |theme| role.style(theme)
 }
 
 /// Styles a scrollbar using semantic muted colors.

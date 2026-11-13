@@ -1,5 +1,7 @@
 use iced::{Element, Length, Padding, widget::container};
 
+use crate::theme::{self, Surface};
+
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
     width: Length,
@@ -40,7 +42,7 @@ impl<'a, Message: 'a> From<Card<'a, Message>> for Element<'a, Message> {
             .width(card.width)
             .height(card.height)
             .clip(true)
-            .style(crate::theme::card)
+            .style(theme::surface(Surface::Card))
             .into()
     }
 }

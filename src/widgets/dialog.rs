@@ -9,7 +9,7 @@ use iced::{
     window,
 };
 
-use crate::theme;
+use crate::theme::{self, Surface};
 
 use super::{
     button::{Button, ButtonKind},
@@ -35,7 +35,7 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
             content: container(content)
                 .max_width(DIALOG_MAX_WIDTH)
                 .padding(24)
-                .style(theme::panel)
+                .style(theme::surface(Surface::Page))
                 .into(),
             on_dismiss,
         }
@@ -75,7 +75,7 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
             content: container(content)
                 .max_width(460)
                 .padding(24)
-                .style(theme::panel)
+                .style(theme::surface(Surface::Page))
                 .into(),
             on_dismiss: on_cancel,
         }

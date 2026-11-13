@@ -11,6 +11,7 @@ use super::{
     popup::{self, AnchorMessage, Popup, PopupMessage},
     spacing, text_size,
 };
+use crate::theme::{self, Surface};
 
 const WIDTH: f32 = 240.0;
 
@@ -133,7 +134,9 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
             .width(Length::Fixed(popover.width))
             .padding(spacing::MD);
 
-        let panel: Element<'a, Message> = container(content).style(crate::theme::overlay).into();
+        let panel: Element<'a, Message> = container(content)
+            .style(theme::surface(Surface::Overlay))
+            .into();
 
         Popup::new(
             popover.trigger.map(|()| AnchorMessage::Toggle),

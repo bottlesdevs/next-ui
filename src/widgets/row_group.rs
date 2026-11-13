@@ -260,7 +260,7 @@ fn disclosure<'a, Message: Clone + 'a>(
     )
     .width(Length::Fill)
     .padding(spacing::MD)
-    .style(panel_style)
+    .style(crate::theme::surface(crate::theme::Surface::Raised))
     .into();
 
     Disclosure::new(
@@ -278,15 +278,6 @@ pub(crate) fn standalone_expander<'a, Message: Clone + 'a>(
     }
     let columns = expander.columns;
     disclosure(expander, columns).into()
-}
-
-fn panel_style(theme: &Theme) -> container::Style {
-    let colors = crate::theme::colors(theme);
-
-    container::Style::default()
-        .background(colors.raised)
-        .color(colors.text)
-        .border(Border::default().rounded(radius::ROW))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

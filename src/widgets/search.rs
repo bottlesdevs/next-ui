@@ -4,7 +4,10 @@ use iced::{
     widget::{button, column, container, row, scrollable, text},
 };
 
-use crate::icons::Icon;
+use crate::{
+    icons::Icon,
+    theme::{self, Surface},
+};
 
 use super::{
     focusable_action::FocusableAction,
@@ -89,7 +92,7 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         )
         .width(Fill)
         .padding([spacing::SM, spacing::MD])
-        .style(search_style);
+        .style(theme::surface(Surface::Raised));
         let input: Element<'a, Message> = input.into();
         let (panel, visible, focusable) = panel(search.state, search.footer);
 
@@ -135,7 +138,9 @@ fn panel<'a, Message: Clone + 'a>(
     }
 
     (
-        container(content).style(crate::theme::overlay).into(),
+        container(content)
+            .style(theme::surface(Surface::Overlay))
+            .into(),
         visible,
         focusable,
     )
@@ -173,12 +178,4 @@ fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Messa
     .width(Fill)
     .padding(spacing::MD)
     .into()
-}
-
-fn search_style(theme: &Theme) -> container::Style {
-    let colors = crate::theme::colors(theme);
-    crate::theme::surface(iced::theme::palette::Pair {
-        color: colors.raised,
-        text: colors.text,
-    })
 }

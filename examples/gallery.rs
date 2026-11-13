@@ -619,7 +619,7 @@ fn section<'a>(label: &'a str, content: impl Into<Element<'a, Message>>) -> Elem
     container(column![text(label).title(), content.into()].spacing(12))
         .width(Fill)
         .padding(24)
-        .style(theme::panel)
+        .style(theme::surface(theme::Surface::Page))
         .into()
 }
 
