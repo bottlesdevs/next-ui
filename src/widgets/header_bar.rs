@@ -68,19 +68,23 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             on_drag,
         } = header;
 
+        // The sides share what the middle leaves equally, so the middle sits
+        // at the centre of the bar whatever either side holds.
         let content = row![
             container(section(start))
-                .align_left(Length::Shrink)
+                .align_left(Fill)
                 .height(Fill)
-                .align_y(Center),
+                .align_y(Center)
+                .clip(true),
             container(section(middle))
-                .center_x(Fill)
+                .width(Length::Shrink)
                 .height(Fill)
                 .align_y(Center),
             container(section(end))
-                .align_right(Length::Shrink)
+                .align_right(Fill)
                 .height(Fill)
-                .align_y(Center),
+                .align_y(Center)
+                .clip(true),
         ]
         .height(Fill)
         .align_y(Center);
