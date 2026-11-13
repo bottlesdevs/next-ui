@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::{
     Action, Model, label,
-    operations::{Subject, Verb},
+    operations::{Subject, Then, Verb},
 };
 
 /// How many of the newest releases not yet downloaded a picker offers.
@@ -90,7 +90,7 @@ impl Model {
                             .as_ref()
                             .and_then(bottles_core::Progress::fraction),
                         then_select: match pending.then {
-                            Some(Action::UseRelease { prefix, .. }) => Some(prefix),
+                            Some(Then::Act(Action::UseRelease { prefix, .. })) => Some(prefix),
                             _ => None,
                         },
                     }),

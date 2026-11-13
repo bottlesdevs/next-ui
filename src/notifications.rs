@@ -10,7 +10,7 @@ use next_ui::widget::{InfoCardKind, Notification as NotificationCard};
 
 use crate::{
     app::Message,
-    model::{Action, Model, Outcome, Refusal, Report, Subject, Verb},
+    model::{Action, Model, Outcome, Refusal, Report, Subject, Then, Verb},
 };
 
 /// How many notifications show before older ones fold away.
@@ -87,7 +87,7 @@ impl Notifications {
                     // Cancelling isn't news: the row the download was in
                     // shows it gone.
                     (Ok(Outcome::Cancelled), _) => {}
-                    (Ok(_), Some(Action::UseRelease { .. })) => {
+                    (Ok(_), Some(Then::Act(Action::UseRelease { .. }))) => {
                         self.success(format!("{name} downloaded"), "It’s selected in the bottle.");
                     }
                     // Essentials show their progress where they were
@@ -95,7 +95,7 @@ impl Notifications {
                     (Ok(_), _) => {}
                     (Err(error), then) => {
                         let retry = match then {
-                            Some(Action::UseRelease { prefix, release }) => {
+                            Some(Then::Act(Action::UseRelease { prefix, release })) => {
                                 Action::FetchRelease { prefix, release }
                             }
                             _ => Action::Download(release),

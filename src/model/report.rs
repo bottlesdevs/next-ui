@@ -1,10 +1,7 @@
 //! What happened in the model that the user may need to hear about, as data
 //! for the shell to word.
 
-use super::{
-    Action,
-    operations::{Outcome, Subject, Verb},
-};
+use super::operations::{Outcome, Subject, Then, Verb};
 
 #[derive(Debug)]
 pub(crate) enum Report {
@@ -15,7 +12,7 @@ pub(crate) enum Report {
     Finished {
         subject: Subject,
         verb: Verb,
-        then: Option<Action>,
+        then: Option<Then>,
         result: Result<Outcome, String>,
     },
     /// An action wasn't started.

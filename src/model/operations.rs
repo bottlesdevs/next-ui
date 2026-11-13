@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, future::Future, pin::pin};
 
-use bottles_core::{Operation, Progress, error};
+use bottles_core::{Operation, ProgramSpec, Progress, error};
 use iced::{
     Task,
     futures::{Stream, StreamExt as _, future, stream},
@@ -31,6 +31,21 @@ pub(crate) enum Subject {
     Creation(Uuid),
 }
 
+/// What follows an operation that succeeds.
+#[derive(Clone, Debug)]
+pub(crate) enum Then {
+    Act(Action),
+    /// Records the created prefix as a bottle named `name`.
+    RecordBottle {
+        name: String,
+    },
+    /// Records the created prefix as a standalone program named `name`.
+    RecordProgram {
+        name: String,
+        spec: ProgramSpec,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Verb {
     Refresh,
@@ -49,7 +64,7 @@ pub(crate) struct Pending {
     pub(crate) progress: Option<Progress>,
     /// What to do once the operation succeeds, e.g. select the release it
     /// downloaded. Dropped when it fails or is cancelled.
-    pub(crate) then: Option<Action>,
+    pub(crate) then: Option<Then>,
     cancel: CancellationToken,
 }
 
@@ -72,7 +87,7 @@ pub(crate) enum Event {
 /// An operation that finished, with the continuation it carried.
 pub(crate) struct Finished {
     pub(crate) verb: Verb,
-    pub(crate) then: Option<Action>,
+    pub(crate) then: Option<Then>,
     pub(crate) result: Result<Outcome, String>,
 }
 
@@ -106,7 +121,7 @@ impl Operations {
         &mut self,
         subject: Subject,
         verb: Verb,
-        then: Option<Action>,
+        then: Option<Then>,
         operation: Operation<T>,
         outcome: impl FnOnce(T) -> Outcome + Send + 'static,
     ) -> Task<(Subject, Event)> {
@@ -156,7 +171,7 @@ impl Operations {
         &mut self,
         subject: Subject,
         verb: Verb,
-        then: Option<Action>,
+        then: Option<Then>,
         cancel: CancellationToken,
         progress: impl Stream<Item = Progress> + Send + 'static,
         drive: impl Future<Output = Result<Outcome, String>> + Send + 'static,
