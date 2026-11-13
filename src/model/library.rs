@@ -81,8 +81,20 @@ impl Program<'_> {
 /// One title of the library and where it comes from.
 pub(crate) struct Entry<'a> {
     pub(crate) title: &'a str,
-    pub(crate) source: &'a str,
+    pub(crate) source: Source<'a>,
     pub(crate) target: Target,
+}
+
+/// Where a library entry comes from. Entries with one title are listed in
+/// this order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Source<'a> {
+    /// A program in the bottle of this name.
+    Bottle(&'a str),
+    /// A standalone program.
+    Standalone,
+    /// An entry listed by the plugin with this identifier.
+    Plugin(&'a str),
 }
 
 /// What is happening to a subject.
@@ -145,13 +157,13 @@ impl Model {
         })
     }
 
-    /// Every program and loaded library entry, ordered by title and source.
+    /// Every program and loaded library entry, ordered by title, then source.
     pub(crate) fn entries(&self) -> Vec<Entry<'_>> {
         let mut entries = Vec::new();
         for bottle in self.bottles() {
             entries.extend(bottle.programs().map(|program| Entry {
                 title: program.name,
-                source: bottle.name,
+                source: Source::Bottle(bottle.name),
                 target: program.target(),
             }));
         }
@@ -161,7 +173,7 @@ impl Model {
                 .filter_map(|id| self.program(*id))
                 .map(|program| Entry {
                     title: program.name,
-                    source: "Program",
+                    source: Source::Standalone,
                     target: program.target(),
                 }),
         );
@@ -169,7 +181,7 @@ impl Model {
             if let Listing::Loaded(listed) = listing {
                 entries.extend(listed.iter().map(|entry| Entry {
                     title: &entry.title,
-                    source: plugin,
+                    source: Source::Plugin(plugin),
                     target: Target::Entry {
                         plugin: plugin.clone(),
                         id: entry.id.clone(),
