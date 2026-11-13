@@ -2,7 +2,7 @@ use iced::{
     Color, Element, Event, Length, Padding, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree, operation, tree},
+        widget::{Operation, Tree, operation, tree},
     },
     keyboard::{self, key},
     touch,
@@ -154,7 +154,6 @@ type StyleFn<'a> = dyn Fn(&Theme, ActionState) -> button::Style + 'a;
 
 pub(crate) struct FocusableAction<'a, Message> {
     content: Element<'a, Message>,
-    id: Option<Id>,
     on_press: Option<Message>,
     selected: bool,
     width: Length,
@@ -167,7 +166,6 @@ impl<'a, Message> FocusableAction<'a, Message> {
     pub(crate) fn new(content: impl Into<Element<'a, Message>>) -> Self {
         Self {
             content: content.into(),
-            id: None,
             on_press: None,
             selected: false,
             width: Length::Shrink,
@@ -178,11 +176,6 @@ impl<'a, Message> FocusableAction<'a, Message> {
                 ..button::Style::default()
             }),
         }
-    }
-
-    pub(crate) fn id(mut self, id: Id) -> Self {
-        self.id = Some(id);
-        self
     }
 
     pub(crate) fn on_press_maybe(mut self, message: Option<Message>) -> Self {
@@ -265,13 +258,13 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
     ) {
         if self.on_press.is_some() {
             operation.focusable(
-                self.id.as_ref(),
+                None,
                 layout.bounds(),
                 tree.state.downcast_mut::<Interaction>(),
             );
         }
 
-        operation.container(self.id.as_ref(), layout.bounds());
+        operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
             self.content.as_widget_mut().operate(
                 &mut tree.children[0],

@@ -1,6 +1,5 @@
 use iced::{
     Element, Fill, Length, Theme,
-    advanced::widget::Id,
     widget::{
         Space, column, container, row, scrollable, svg, text, text::Fragment, text::IntoFragment,
         tooltip,
@@ -32,7 +31,7 @@ pub struct Popover<'a, Message> {
 
 enum Body<'a, Message> {
     Items(Vec<Entry<'a, Message>>),
-    Content(Element<'a, Message>, Vec<Id>),
+    Content(Element<'a, Message>),
 }
 
 impl<'a, Message: Clone + 'a> Popover<'a, Message> {
@@ -65,14 +64,14 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
     fn entry(mut self, entry: Entry<'a, Message>) -> Self {
         match &mut self.body {
             Body::Items(entries) => entries.push(entry),
-            Body::Content(..) => self.body = Body::Items(vec![entry]),
+            Body::Content(_) => self.body = Body::Items(vec![entry]),
         }
         self
     }
 
     /// Shows `content` in the panel instead of a menu.
     pub fn content(mut self, content: impl Into<Element<'a, Message>>) -> Self {
-        self.body = Body::Content(content.into(), Vec::new());
+        self.body = Body::Content(content.into());
         self
     }
 
@@ -92,8 +91,6 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         on_confirm: Message,
         on_cancel: Message,
     ) -> Self {
-        let cancel_id = Id::unique();
-        let confirm_id = Id::unique();
         let content = column![
             text(title).size(17).medium(),
             text(body).size(14).muted(),
@@ -101,11 +98,9 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
                 Space::new().width(Fill),
                 Button::new("Cancel")
                     .kind(ButtonKind::Secondary)
-                    .id(cancel_id.clone())
                     .on_press(on_cancel),
                 Button::new(confirm)
                     .kind(ButtonKind::Destructive)
-                    .id(confirm_id.clone())
                     .on_press(on_confirm),
             ]
             .spacing(spacing::XS),
@@ -114,7 +109,7 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
 
         Self {
             trigger: trigger.on_press(()).into(),
-            body: Body::Content(content.into(), vec![cancel_id, confirm_id]),
+            body: Body::Content(content.into()),
             width: 320.0,
         }
     }
@@ -122,19 +117,15 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
     fn from(popover: Popover<'a, Message>) -> Self {
-        let mut focus_targets = Vec::new();
         let body: Element<'a, Message> = match popover.body {
             Body::Items(items) => {
                 let rows = items.into_iter().map(|entry| match entry {
-                    Entry::Item(item) => item_row(item, &mut focus_targets),
+                    Entry::Item(item) => item_row(item),
                     Entry::Separator => menu::separator(),
                 });
                 scrollable(container(column(rows).width(Fill)).width(Fill)).into()
             }
-            Body::Content(content, targets) => {
-                focus_targets = targets;
-                content
-            }
+            Body::Content(content) => content,
         };
         let content = container(body)
             .width(Length::Fixed(popover.width))
@@ -146,7 +137,6 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
             popover.trigger.map(|()| AnchorMessage::Toggle),
             panel.map(PopupMessage::Close),
         )
-        .focus_targets(focus_targets)
         .viewport_inset(spacing::SM)
         .into()
     }
@@ -236,12 +226,7 @@ impl<'a, Message> PopoverItem<'a, Message> {
     }
 }
 
-fn item_row<'a, Message: Clone + 'a>(
-    item: PopoverItem<'a, Message>,
-    focus_targets: &mut Vec<Id>,
-) -> Element<'a, Message> {
-    let primary = matches!(item.action.as_ref(), Some(ItemAction::Row(_))).then(Id::unique);
-    focus_targets.extend(primary.iter().cloned());
+fn item_row<'a, Message: Clone + 'a>(item: PopoverItem<'a, Message>) -> Element<'a, Message> {
     let leading = item.leading.or_else(|| {
         item.icon
             .map(|icon| icon.view().width(20).height(20).into())
@@ -259,12 +244,9 @@ fn item_row<'a, Message: Clone + 'a>(
     let on_select = match item.action {
         Some(ItemAction::Row(message)) => Some(message),
         Some(ItemAction::Trailing(label, message)) => {
-            let id = Id::unique();
-            focus_targets.push(id.clone());
             content = content.push(
                 Button::new(label)
                     .kind(ButtonKind::Surface)
-                    .id(id)
                     .on_press(message),
             );
             None
@@ -276,11 +258,7 @@ fn item_row<'a, Message: Clone + 'a>(
         None => None,
     };
 
-    let mut row = menu_item(content, on_select, item.selected);
-    if let Some(id) = primary {
-        row = row.id(id);
-    }
-    let row: Element<'a, Message> = row.into();
+    let row: Element<'a, Message> = menu_item(content, on_select, item.selected).into();
 
     match item.tooltip {
         Some(tip) => tooltip(row, tip, tooltip::Position::Top)
