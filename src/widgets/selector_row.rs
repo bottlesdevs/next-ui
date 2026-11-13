@@ -13,13 +13,11 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    button::{Button, ButtonKind},
     draw_caret,
     focusable_action::{ActionState, FocusableAction, Interaction},
     list_row::{self, ListRow},
     menu::{self, item as menu_item},
     popup::{self, AnchorMessage, Popup, PopupMessage},
-    progress_bar::ProgressBar,
     spacing,
     switcher::Switcher,
     text::TextExt as _,
@@ -41,40 +39,10 @@ pub struct SelectorRow<'a, T, Message> {
     on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
     placeholder: &'a str,
     icon: Option<Icon>,
-    available: Vec<AvailableOption<'a, Message>>,
+    options_title: Option<&'a str>,
+    sections: Vec<(&'a str, Vec<Element<'a, Message>>)>,
     popup: bool,
     switch: Option<Switcher<'a, Message>>,
-    downloads: bool,
-}
-
-/// An option offered for download in a [`SelectorRow`], listed under the
-/// options that are ready to select.
-pub struct AvailableOption<'a, Message> {
-    label: text::Fragment<'a>,
-    state: AvailableState<Message>,
-}
-
-enum AvailableState<Message> {
-    Download(Message),
-    Progress(f32),
-}
-
-impl<'a, Message> AvailableOption<'a, Message> {
-    /// An option with a Download button that publishes `on_download`.
-    pub fn download(label: impl text::IntoFragment<'a>, on_download: Message) -> Self {
-        Self {
-            label: label.into_fragment(),
-            state: AvailableState::Download(on_download),
-        }
-    }
-
-    /// An option that is downloading, with its progress.
-    pub fn progress(label: impl text::IntoFragment<'a>, progress: f32) -> Self {
-        Self {
-            label: label.into_fragment(),
-            state: AvailableState::Progress(progress),
-        }
-    }
 }
 
 impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
@@ -87,22 +55,32 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
             on_selected: None,
             placeholder: "",
             icon: None,
-            available: Vec::new(),
+            options_title: None,
+            sections: Vec::new(),
             popup: false,
             switch: None,
-            downloads: false,
         }
     }
 
-    /// Lists `available` options under the selectable ones, e.g. releases
-    /// that can be downloaded. The two groups get "Downloaded" and
-    /// "Available" headings.
-    pub fn available(
+    /// Heads the options with `title` when there are any, e.g. to set them
+    /// apart from the sections under them.
+    pub fn options_title(mut self, title: &'a str) -> Self {
+        self.options_title = Some(title);
+        self
+    }
+
+    /// Lists `rows` under the options with a `title`, e.g. releases that can
+    /// be downloaded. Unlike picking an option, their messages keep the
+    /// options open. A section without rows isn't shown.
+    pub fn section(
         mut self,
-        available: impl IntoIterator<Item = AvailableOption<'a, Message>>,
+        title: &'a str,
+        rows: impl IntoIterator<Item = Element<'a, Message>>,
     ) -> Self {
-        self.downloads = true;
-        self.available = available.into_iter().collect();
+        let rows = rows.into_iter().collect::<Vec<_>>();
+        if !rows.is_empty() {
+            self.sections.push((title, rows));
+        }
         self
     }
 
@@ -153,9 +131,10 @@ where
             .filter(|selected| selector.options.contains(selected));
         let label = &selector.label;
         let value = selected.map_or_else(|| selector.placeholder.to_owned(), label);
-        // Releases to download are worth opening for even with none to pick.
+        // Sections, e.g. releases to download, are worth opening for even
+        // with no option to pick.
         let enabled = selector.on_selected.is_some()
-            && !(selector.options.is_empty() && selector.available.is_empty());
+            && !(selector.options.is_empty() && selector.sections.is_empty());
         let header = header(
             selector.title,
             value,
@@ -177,20 +156,26 @@ where
             menu_item(container(content).padding([6, 0]), message, current).into()
         });
         let mut list = Column::new().width(Fill);
-        // A selector that can download names what's already downloaded,
-        // whether or not anything is on offer right now, unless that's
-        // nothing.
-        if selector.downloads && !selector.options.is_empty() {
-            list = list.push(section_heading("Downloaded"));
+        if let Some(title) = selector
+            .options_title
+            .filter(|_| !selector.options.is_empty())
+        {
+            list = list.push(section_heading(title));
         }
         list = list.extend(rows);
-        if !selector.available.is_empty() {
-            if !selector.options.is_empty() {
+        let mut above = !selector.options.is_empty();
+        for (title, rows) in selector.sections {
+            if above {
                 list = list.push(menu::separator());
             }
+            above = true;
             list = list
-                .push(section_heading("Available"))
-                .extend(selector.available.into_iter().map(available_row));
+                .push(section_heading(title))
+                .extend(rows.into_iter().map(|row| {
+                    container(row.map(PopupMessage::Emit))
+                        .padding([spacing::XS, spacing::MD])
+                        .into()
+                }));
         }
         let popup = selector.popup;
         let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING))
@@ -253,36 +238,6 @@ fn section_heading<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
     container(text(label).size(13).muted())
         .padding([spacing::XS, spacing::MD])
         .into()
-}
-
-fn available_row<'a, Message: Clone + 'a>(
-    option: AvailableOption<'a, Message>,
-) -> Element<'a, PopupMessage<Message>> {
-    let body: Element<'a, PopupMessage<Message>> = match option.state {
-        AvailableState::Download(message) => row![
-            text(option.label).size(OPTION_SIZE).muted().width(Fill),
-            // Downloading keeps the options open, so the download's progress
-            // shows in place.
-            Button::custom(text("Download").size(14))
-                .trailing_icon(Icon::Arrow)
-                .icon_rotation(std::f32::consts::PI)
-                .icon_size(14.0)
-                .kind(ButtonKind::Secondary)
-                .compact()
-                .on_press(PopupMessage::Emit(message)),
-        ]
-        .spacing(spacing::SM)
-        .align_y(Alignment::Center)
-        .into(),
-        AvailableState::Progress(progress) => column![
-            text(option.label).size(OPTION_SIZE).muted(),
-            ProgressBar::new(progress).percentage(),
-        ]
-        .spacing(4)
-        .into(),
-    };
-
-    container(body).padding([spacing::XS, spacing::MD]).into()
 }
 
 fn header<'a, Message: 'a>(

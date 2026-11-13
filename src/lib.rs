@@ -44,7 +44,7 @@ pub mod widget {
         progress_ring::ProgressRing,
         row_group::RowGroup,
         search::{Search, SearchResult, SearchState},
-        selector_row::{AvailableOption, SelectorRow},
+        selector_row::SelectorRow,
         spacing,
         status_bar::{LogPanel, StatusBar},
         status_page::StatusPage,
