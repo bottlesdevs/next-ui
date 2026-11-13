@@ -321,9 +321,7 @@ impl Model {
             .zip(downloaded)
             .enumerate()
             .map(|(index, (title, mut releases))| {
-                releases.sort_by(|left, right| {
-                    bottles_core::compare_versions(right.version(), left.version())
-                });
+                releases.sort_by(|left, right| right.version().cmp(left.version()));
                 ReleaseGroup {
                     title,
                     downloaded: releases
