@@ -4,7 +4,7 @@ use iced::{
     Element, Event, Length, Rectangle, Size, Theme, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Id, Operation, Tree, tree},
+        widget::{Operation, Tree, tree},
     },
     keyboard::{self, key},
     touch,
@@ -61,7 +61,7 @@ pub(super) struct Popup<'a, Message> {
     anchor: Element<'a, AnchorMessage<Message>>,
     panel: Element<'a, PopupMessage<Message>>,
     trigger: Trigger<'a>,
-    focus_targets: Vec<Id>,
+    focusable: bool,
     enabled: bool,
     placement: Placement,
 }
@@ -107,7 +107,7 @@ impl<'a, Message> Popup<'a, Message> {
             anchor: anchor.into(),
             panel: panel.into(),
             trigger: Trigger::Toggle,
-            focus_targets: Vec::new(),
+            focusable: true,
             enabled: true,
             placement: Placement::default(),
         }
@@ -121,10 +121,11 @@ impl<'a, Message> Popup<'a, Message> {
         self
     }
 
-    /// The controls in the panel that Tab cycles through, the first of which
-    /// takes focus when the panel is opened from the keyboard.
-    pub(super) fn focus_targets(mut self, targets: Vec<Id>) -> Self {
-        self.focus_targets = targets;
+    /// Whether the panel has controls for the keyboard to reach. Without
+    /// them, opening from the keyboard leaves focus on the anchor, and Tab
+    /// moves past the panel.
+    pub(super) fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
         self
     }
 
@@ -277,7 +278,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
             // Tab from the anchor continues into the panel that follows it.
             if state.anchor_focused
                 && state.shown(&self.trigger)
-                && !self.focus_targets.is_empty()
+                && self.focusable
                 && let Event::Keyboard(keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(key::Named::Tab),
                     modifiers,
@@ -339,8 +340,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
                     state.open = false;
                     state.panel_focus = PopupFocusState::None;
                 } else {
-                    let focus_panel =
-                        !self.focus_targets.is_empty() && matches!(event, Event::Keyboard(_));
+                    let focus_panel = self.focusable && matches!(event, Event::Keyboard(_));
                     if focus_panel {
                         unfocus_descendants(anchor, &mut tree.children[0], layout, renderer);
                     }
@@ -441,7 +441,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
             PopupFocus {
                 state: panel_focus,
                 restore_anchor,
-                targets: &self.focus_targets,
             },
         ))))
     }

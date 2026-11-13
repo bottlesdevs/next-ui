@@ -128,14 +128,14 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
         .padding([spacing::SM, spacing::MD])
         .style(search_style);
         let input: Element<'a, Message> = input.into();
-        let (panel, visible, focus_targets) = panel(search.state, search.footer);
+        let (panel, visible, focusable) = panel(search.state, search.footer);
 
         Popup::new(
             input.map(AnchorMessage::Emit),
             panel.map(PopupMessage::Close),
         )
         .while_focused(visible, search.query)
-        .focus_targets(focus_targets)
+        .focusable(focusable)
         .match_anchor_width()
         .into()
     }
@@ -144,21 +144,16 @@ impl<'a, Message: Clone + 'a> From<Search<'a, Message>> for Element<'a, Message>
 fn panel<'a, Message: Clone + 'a>(
     state: SearchState<'a, Message>,
     footer: Option<(&'a str, Message)>,
-) -> (Element<'a, Message>, bool, Vec<Id>) {
-    let mut focus_targets = Vec::new();
+) -> (Element<'a, Message>, bool, bool) {
     let visible = !matches!(state, SearchState::Hidden);
+    let mut focusable = matches!(&state, SearchState::Results(results) if !results.is_empty());
     let body: Element<'a, Message> = match state {
-        SearchState::Results(results) => container(
-            column(
-                results
-                    .into_iter()
-                    .map(|result| result_row(result, &mut focus_targets)),
-            )
-            .width(Fill),
-        )
-        .width(Fill)
-        .padding(spacing::MD)
-        .into(),
+        SearchState::Results(results) => {
+            container(column(results.into_iter().map(result_row)).width(Fill))
+                .width(Fill)
+                .padding(spacing::MD)
+                .into()
+        }
         SearchState::Loading => status_row("Searching…", false),
         SearchState::Empty => status_row("No results", false),
         SearchState::Error(error) => status_row(error, true),
@@ -167,29 +162,21 @@ fn panel<'a, Message: Clone + 'a>(
     let mut content = column![scrollable(body).width(Fill)].width(Fill);
 
     if let Some((label, message)) = footer.filter(|_| visible) {
-        let id = Id::unique();
-        focus_targets.push(id.clone());
-        content = content.push(panel_footer(label, message).id(id));
+        focusable = true;
+        content = content.push(panel_footer(label, message));
     }
 
     (
         container(content).style(crate::theme::overlay).into(),
         visible,
-        focus_targets,
+        focusable,
     )
 }
 
-fn result_row<'a, Message: Clone + 'a>(
-    result: SearchResult<'a, Message>,
-    focus_targets: &mut Vec<Id>,
-) -> Element<'a, Message> {
-    let primary = Id::unique();
-    focus_targets.push(primary.clone());
+fn result_row<'a, Message: Clone + 'a>(result: SearchResult<'a, Message>) -> Element<'a, Message> {
     let mut content = row_content(result.title.into(), result.subtitle, result.icon);
 
     if let Some((label, icon, message)) = result.action {
-        let id = Id::unique();
-        focus_targets.push(id.clone());
         content = content.push(
             Button::new(label)
                 .trailing_icon(icon)
@@ -199,12 +186,11 @@ fn result_row<'a, Message: Clone + 'a>(
                     0.0
                 })
                 .kind(ButtonKind::Surface)
-                .id(id)
                 .on_press(message),
         );
     }
 
-    container(menu_item(content, Some(result.on_select), false).id(primary))
+    container(menu_item(content, Some(result.on_select), false))
         .width(Fill)
         .into()
 }

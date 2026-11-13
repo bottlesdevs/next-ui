@@ -9,7 +9,10 @@ use iced::{
 };
 
 use super::{
-    focus::{descendant_is_focused, event_cursor, focus_descendant, unfocus_descendants},
+    focus::{
+        cycle_descendant_focus, descendant_is_focused, event_cursor, focus_first_descendant,
+        unfocus_descendants,
+    },
     popup::{PopupMessage, forward},
     spacing,
 };
@@ -27,13 +30,12 @@ pub(super) enum PopupFocusState {
     #[default]
     None,
     Requested,
-    Target(usize),
+    Focused,
 }
 
 pub(super) struct PopupFocus<'a> {
     pub(super) state: &'a mut PopupFocusState,
     pub(super) restore_anchor: &'a mut bool,
-    pub(super) targets: &'a [Id],
 }
 
 /// Where a popup's panel goes relative to its anchor.
@@ -109,15 +111,24 @@ impl<'a, Message> PopupCore<'a, Message> {
         captured
     }
 
-    fn focus(&mut self, index: usize, layout: Layout<'_>, renderer: &iced::Renderer) {
-        let Some(target) = self.focus.targets.get(index) else {
-            *self.focus.state = PopupFocusState::None;
-            return;
-        };
+    /// Moves focus to the panel's first control, or along its controls from
+    /// the focused one, wrapping around.
+    fn focus(&mut self, previous: Option<bool>, layout: Layout<'_>, renderer: &iced::Renderer) {
+        match previous {
+            None => focus_first_descendant(self.content, self.tree, layout, renderer),
+            Some(previous) => {
+                cycle_descendant_focus(self.content, self.tree, layout, renderer, previous);
+            }
+        }
 
-        focus_descendant(self.content, self.tree, layout, renderer, target.clone());
-        *self.focus.state = PopupFocusState::Target(index);
-        reveal(self.content, self.tree, layout, renderer, target);
+        if descendant_is_focused(self.content, self.tree, layout, renderer) {
+            *self.focus.state = PopupFocusState::Focused;
+            reveal(self.content, self.tree, layout, renderer);
+        } else {
+            // Nothing in the panel takes focus, e.g. every item is disabled.
+            *self.focus.state = PopupFocusState::None;
+            *self.focus.restore_anchor = true;
+        }
     }
 }
 
@@ -254,7 +265,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         }
 
         if *self.focus.state == PopupFocusState::Requested {
-            self.focus(0, layout, renderer);
+            self.focus(None, layout, renderer);
             shell.request_redraw();
         }
 
@@ -264,17 +275,10 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             repeat: false,
             ..
         }) = event
-            && let PopupFocusState::Target(current) = *self.focus.state
-            && !self.focus.targets.is_empty()
+            && *self.focus.state == PopupFocusState::Focused
             && descendant_is_focused(self.content, self.tree, layout, renderer)
         {
-            let count = self.focus.targets.len();
-            let next = if modifiers.shift() {
-                (current + count - 1) % count
-            } else {
-                (current + 1) % count
-            };
-            self.focus(next, layout, renderer);
+            self.focus(Some(modifiers.shift()), layout, renderer);
             shell.capture_event();
             shell.request_redraw();
             return;
@@ -294,7 +298,7 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
             &self.viewport,
         );
 
-        let lost_focus = matches!(*self.focus.state, PopupFocusState::Target(_))
+        let lost_focus = *self.focus.state == PopupFocusState::Focused
             && !descendant_is_focused(self.content, self.tree, layout, renderer);
 
         if lost_focus && panel_shell.is_empty() && !panel_shell.is_event_captured() {
@@ -380,17 +384,14 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
     }
 }
 
+/// Scrolls the panel's focused control into view.
 fn reveal<Message>(
     content: &mut dyn Widget<Message, Theme, iced::Renderer>,
     tree: &mut Tree,
     layout: Layout<'_>,
     renderer: &iced::Renderer,
-    marker: &Id,
 ) -> bool {
-    let mut find = FindTargetBounds {
-        target: marker.clone(),
-        bounds: None,
-    };
+    let mut find = FindFocusedBounds { bounds: None };
     content.operate(tree, layout, renderer, &mut find);
     let Some(bounds) = find.bounds else {
         return false;
@@ -403,18 +404,22 @@ fn reveal<Message>(
     reveal.changed
 }
 
-struct FindTargetBounds {
-    target: Id,
+struct FindFocusedBounds {
     bounds: Option<Rectangle>,
 }
 
-impl<Message> Operation<Message> for FindTargetBounds {
+impl<Message> Operation<Message> for FindFocusedBounds {
     fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Message>)) {
         operate(self);
     }
 
-    fn container(&mut self, id: Option<&Id>, bounds: Rectangle) {
-        if id == Some(&self.target) {
+    fn focusable(
+        &mut self,
+        _id: Option<&Id>,
+        bounds: Rectangle,
+        state: &mut dyn operation::Focusable,
+    ) {
+        if state.is_focused() {
             self.bounds = Some(bounds);
         }
     }

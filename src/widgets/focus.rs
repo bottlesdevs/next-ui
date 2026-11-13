@@ -2,7 +2,7 @@ use iced::{
     Event, Theme,
     advanced::{
         Layout, Widget, mouse,
-        widget::{Id, Operation, Tree, operation},
+        widget::{Operation, Tree, operation},
     },
     touch,
 };
@@ -36,22 +36,6 @@ pub(crate) fn focus_first_descendant<Message>(
 ) {
     unfocus_descendants(content, tree, layout, renderer);
     move_descendant_focus(content, tree, layout, renderer, false);
-}
-
-pub(crate) fn focus_descendant<Message>(
-    content: &mut dyn Widget<Message, Theme, iced::Renderer>,
-    tree: &mut Tree,
-    layout: Layout<'_>,
-    renderer: &iced::Renderer,
-    id: Id,
-) {
-    run_operation(
-        content,
-        tree,
-        layout,
-        renderer,
-        operation::focusable::focus::<()>(id),
-    );
 }
 
 pub(crate) fn unfocus_descendants<Message>(
