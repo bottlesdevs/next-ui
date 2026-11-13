@@ -144,7 +144,8 @@ fn suggestions<'a, Message: Clone + 'a>(
             .spacing(4)
             .width(Fill),
             Button::new("Install")
-                .trailing_icon(Icon::ChevronRight)
+                .trailing_icon(Icon::Arrow)
+                .icon_rotation(std::f32::consts::PI)
                 .icon_size(16.0)
                 .kind(ButtonKind::Secondary)
                 .on_press(on_install(name)),
