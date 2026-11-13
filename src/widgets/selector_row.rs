@@ -13,7 +13,9 @@ use iced::{
 use crate::icons::Icon;
 
 use super::{
-    anchored_overlay::{DismissOutcome, DismissReason, PopupCore, PopupFocus, PopupFocusState},
+    anchored_overlay::{
+        DismissOutcome, DismissReason, KeepOpen, PopupCore, PopupFocus, PopupFocusState, kept_open,
+    },
     button::{Button, ButtonKind},
     draw_caret,
     focusable_action::Interaction,
@@ -249,11 +251,15 @@ fn available_row<'a, Message: Clone + 'a>(
     let body: Element<'a, Message> = match option.state {
         AvailableState::Download(message) => row![
             text(option.label).label().muted().width(Fill),
-            Button::new("Download")
-                .trailing_icon(Icon::Download)
-                .icon_size(16.0)
-                .kind(ButtonKind::Secondary)
-                .on_press(message),
+            // Downloading keeps the options open, so the download's progress
+            // shows in place.
+            KeepOpen::new(
+                Button::new("Download")
+                    .trailing_icon(Icon::Download)
+                    .icon_size(16.0)
+                    .kind(ButtonKind::Secondary)
+                    .on_press(message),
+            ),
         ]
         .spacing(spacing::SM)
         .align_y(Alignment::Center)
@@ -422,18 +428,20 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Selector<'_, Mes
         if state.open && !self.popup {
             let mut messages = Vec::new();
             let mut panel_shell = Shell::new(&mut messages);
-            self.panel.as_widget_mut().update(
-                &mut tree.children[1],
-                event,
-                panel_layout,
-                cursor,
-                renderer,
-                clipboard,
-                &mut panel_shell,
-                viewport,
-            );
+            let keep_open = kept_open(|| {
+                self.panel.as_widget_mut().update(
+                    &mut tree.children[1],
+                    event,
+                    panel_layout,
+                    cursor,
+                    renderer,
+                    clipboard,
+                    &mut panel_shell,
+                    viewport,
+                );
+            });
 
-            if !panel_shell.is_empty() {
+            if !panel_shell.is_empty() && !keep_open {
                 state.open = false;
                 panel_shell.invalidate_layout();
             }
