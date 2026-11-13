@@ -1,4 +1,7 @@
-use iced::Element;
+use iced::{
+    Element,
+    widget::text::{Fragment, IntoFragment},
+};
 
 use crate::icons::Icon;
 
@@ -6,7 +9,7 @@ use super::list_row::{self, ListRow, labels};
 
 pub struct PickerRow<'a, Message> {
     title: &'a str,
-    description: &'a str,
+    description: Fragment<'a>,
     on_press: Option<Message>,
 }
 
@@ -14,13 +17,13 @@ impl<'a, Message> PickerRow<'a, Message> {
     pub fn new(title: &'a str) -> Self {
         Self {
             title,
-            description: "",
+            description: Fragment::Borrowed(""),
             on_press: None,
         }
     }
 
-    pub fn description(mut self, description: &'a str) -> Self {
-        self.description = description;
+    pub fn description(mut self, description: impl IntoFragment<'a>) -> Self {
+        self.description = description.into_fragment();
         self
     }
 

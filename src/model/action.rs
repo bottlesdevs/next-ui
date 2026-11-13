@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::{
     Message, Model,
-    collection::BottleRecord,
+    collection::{BottleRecord, ProgramRecord},
     defaults,
     library::Target,
     operations::{Outcome, Subject, Verb},
@@ -51,7 +51,19 @@ pub(crate) enum Action {
         release: Uuid,
     },
     Edit(Uuid, Change),
-    AddProgram,
+    /// Adds `executable`, a host path, as a program with a prefix of its own.
+    AddStandalone {
+        name: String,
+        executable: PathBuf,
+        options: String,
+    },
+    /// Adds `executable`, a host path, as a program of bottle `prefix`.
+    AddToBottle {
+        prefix: Uuid,
+        name: String,
+        executable: PathBuf,
+        options: String,
+    },
     /// Installs a suggested program from its bottle recipe.
     InstallSuggestion(&'static str),
     /// Asks for an executable, then runs it once in a bottle.
@@ -148,7 +160,9 @@ impl Model {
                 let operation = self.core.prefixes().delete(id);
                 self.start(Subject::Prefix(id), Verb::Delete, operation)
             }
-            Action::CreateBottle { name, runner, arch } => self.create_bottle(name, runner, arch),
+            Action::CreateBottle { name, runner, arch } => {
+                self.create_prefix(name, runner, arch, None)
+            }
             Action::Rename(id, name) => self.change_collection(move |collection| {
                 if let Some(bottle) = collection.bottles.get_mut(&id) {
                     bottle.name = name;
@@ -257,10 +271,34 @@ impl Model {
                 ));
                 Task::none()
             }
-            Action::AddProgram => {
-                self.notifications
-                    .info("Program installation is not available yet");
-                Task::none()
+            Action::AddStandalone {
+                name,
+                executable,
+                options,
+            } => {
+                let Some(runner) = self.default_runner() else {
+                    self.notifications
+                        .error("A runner is required to add a program");
+                    return Task::none();
+                };
+                let spec = program_spec(&executable, &options);
+                self.create_prefix(name, runner, WineArch::Win64, Some(spec))
+            }
+            Action::AddToBottle {
+                prefix,
+                name,
+                executable,
+                options,
+            } => {
+                let program = ProgramRecord {
+                    name,
+                    spec: program_spec(&executable, &options),
+                };
+                self.change_collection(move |collection| {
+                    if let Some(bottle) = collection.bottles.get_mut(&prefix) {
+                        bottle.programs.insert(Uuid::new_v4(), program);
+                    }
+                })
             }
             Action::FetchEssentials => {
                 let pending = self
@@ -330,7 +368,15 @@ impl Model {
         }
     }
 
-    fn create_bottle(&mut self, name: String, runner: Uuid, arch: WineArch) -> Task<Message> {
+    /// Creates a prefix for a bottle named `name`, or with `program`, for a
+    /// standalone program.
+    fn create_prefix(
+        &mut self,
+        name: String,
+        runner: Uuid,
+        arch: WineArch,
+        program: Option<ProgramSpec>,
+    ) -> Task<Message> {
         let (Some(runner), Some(winebridge)) = (
             self.sources.addons.release::<Runner>(runner),
             self.winebridge(),
@@ -351,7 +397,7 @@ impl Model {
         self.operations
             .start(
                 Subject::Creation(Uuid::new_v4()),
-                Verb::Create(name),
+                Verb::Create { name, program },
                 operation,
                 |prefix| Outcome::Created(prefix.id()),
             )
@@ -368,6 +414,19 @@ impl Model {
                     programs: Default::default(),
                 },
             );
+        })
+    }
+
+    /// Adds the record of a standalone program whose prefix was created. Its
+    /// process group is its prefix.
+    pub(super) fn record_program(
+        &mut self,
+        id: Uuid,
+        name: String,
+        spec: ProgramSpec,
+    ) -> Task<Message> {
+        self.change_collection(move |collection| {
+            collection.programs.insert(id, ProgramRecord { name, spec });
         })
     }
 
@@ -412,4 +471,20 @@ impl Model {
 /// maps the host root.
 fn wine_path(path: &Path) -> String {
     format!("Z:{}", path.display()).replace('/', "\\")
+}
+
+/// How Wine launches host file `executable`: from its own folder, with the
+/// Launch Options' words as arguments. `%command%` stands for the program,
+/// as in Steam's launch options, and isn't passed on.
+fn program_spec(executable: &Path, options: &str) -> ProgramSpec {
+    let spec = ProgramSpec::new(wine_path(executable)).with_args(
+        options
+            .split_whitespace()
+            .filter(|word| *word != "%command%")
+            .map(str::to_owned),
+    );
+    match executable.parent() {
+        Some(folder) => spec.with_working_directory(wine_path(folder)),
+        None => spec,
+    }
 }

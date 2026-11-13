@@ -1,3 +1,4 @@
+mod add_program;
 mod app;
 mod classic;
 mod manage_profiles;

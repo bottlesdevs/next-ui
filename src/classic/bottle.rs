@@ -26,7 +26,10 @@ pub(super) fn rows(model: &Model, selected: Option<Uuid>) -> crate::parts::Body<
             .operations
             .iter()
             .filter_map(|(_, pending)| match &pending.verb {
-                Verb::Create(name) => Some((name, pending.progress.as_ref())),
+                Verb::Create {
+                    name,
+                    program: None,
+                } => Some((name, pending.progress.as_ref())),
                 _ => None,
             })
     };
@@ -165,14 +168,14 @@ pub(super) fn programs<'a>(bottle: Bottle<'a>, model: &'a Model) -> Element<'a, 
         })
         .into()
     });
-    Grid::with_children(std::iter::once(new_program().into()).chain(cards))
+    Grid::with_children(std::iter::once(new_program(bottle.id).into()).chain(cards))
         .fluid(400.0)
         .spacing(spacing::SM)
         .height(iced::widget::grid::aspect_ratio(3.0, 2.0))
         .into()
 }
 
-fn new_program<'a>() -> ActionTile<'a, Message> {
+fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
     let icon = container(Icon::Plus.view().width(16).height(16))
         .width(44)
         .height(44)
@@ -192,7 +195,7 @@ fn new_program<'a>() -> ActionTile<'a, Message> {
         container(row![icon, labels].spacing(16).align_y(Center))
             .center_x(Fill)
             .center_y(Fill),
-        Message::Act(Action::AddProgram),
+        Message::AddProgram(Some(bottle)),
     )
     .width(Fill)
     .height(Fill)

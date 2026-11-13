@@ -10,6 +10,7 @@ use next_ui::{
 use uuid::Uuid;
 
 use crate::{
+    add_program,
     app::Request,
     manage_profiles,
     model::{Action, Activity, Experience, Model, Program, Subject},
@@ -20,6 +21,9 @@ pub struct State {
     query: String,
     selected: Option<Uuid>,
     profiles: manage_profiles::State,
+    /// The Add Program form, kept while its pane slides closed.
+    adding: Option<Box<add_program::State>>,
+    adding_open: bool,
 }
 
 #[derive(Clone)]
@@ -31,6 +35,8 @@ pub enum Message {
     Window(chrome::Action),
     Profiles(manage_profiles::Message),
     OpenPreferences,
+    AddProgram,
+    Adding(add_program::Message),
 }
 
 impl State {
@@ -39,6 +45,15 @@ impl State {
             query: String::new(),
             selected: None,
             profiles: manage_profiles::State::default(),
+            adding: None,
+            adding_open: false,
+        }
+    }
+
+    /// Takes the file chosen in the Add Program pane's picker.
+    pub fn picked(&mut self, file: std::path::PathBuf) {
+        if let Some(adding) = &mut self.adding {
+            adding.picked(file);
         }
     }
 
@@ -51,6 +66,27 @@ impl State {
             Message::QueryChanged(query) => self.query = query,
             Message::Select(id) => self.selected = Some(id),
             Message::Back => self.selected = None,
+            Message::AddProgram => {
+                self.adding = Some(Box::new(add_program::State::new(
+                    add_program::Target::Standalone,
+                )));
+                self.adding_open = true;
+            }
+            Message::Adding(message) => {
+                let event = self.adding.as_mut()?.update(message)?;
+                return match event {
+                    add_program::Event::PickFile => Some(Request::PickProgram),
+                    add_program::Event::Window(action) => Some(Request::Window(action)),
+                    add_program::Event::Close => {
+                        self.adding_open = false;
+                        None
+                    }
+                    add_program::Event::Act(action) => {
+                        self.adding_open = false;
+                        Some(Request::Act(action))
+                    }
+                };
+            }
         }
         None
     }
@@ -60,12 +96,22 @@ impl State {
         layout::side_panel(
             Side::End,
             self.profiles.is_open(),
-            move |pane| {
-                layout::navigation_split(
-                    pane,
-                    selected,
-                    move |pane| self.programs_view(model, pane, selected),
-                    move |pane| self.detail_view(model, pane),
+            move |_| {
+                layout::side_panel(
+                    Side::Start,
+                    self.adding_open,
+                    move |pane| {
+                        layout::navigation_split(
+                            pane,
+                            selected,
+                            move |pane| self.programs_view(model, pane, selected),
+                            move |pane| self.detail_view(model, pane),
+                        )
+                    },
+                    move |pane| match &self.adding {
+                        Some(adding) => adding.view(model, pane).map(Message::Adding),
+                        None => iced::widget::column![].into(),
+                    },
                 )
             },
             move |pane| self.profiles.pane(model, pane).map(Message::Profiles),
@@ -109,7 +155,7 @@ impl State {
             &self.query,
             |target| Message::Act(Action::Launch(target)),
             |target| target.standalone().map(Message::Select),
-            Message::Act(Action::AddProgram),
+            Message::AddProgram,
             |name| Message::Act(Action::InstallSuggestion(name)),
             true,
         );
