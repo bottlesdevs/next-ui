@@ -4,7 +4,7 @@ use bottles_core::{AddonRole, Component, Slot, WineArch};
 use uuid::Uuid;
 
 use super::{
-    Action, Model,
+    Action, Model, label,
     operations::{Subject, Verb},
 };
 
@@ -39,12 +39,7 @@ impl Model {
         releases.sort_by(|left, right| right.version().cmp(left.version()));
         releases
             .into_iter()
-            .map(|release| {
-                (
-                    release.id(),
-                    format!("{} {}", release.name(), release.version()),
-                )
-            })
+            .map(|release| (release.id(), label(release.name(), release.version())))
             .collect()
     }
 
@@ -54,12 +49,7 @@ impl Model {
         self.runners()
             .into_iter()
             .filter(|runner| self.can_create_with(runner.id(), arch))
-            .map(|runner| {
-                (
-                    runner.id(),
-                    format!("{} {}", runner.name(), runner.version()),
-                )
-            })
+            .map(|runner| (runner.id(), label(runner.name(), runner.version())))
             .collect()
     }
 
@@ -89,7 +79,7 @@ impl Model {
             .take(AVAILABLE_LIMIT)
             .map(|entry| AvailableRelease {
                 id: entry.id(),
-                label: format!("{} {}", entry.name(), entry.version()),
+                label: label(entry.name(), entry.version()),
                 download: self
                     .operations
                     .get(&Subject::Addon(entry.id()))

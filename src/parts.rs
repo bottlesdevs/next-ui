@@ -17,7 +17,7 @@ use next_ui::{layout::PaneContext, widget::HeaderBar};
 use crate::{
     app::Control,
     manage_profiles,
-    model::{Activity, Experience, Listing, Model, Target},
+    model::{Activity, Download, Experience, Listing, Model, Target},
 };
 
 /// A page body: content that scrolls, or a status page that fills the panel.
@@ -304,7 +304,7 @@ fn downloads<'a, Message: Clone + 'a>(
     }
     let overall = downloads
         .iter()
-        .map(|download| download.progress.unwrap_or(0.0))
+        .map(|download| download.fraction().unwrap_or(0.0))
         .sum::<f32>()
         / downloads.len() as f32;
     let trigger = Button::custom(stack![
@@ -317,16 +317,17 @@ fn downloads<'a, Message: Clone + 'a>(
     let rows = downloads
         .into_iter()
         .map(|download| -> Element<'a, Message> {
+            let status = download_status(&download);
             let mut body = column![
-                text(download.name).size(18).medium(),
-                text(download.status).size(15).style(|theme| text::Style {
+                text(download_name(&download)).size(18).medium(),
+                text(status).size(15).style(|theme| text::Style {
                     color: Some(theme::colors(theme).accent_muted),
                 }),
             ]
             .spacing(6)
             .width(Fill);
             let mut card = row![].spacing(spacing::SM).align_y(iced::Alignment::Center);
-            if let Some(progress) = download.progress {
+            if let Some(progress) = download.fraction() {
                 body = body.push(
                     container(ProgressBar::new(progress)).padding(iced::Padding::ZERO.top(6)),
                 );
@@ -362,5 +363,27 @@ fn downloads<'a, Message: Clone + 'a>(
             .content(column(rows).spacing(8))
             .width(420.0)
             .into(),
+    )
+}
+
+/// A download's release name, or a stand-in once the catalogs drop it.
+fn download_name(download: &Download) -> String {
+    download
+        .name
+        .clone()
+        .unwrap_or_else(|| "Release".to_owned())
+}
+
+/// What a download is doing, e.g. "412 of 640 MB" or "Extracting".
+fn download_status(download: &Download) -> String {
+    download.progress.as_ref().map_or_else(
+        || "Waiting".to_owned(),
+        |progress| match progress.transfer {
+            Some(bottles_core::Transfer {
+                current,
+                total: Some(total),
+            }) if total > 0 => format!("{} of {} MB", current / 1_000_000, total / 1_000_000),
+            _ => progress.stage.to_string(),
+        },
     )
 }

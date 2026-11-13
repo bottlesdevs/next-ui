@@ -54,20 +54,39 @@ pub(crate) struct Model {
 /// A release being downloaded.
 pub(crate) struct Download {
     pub(crate) id: uuid::Uuid,
-    pub(crate) name: String,
-    /// What the download is doing, e.g. "412 of 640 MB" or "Extracting".
-    pub(crate) status: String,
-    pub(crate) progress: Option<f32>,
+    /// Its name and version, unless the catalogs no longer list it.
+    pub(crate) name: Option<String>,
+    /// What it's doing, or `None` while it waits to start.
+    pub(crate) progress: Option<bottles_core::Progress>,
 }
 
-/// A plugin installed on this computer.
+impl Download {
+    /// The fraction done, when the size is known.
+    pub(crate) fn fraction(&self) -> Option<f32> {
+        self.progress
+            .as_ref()
+            .and_then(bottles_core::Progress::fraction)
+    }
+}
+
+/// A group of releases on the Addons page, in the order it's listed.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReleaseKind {
+    Runners,
+    Component(bottles_core::Slot),
+    /// WineBridge and UMU, which every bottle uses.
+    Bridges,
+    Dependencies,
+}
+
 /// A group of releases on the Addons page.
 pub(crate) struct ReleaseGroup {
-    pub(crate) title: &'static str,
+    pub(crate) kind: ReleaseKind,
     pub(crate) downloaded: Vec<(uuid::Uuid, String)>,
     pub(crate) available: Vec<AvailableRelease>,
 }
 
+/// A plugin installed on this computer.
 pub(crate) struct InstalledPlugin {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -293,63 +312,57 @@ impl Model {
     /// out.
     pub(crate) fn release_groups(&self) -> Vec<ReleaseGroup> {
         use bottles_core::{AddonRole, Slot};
-        const TITLES: [&str; 7] = [
-            "Runners",
-            "DXVK",
-            "VKD3D",
-            "DXVK-NVAPI",
-            "LatencyFlex",
-            "WineBridge and UMU",
-            "Dependencies",
+        const KINDS: [ReleaseKind; 7] = [
+            ReleaseKind::Runners,
+            ReleaseKind::Component(Slot::Dxvk),
+            ReleaseKind::Component(Slot::Vkd3d),
+            ReleaseKind::Component(Slot::Nvapi),
+            ReleaseKind::Component(Slot::LatencyFlex),
+            ReleaseKind::Bridges,
+            ReleaseKind::Dependencies,
         ];
-        let group = |role: AddonRole| match role {
-            AddonRole::Runner(_) => 0,
-            AddonRole::Component(component) => match component.slot {
-                Slot::Dxvk => 1,
-                Slot::Vkd3d => 2,
-                Slot::Nvapi => 3,
-                Slot::LatencyFlex => 4,
-            },
-            AddonRole::WineBridge(_) | AddonRole::Umu(_) => 5,
-            AddonRole::Dependency(_) => 6,
+        let kind = |role: AddonRole| match role {
+            AddonRole::Runner(_) => ReleaseKind::Runners,
+            AddonRole::Component(component) => ReleaseKind::Component(component.slot),
+            AddonRole::WineBridge(_) | AddonRole::Umu(_) => ReleaseKind::Bridges,
+            AddonRole::Dependency(_) => ReleaseKind::Dependencies,
         };
-        let mut downloaded: Vec<Vec<bottles_core::Addon<AddonRole>>> = vec![Vec::new(); 7];
-        for release in self.sources.addons.releases::<AddonRole>() {
-            downloaded[group(release.role())].push(release);
-        }
-        TITLES
+        KINDS
             .into_iter()
-            .zip(downloaded)
-            .enumerate()
-            .map(|(index, (title, mut releases))| {
+            .map(|group| {
+                let mut releases = self
+                    .sources
+                    .addons
+                    .releases::<AddonRole>()
+                    .filter(|release| kind(release.role()) == group)
+                    .collect::<Vec<_>>();
                 releases.sort_by(|left, right| right.version().cmp(left.version()));
                 ReleaseGroup {
-                    title,
+                    kind: group,
                     downloaded: releases
                         .iter()
-                        .map(|release| {
-                            (
-                                release.id(),
-                                format!("{} {}", release.name(), release.version()),
-                            )
-                        })
+                        .map(|release| (release.id(), label(release.name(), release.version())))
                         .collect(),
-                    available: self.available(|role| group(role) == index),
+                    available: self.available(|role| kind(role) == group),
                 }
             })
             .filter(|group| !group.downloaded.is_empty() || !group.available.is_empty())
             .collect()
     }
 
-    /// A catalog release's name and version, e.g. "DXVK 2.6".
-    fn release_name(&self, id: uuid::Uuid) -> String {
+    /// A catalog release's name and version, e.g. "DXVK 2.6", unless the
+    /// catalogs no longer list it.
+    pub(crate) fn release_label(&self, id: uuid::Uuid) -> Option<String> {
         self.sources
             .catalogs
             .entry::<bottles_core::AddonRole>(id)
-            .map_or_else(
-                || "the release".to_owned(),
-                |entry| format!("{} {}", entry.name(), entry.version()),
-            )
+            .map(|entry| label(entry.name(), entry.version()))
+    }
+
+    /// A catalog release's name and version, or a stand-in.
+    fn release_name(&self, id: uuid::Uuid) -> String {
+        self.release_label(id)
+            .unwrap_or_else(|| "the release".to_owned())
     }
 
     /// The releases being downloaded, by name.
@@ -361,34 +374,10 @@ impl Model {
                 let (Subject::Addon(id), Verb::Fetch) = (subject, &pending.verb) else {
                     return None;
                 };
-                let name = self
-                    .sources
-                    .catalogs
-                    .entry::<bottles_core::AddonRole>(*id)
-                    .map_or_else(
-                        || "Release".to_owned(),
-                        |entry| format!("{} {}", entry.name(), entry.version()),
-                    );
-                let status = pending.progress.as_ref().map_or_else(
-                    || "Waiting".to_owned(),
-                    |progress| match progress.transfer {
-                        Some(bottles_core::Transfer {
-                            current,
-                            total: Some(total),
-                        }) if total > 0 => {
-                            format!("{} of {} MB", current / 1_000_000, total / 1_000_000)
-                        }
-                        _ => progress.stage.to_string(),
-                    },
-                );
                 Some(Download {
                     id: *id,
-                    name,
-                    status,
-                    progress: pending
-                        .progress
-                        .as_ref()
-                        .and_then(bottles_core::Progress::fraction),
+                    name: self.release_label(*id),
+                    progress: pending.progress.clone(),
                 })
             })
             .collect();
@@ -475,4 +464,9 @@ impl Model {
         // Register now: shutdown must also wait for writes not yet polled by Iced.
         Task::perform(self.tracker.track_future(save), Message::Saved)
     }
+}
+
+/// How a release is named: its name and version, e.g. "DXVK 2.6".
+fn label(name: &str, version: &str) -> String {
+    format!("{name} {version}")
 }
