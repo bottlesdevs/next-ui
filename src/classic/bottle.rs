@@ -409,12 +409,10 @@ fn available_rows<'a>(
     releases.into_iter().map(move |release| {
         let label = text(release.label).size(LABEL_SIZE).muted();
         match release.download {
-            Some(download) => column![
-                label,
-                ProgressBar::new(download.fraction().unwrap_or(0.0)).percentage()
-            ]
-            .spacing(4)
-            .into(),
+            Some(download) => ProgressBar::new(download.fraction().unwrap_or(0.0))
+                .caption(label)
+                .percentage()
+                .into(),
             None => row![
                 label.width(Fill),
                 Button::custom(text("Download").size(text_size::SMALL))

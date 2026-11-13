@@ -339,17 +339,7 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
     match release.download {
         Some(download) => {
             let progress = download.fraction().unwrap_or(0.0);
-            ListRow::new(
-                column![name, ProgressBar::new(progress)]
-                    .spacing(spacing::SM)
-                    .width(Fill),
-            )
-            .trailing(
-                text(format!("{}%", (progress * 100.0).round()))
-                    .size(text_size::DENSE)
-                    .medium(),
-            )
-            .trailing(
+            ListRow::new(ProgressBar::new(progress).caption(name).percentage()).trailing(
                 next_ui::widget::header_button("Cancel download", Icon::Cross)
                     .on_press(Message::Act(Action::CancelDownload(release.id))),
             )

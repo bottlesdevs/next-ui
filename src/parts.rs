@@ -8,8 +8,7 @@ use next_ui::{
     Icon, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
-        ProgressBar, ProgressRing, Shared, SizeGroup, StatusPage, TextExt as _, radius, spacing,
-        text_size,
+        ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size,
     },
 };
 
@@ -256,37 +255,31 @@ fn downloads<'a, Message: Clone + 'a>(
     ])
     .kind(ButtonKind::Transparent);
     // Each download is a card of its own, set a step darker into the popover:
-    // its name and status over the progress bar, the percentage beside it.
+    // its name over the progress bar, whose caption is its status.
     let rows = downloads
         .into_iter()
         .map(|download| -> Element<'a, Message> {
-            let status = download_status(&download);
-            let mut body = column![
-                text(download_name(model, &download))
-                    .size(text_size::LABEL)
-                    .medium(),
-                text(status)
-                    .size(text_size::DENSE)
-                    .style(|theme| text::Style {
-                        color: Some(theme::colors(theme).accent_muted),
-                    }),
-            ]
-            .spacing(6)
-            .width(Fill);
-            let mut card = row![].spacing(spacing::SM).align_y(iced::Alignment::Center);
-            if let Some(progress) = download.fraction() {
-                body = body.push(
-                    container(ProgressBar::new(progress)).padding(iced::Padding::ZERO.top(6)),
-                );
-                card = card.push(body).push(Shared::new(
-                    "download-percentage",
-                    text(format!("{}%", (progress * 100.0).round()))
-                        .size(text_size::HEADING)
-                        .medium(),
-                ));
-            } else {
-                card = card.push(body);
+            let status = text(download_status(&download))
+                .size(text_size::DENSE)
+                .style(|theme| text::Style {
+                    color: Some(theme::colors(theme).accent_muted),
+                });
+            let name = text(download_name(model, &download))
+                .size(text_size::LABEL)
+                .medium();
+            let body: Element<'a, Message> = match download.fraction() {
+                Some(progress) => column![
+                    name,
+                    ProgressBar::new(progress).caption(status).percentage()
+                ],
+                None => column![name, status],
             }
+            .spacing(spacing::XS)
+            .width(Fill)
+            .into();
+            let card = row![body]
+                .spacing(spacing::SM)
+                .align_y(iced::Alignment::Center);
             container(
                 card.push(
                     next_ui::widget::header_button("Cancel download", Icon::Cross)
@@ -304,7 +297,7 @@ fn downloads<'a, Message: Clone + 'a>(
         });
     Some(
         Popover::new(trigger)
-            .content(SizeGroup::new(column(rows).spacing(8)))
+            .content(column(rows).spacing(8))
             .width(420.0)
             .into(),
     )
