@@ -27,6 +27,37 @@ pub mod radius {
     pub const PILL: f32 = 999.0;
 }
 
+/// Shared text sizes, smallest first. The design uses many close steps;
+/// each is named by where it is used.
+pub mod text_size {
+    /// Status bar lines and a compact title's subtitle.
+    pub const CAPTION: f32 = 12.0;
+    /// Tags, section labels and version numbers.
+    pub const FOOTNOTE: f32 = 13.0;
+    /// A supporting line under a heading, e.g. a popover's or banner's body.
+    pub const SMALL: f32 = 14.0;
+    /// Text in dense rows and cards: options, descriptions, row buttons.
+    pub const DENSE: f32 = 15.0;
+    /// Row subtitles and dialog bodies; Iced's default size.
+    pub const DETAIL: f32 = 16.0;
+    /// Titles of cards, popovers and banners; page descriptions.
+    pub const HEADING: f32 = 17.0;
+    /// Row titles and button labels.
+    pub const LABEL: f32 = 18.0;
+    /// A lead paragraph.
+    pub const BODY: f32 = 20.0;
+    pub const DIALOG_TITLE: f32 = 21.0;
+    /// A group's heading.
+    pub const SUBTITLE: f32 = 22.0;
+    /// A detail page's name and a header title with a status.
+    pub const HEADLINE: f32 = 24.0;
+    /// The title of an empty or status page.
+    pub const PAGE_TITLE: f32 = 26.0;
+    pub const TITLE: f32 = 28.0;
+    /// A first-run heading and a header title on its own.
+    pub const DISPLAY: f32 = 32.0;
+}
+
 /// Shared dimensions for header content and frame-owned controls.
 pub mod header {
     pub const HEIGHT: f32 = 64.0;

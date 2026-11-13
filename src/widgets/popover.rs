@@ -9,7 +9,7 @@ use super::{
     list_row::{ListRow, Menu},
     picker_row::PickerRow,
     popup::{self, AnchorMessage, Popup, PopupMessage},
-    spacing,
+    spacing, text_size,
 };
 
 const WIDTH: f32 = 240.0;
@@ -94,8 +94,8 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         on_cancel: Message,
     ) -> Self {
         let content = column![
-            text(title).size(17).medium(),
-            text(body).size(14).muted(),
+            text(title).size(text_size::HEADING).medium(),
+            text(body).size(text_size::SMALL).muted(),
             row![
                 Space::new().width(Fill),
                 Button::new("Cancel")

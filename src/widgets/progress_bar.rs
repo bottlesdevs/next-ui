@@ -3,6 +3,8 @@ use iced::{
     widget::{progress_bar, row, text},
 };
 
+use super::text_size;
+
 use super::text::TextExt as _;
 
 const THICKNESS: f32 = 4.0;
@@ -48,7 +50,7 @@ impl<'a, Message: 'a> From<ProgressBar> for Element<'a, Message> {
             row![
                 track,
                 text(format!("{:.0}%", bar.progress * 100.0))
-                    .size(14)
+                    .size(text_size::SMALL)
                     .muted()
             ]
             .spacing(10)

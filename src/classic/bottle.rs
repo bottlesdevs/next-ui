@@ -11,7 +11,7 @@ use next_ui::{
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, CardAction, CycleRow, ExpanderRow,
         InfoRow, LogPanel, PickerRow, ProgressBar, RowGroup, SelectorRow, StatusBar, SwitcherRow,
-        TextExt as _, TextRow, spacing,
+        TextExt as _, TextRow, spacing, text_size,
     },
 };
 use uuid::Uuid;
@@ -186,8 +186,8 @@ fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
                 .border(iced::Border::default().rounded(22))
         });
     let labels = column![
-        text("New Program").size(17).medium(),
-        text("Install or add a program.").size(14)
+        text("New Program").size(text_size::HEADING).medium(),
+        text("Install or add a program.").size(text_size::SMALL)
     ]
     .spacing(spacing::XS);
     ActionTile::new(
@@ -404,7 +404,7 @@ fn available_rows<'a>(
     prefix: Uuid,
 ) -> impl Iterator<Item = Element<'a, Message>> {
     // Release names read like the picker's options.
-    const LABEL_SIZE: f32 = 15.0;
+    const LABEL_SIZE: f32 = text_size::DENSE;
 
     releases.into_iter().map(move |release| {
         let label = text(release.label).size(LABEL_SIZE).muted();
@@ -417,7 +417,7 @@ fn available_rows<'a>(
             .into(),
             None => row![
                 label.width(Fill),
-                Button::custom(text("Download").size(14))
+                Button::custom(text("Download").size(text_size::SMALL))
                     .trailing_icon(Icon::Arrow)
                     .icon_rotation(std::f32::consts::PI)
                     .icon_size(14.0)

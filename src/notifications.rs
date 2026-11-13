@@ -6,7 +6,7 @@ use iced::{
 };
 use uuid::Uuid;
 
-use next_ui::widget::{InfoCardKind, Notification as NotificationCard};
+use next_ui::widget::{InfoCardKind, Notification as NotificationCard, text_size};
 
 use crate::{
     app::Message,
@@ -248,9 +248,13 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     };
     // Plain labels: a button's hover box would break up the pill.
     let label = |label: String, message| {
-        mouse_area(text(label).size(15).style(|theme| text::Style {
-            color: Some(next_ui::theme::colors(theme).accent_muted),
-        }))
+        mouse_area(
+            text(label)
+                .size(text_size::DENSE)
+                .style(|theme| text::Style {
+                    color: Some(next_ui::theme::colors(theme).accent_muted),
+                }),
+        )
         .interaction(iced::mouse::Interaction::Pointer)
         .on_press(message)
     };

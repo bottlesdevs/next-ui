@@ -13,10 +13,8 @@ use super::{
     focusable_action::{ActionState, FocusableAction},
     radius, spacing,
     text::TextExt as _,
+    text_size,
 };
-
-#[doc(hidden)]
-pub const BODY_SIZE: f32 = 16.0;
 
 pub(crate) const STANDARD_PADDING: Padding = Padding {
     top: spacing::MD,
@@ -305,13 +303,22 @@ impl<'a, Message: 'a> Labels<'a, Message> {
         let subtitle = self.subtitle.map(|subtitle| match subtitle {
             Subtitle::Text { text: line, icon } => {
                 let line = text(line)
-                    .size(if compact { 14.0 } else { BODY_SIZE })
+                    .size(if compact {
+                        text_size::SMALL
+                    } else {
+                        text_size::DETAIL
+                    })
                     .muted();
                 match icon {
-                    Some(icon) => row![icon.view().width(BODY_SIZE).height(BODY_SIZE), line]
-                        .spacing(spacing::SM)
-                        .align_y(Alignment::Center)
-                        .into(),
+                    Some(icon) => row![
+                        icon.view()
+                            .width(text_size::DETAIL)
+                            .height(text_size::DETAIL),
+                        line
+                    ]
+                    .spacing(spacing::SM)
+                    .align_y(Alignment::Center)
+                    .into(),
                     None => line.into(),
                 }
             }

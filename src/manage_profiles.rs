@@ -10,7 +10,7 @@ use next_ui::{
     layout::{self, PageBody, PaneContext},
     widget::{
         ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, RowGroup, TextExt as _, TextRow,
-        Title, spacing,
+        Title, spacing, text_size,
     },
 };
 use uuid::Uuid;
@@ -162,7 +162,7 @@ impl State {
                 ListRow::new(
                     column![
                         text(provider_name).label().medium(),
-                        text(status).size(16).muted()
+                        text(status).size(text_size::DETAIL).muted()
                     ]
                     .spacing(spacing::XS),
                 )
@@ -173,13 +173,13 @@ impl State {
 
         let body = column![
             row![
-                text("Profiles").size(18).medium().width(Fill),
+                text("Profiles").size(text_size::LABEL).medium().width(Fill),
                 parts::header_button("New profile", Icon::Plus, Message::New),
             ]
             .align_y(Alignment::Center),
             list.fold(RowGroup::new(), RowGroup::row),
             Space::new().height(spacing::SM),
-            text(editing.name.as_str()).size(18).medium(),
+            text(editing.name.as_str()).size(text_size::LABEL).medium(),
             accounts.fold(
                 RowGroup::new().row(
                     TextRow::new("Profile Name", name)
@@ -201,7 +201,9 @@ pub fn button(model: &Model) -> Element<'_, Message> {
     let selected = profiles.selected();
     let trigger = Button::custom(
         row![
-            text(selected.name.as_str()).size(17).muted(),
+            text(selected.name.as_str())
+                .size(text_size::HEADING)
+                .muted(),
             Avatar::new(initial(&selected.name)).size(32.0).active(true),
         ]
         .spacing(10)

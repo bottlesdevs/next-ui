@@ -8,7 +8,7 @@ use next_ui::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
         ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,
         ProgressRing, RowGroup, Search, SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow,
-        Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
+        Tab, Tabs, TextExt as _, TextRow, Title, WindowModal, text_size,
     },
 };
 
@@ -574,14 +574,14 @@ fn action_tile_example<'a>(active: bool) -> ActionTile<'a, Message> {
         } else {
             "Unavailable target"
         })
-        .size(17)
+        .size(text_size::HEADING)
         .medium(),
         text(if active {
             "Install or add a program."
         } else {
             "Activation is disabled."
         })
-        .size(14),
+        .size(text_size::SMALL),
     ]
     .spacing(6);
 

@@ -17,11 +17,10 @@ use super::{
     radius, spacing,
     switcher::Switcher,
     text::TextExt as _,
+    text_size,
 };
 
 const PANEL_PADDING: [f32; 2] = [spacing::SM, spacing::SM];
-/// Options read smaller than the row's title, as a list under it.
-const OPTION_SIZE: f32 = 15.0;
 
 /// An in-flow row that selects one value from a connected option panel.
 pub struct SelectorRow<'a, T, Message> {
@@ -140,7 +139,7 @@ where
                 .as_ref()
                 .map(|on_selected| PopupMessage::Close(on_selected(option.clone())));
 
-            ListRow::new(text(label(option)).size(OPTION_SIZE))
+            ListRow::new(text(label(option)).size(text_size::DENSE))
                 .menu(Menu::Attached)
                 .padding([spacing::SM, spacing::MD])
                 .selected(selected == Some(option))
@@ -219,7 +218,7 @@ where
 }
 
 fn section_heading<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
-    container(text(label).size(13).muted())
+    container(text(label).size(text_size::FOOTNOTE).muted())
         .padding([spacing::XS, spacing::MD])
         .into()
 }

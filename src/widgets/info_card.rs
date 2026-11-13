@@ -6,9 +6,7 @@ use iced::{
 
 use crate::{icons::Icon, theme};
 
-use super::{spacing, text::TextExt as _};
-
-const TITLE_SIZE: f32 = 17.0;
+use super::{spacing, text::TextExt as _, text_size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -61,10 +59,10 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
 
         container(
             column![
-                row![icon(kind), text(title).size(TITLE_SIZE).medium(),]
+                row![icon(kind), text(title).size(text_size::HEADING).medium(),]
                     .spacing(8)
                     .align_y(Center),
-                text(body).size(14),
+                text(body).size(text_size::SMALL),
             ]
             .spacing(spacing::SM),
         )
@@ -87,8 +85,8 @@ pub(super) fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
     };
 
     icon.view()
-        .width(TITLE_SIZE)
-        .height(TITLE_SIZE)
+        .width(text_size::HEADING)
+        .height(text_size::HEADING)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(colors(theme, kind).text),
         })

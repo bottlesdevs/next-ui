@@ -11,6 +11,7 @@ use super::{
     info_card::{self, Kind},
     radius, spacing,
     text::TextExt as _,
+    text_size,
 };
 use crate::icons::Icon;
 
@@ -76,13 +77,17 @@ impl<'a, Message: Clone + 'a> From<Notification<'a, Message>> for Element<'a, Me
 
         let header = row![
             info_card::icon(kind),
-            text(notification.title).size(17).medium().width(Fill),
+            text(notification.title)
+                .size(text_size::HEADING)
+                .medium()
+                .width(Fill),
             controls,
         ]
         .spacing(10)
         .align_y(Center);
 
-        let mut body = column![header, text(notification.message).size(15)].spacing(spacing::XS);
+        let mut body =
+            column![header, text(notification.message).size(text_size::DENSE)].spacing(spacing::XS);
         if let Some((label, message)) = notification.action {
             body = body.push(
                 container(
