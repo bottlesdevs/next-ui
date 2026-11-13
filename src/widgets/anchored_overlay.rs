@@ -158,6 +158,12 @@ fn geometry(anchor: Rectangle, viewport: Rectangle, inset: f32) -> Geometry {
     }
 }
 
+/// Whether `event` dismisses something floating or open over `bounds`: a
+/// press outside it, or Escape.
+pub(super) fn dismisses(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> bool {
+    dismissal(event, cursor, bounds).is_some()
+}
+
 fn dismissal(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> Option<DismissReason> {
     match event {
         Event::Mouse(mouse::Event::ButtonPressed(_)) => (!cursor.is_over(bounds)
