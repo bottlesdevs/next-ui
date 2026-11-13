@@ -1,8 +1,6 @@
 //! Everything the application can be asked to do.
 
-use bottles_core::{
-    AddonRole, Operation, Prefix, PrefixBackend, ProgramSpec, Runner, RunnerFlavor, WineArch,
-};
+use bottles_core::{AddonRole, Operation, Prefix, ProgramSpec, Runner, RunnerFlavor, WineArch};
 use bottles_plugin_host::Library;
 use iced::Task;
 use uuid::Uuid;
@@ -10,6 +8,7 @@ use uuid::Uuid;
 use super::{
     Message, Model,
     collection::BottleRecord,
+    defaults,
     library::Target,
     operations::{Outcome, Subject, Verb},
     settings::Experience,
@@ -170,7 +169,7 @@ impl Model {
         let operation =
             self.core
                 .prefixes()
-                .create(PrefixBackend::Standard, arch, runner, winebridge, umu);
+                .create(defaults::BACKEND, arch, runner, winebridge, umu);
         self.operations
             .start(
                 Subject::Creation(Uuid::new_v4()),
