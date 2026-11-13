@@ -17,6 +17,8 @@ const WINDOW: Color = Color::from_rgb8(41, 34, 37);
 const WINDOW_BORDER: Color = Color::from_rgb8(54, 44, 49);
 const DEEP_BACKGROUND: Color = Color::from_rgb8(27, 25, 26);
 const SURFACE: Color = Color::from_rgb8(65, 57, 60);
+/// Buttons that sit on a row or card, set back from its surface.
+const CONTROL: Color = Color::from_rgb8(47, 40, 43);
 const BORDER: Color = Color::from_rgb8(76, 66, 70);
 const ROW_HOVER: Color = Color::from_rgb8(96, 85, 89);
 const SURFACE_SELECTED: Color = Color::from_rgb8(89, 78, 82);
@@ -38,6 +40,7 @@ const WINDOW_BORDER_LIGHT: Color = Color::from_rgb8(226, 215, 219);
 const DEEP_BACKGROUND_LIGHT: Color = Color::from_rgb8(251, 248, 249);
 const SURFACE_DEEP_LIGHT: Color = Color::from_rgb8(214, 200, 204);
 const SURFACE_LIGHT: Color = Color::from_rgb8(238, 231, 233);
+const CONTROL_LIGHT: Color = Color::from_rgb8(230, 221, 224);
 const BORDER_LIGHT: Color = Color::from_rgb8(223, 212, 216);
 const ROW_HOVER_LIGHT: Color = Color::from_rgb8(206, 190, 195);
 const SURFACE_SELECTED_LIGHT: Color = Color::from_rgb8(216, 201, 206);
@@ -59,6 +62,8 @@ pub struct Colors {
     pub window: Color,
     pub window_border: Color,
     pub surface_deep: Color,
+    /// A button set into a row or card.
+    pub control: Color,
     pub text: Color,
     pub muted: Color,
     pub accent: Color,
@@ -197,6 +202,11 @@ pub fn colors(theme: &IcedTheme) -> Colors {
         window: extended.primary.weak.color,
         window_border: extended.background.strongest.color,
         surface_deep: extended.secondary.strong.color,
+        control: if extended.is_dark {
+            CONTROL
+        } else {
+            CONTROL_LIGHT
+        },
         text,
         muted: extended.secondary.weak.text,
         accent: theme.palette().primary,
