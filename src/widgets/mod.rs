@@ -77,5 +77,6 @@ pub mod switcher_row;
 pub mod tabs;
 pub mod tag;
 pub mod text;
+mod text_field;
 pub mod text_row;
 pub mod title;
