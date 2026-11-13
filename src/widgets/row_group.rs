@@ -8,10 +8,7 @@ use iced::{
 };
 
 use super::{
-    draw_caret,
-    expander_row::{ExpanderRow, header_row},
-    focusable_action::Interaction,
-    spacing,
+    draw_caret, expander_row::ExpanderRow, focusable_action::Interaction, spacing,
     text::TextExt as _,
 };
 
@@ -127,12 +124,12 @@ impl<'a, Message: Clone + 'a> RowGroupCore<'a, Message> {
 
                     if content.is_empty() {
                         structure.push(None);
-                        headers.push(header_row(header).into());
+                        headers.push(header.into());
                         continue;
                     }
                     structure.push(Some(requested_columns));
 
-                    let header = header_row(header).into_disclosure_content();
+                    let header = header.into_disclosure_content();
                     let content_columns = if standalone {
                         requested_columns
                     } else {

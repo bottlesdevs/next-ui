@@ -1,29 +1,30 @@
 use iced::{
-    Alignment, Element, Fill, Theme,
-    widget::{column, container, text},
+    Element,
+    widget::text::{Fragment, IntoFragment},
 };
 
 use crate::icons::Icon;
 
 use super::{
     button::{Button, ButtonKind},
-    list_row::{self, ListRow},
+    list_row::ListRow,
     spacing,
-    text::TextExt as _,
 };
 
+/// A row that steps through values with arrows on either side of its
+/// centred labels.
 pub struct CycleRow<'a, Message> {
-    title: &'a str,
-    value: &'a str,
+    title: Fragment<'a>,
+    value: Fragment<'a>,
     previous: Option<Message>,
     next: Option<Message>,
 }
 
 impl<'a, Message> CycleRow<'a, Message> {
-    pub fn new(title: &'a str, value: &'a str) -> Self {
+    pub fn new(title: impl IntoFragment<'a>, value: impl IntoFragment<'a>) -> Self {
         Self {
-            title,
-            value,
+            title: title.into_fragment(),
+            value: value.into_fragment(),
             previous: None,
             next: None,
         }
@@ -52,50 +53,27 @@ impl<'a, Message> CycleRow<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for Element<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        cycle.lower().into()
+        ListRow::from(cycle).into()
     }
 }
 
 impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Message> {
     fn from(cycle: CycleRow<'a, Message>) -> Self {
-        cycle.lower()
-    }
-}
-
-impl<'a, Message: Clone + 'a> CycleRow<'a, Message> {
-    fn lower(self) -> ListRow<'a, Message> {
-        let previous = self.previous;
-        let next = self.next;
-        let enabled = previous.is_some() || next.is_some();
+        let enabled = cycle.previous.is_some() || cycle.next.is_some();
         let previous = Button::icon_only("Previous value", Icon::Arrow)
             .kind(ButtonKind::Transparent)
             .diameter(32.0)
-            .on_press_maybe(previous);
-
+            .on_press_maybe(cycle.previous);
         let next = Button::icon_only("Next value", Icon::Arrow)
             .kind(ButtonKind::Transparent)
             .diameter(32.0)
             .icon_rotation(std::f32::consts::PI)
-            .on_press_maybe(next);
+            .on_press_maybe(cycle.next);
 
-        let labels = container(
-            column![
-                text(self.title).label().medium(),
-                text(self.value).size(list_row::BODY_SIZE).muted(),
-            ]
-            .width(Fill)
-            .align_x(Alignment::Center)
-            .spacing(spacing::XS),
-        )
-        .style(move |theme: &Theme| {
-            container::Style::default().color(if enabled {
-                crate::theme::colors(theme).text
-            } else {
-                crate::theme::colors(theme).muted
-            })
-        });
-
-        ListRow::new(labels)
+        ListRow::labeled(cycle.title)
+            .subtitle(cycle.value)
+            .centered()
+            .dimmed(!enabled)
             .leading(previous)
             .trailing(next)
             .padding([spacing::MD, spacing::LG])

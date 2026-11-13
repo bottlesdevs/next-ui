@@ -1,6 +1,9 @@
 use iced::{
-    Center, Element, Fill, Theme,
-    widget::{Id, column, row, svg, text},
+    Center, Element, Theme,
+    widget::{
+        Id, column, row, svg, text,
+        text::{Fragment, IntoFragment},
+    },
 };
 
 use crate::icons::Icon;
@@ -8,12 +11,11 @@ use crate::icons::Icon;
 use super::{
     list_row::{self, ListRow},
     spacing,
-    text::TextExt as _,
     text_field::TextField,
 };
 
 pub struct TextRow<'a, Message> {
-    title: &'a str,
+    title: Fragment<'a>,
     value: &'a str,
     placeholder: &'a str,
     icon: Option<Icon>,
@@ -25,9 +27,9 @@ pub struct TextRow<'a, Message> {
 }
 
 impl<'a, Message> TextRow<'a, Message> {
-    pub fn new(title: &'a str, value: &'a str) -> Self {
+    pub fn new(title: impl IntoFragment<'a>, value: &'a str) -> Self {
         Self {
-            title,
+            title: title.into_fragment(),
             value,
             placeholder: "",
             icon: None,
@@ -102,21 +104,17 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
                 .muted(true),
         );
 
-        let mut labels = column![text(text_row.title).label().medium(), value]
-            .width(Fill)
-            .spacing(spacing::XS);
+        let mut subtitle = column![value].spacing(spacing::XS);
 
         if let Some(error) = text_row.error {
-            labels = labels.push(
-                text(error)
-                    .size(list_row::BODY_SIZE)
-                    .style(|theme: &Theme| text::Style {
-                        color: Some(crate::theme::colors(theme).danger),
-                    }),
-            );
+            subtitle = subtitle.push(text(error).size(list_row::BODY_SIZE).style(
+                |theme: &Theme| text::Style {
+                    color: Some(crate::theme::colors(theme).danger),
+                },
+            ));
         }
 
-        let mut row = ListRow::new(labels);
+        let mut row = ListRow::labeled(text_row.title).subtitle_widget(subtitle);
 
         if editable {
             row = row.trailing(icon_view(Icon::Pencil, list_row::BODY_SIZE, false));
