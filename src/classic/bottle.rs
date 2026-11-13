@@ -8,9 +8,9 @@ use iced::{
 use next_ui::{
     Icon,
     widget::{
-        ActionRow, ActionTile, ArtworkCard, AvailableOption, CardAction, CycleRow, ExpanderRow,
-        InfoRow, LogPanel, PickerRow, RowGroup, SelectorRow, StatusBar, SwitcherRow, TextExt as _,
-        TextRow, spacing,
+        ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, CardAction, CycleRow, ExpanderRow,
+        InfoRow, LogPanel, PickerRow, ProgressBar, RowGroup, SelectorRow, StatusBar, SwitcherRow,
+        TextExt as _, TextRow, spacing,
     },
 };
 use uuid::Uuid;
@@ -349,7 +349,8 @@ fn component<'a>(
     let mut row = SelectorRow::new(title, &options, selected)
         .placeholder("Off")
         .popup()
-        .available(available_options(available, prefix))
+        .options_title("Downloaded")
+        .section("Available", available_rows(available, prefix))
         .switch(
             on,
             toggle
@@ -382,11 +383,14 @@ fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'
     if !options.contains(&selected) {
         options.insert(0, selected.clone());
     }
-    let available = available_options(model.available_runners(), prefix);
     let mut row = SelectorRow::new("Runner", &options, Some(selected))
         .icon(Icon::Run)
         .popup()
-        .available(available);
+        .options_title("Downloaded")
+        .section(
+            "Available",
+            available_rows(model.available_runners(), prefix),
+        );
     if editable {
         row = row.on_selected(move |Choice(release, _)| {
             Message::Act(Action::UseRelease { prefix, release })
@@ -396,24 +400,40 @@ fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'
 }
 
 /// The releases a picker offers to download, or shows downloading.
-fn available_options<'a>(
+fn available_rows<'a>(
     releases: Vec<AvailableRelease>,
     prefix: Uuid,
-) -> impl Iterator<Item = AvailableOption<'a, Message>> {
-    releases
-        .into_iter()
-        .map(move |release| match release.download {
-            Some(download) => {
-                AvailableOption::progress(release.label, download.progress.unwrap_or(0.0))
-            }
-            None => AvailableOption::download(
-                release.label,
-                Message::Act(Action::FetchRelease {
-                    prefix,
-                    release: release.id,
-                }),
-            ),
-        })
+) -> impl Iterator<Item = Element<'a, Message>> {
+    // Release names read like the picker's options.
+    const LABEL_SIZE: f32 = 15.0;
+
+    releases.into_iter().map(move |release| {
+        let label = text(release.label).size(LABEL_SIZE).muted();
+        match release.download {
+            Some(download) => column![
+                label,
+                ProgressBar::new(download.progress.unwrap_or(0.0)).percentage()
+            ]
+            .spacing(4)
+            .into(),
+            None => row![
+                label.width(Fill),
+                Button::custom(text("Download").size(14))
+                    .trailing_icon(Icon::Arrow)
+                    .icon_rotation(std::f32::consts::PI)
+                    .icon_size(14.0)
+                    .kind(ButtonKind::Secondary)
+                    .compact()
+                    .on_press(Message::Act(Action::FetchRelease {
+                        prefix,
+                        release: release.id,
+                    })),
+            ]
+            .spacing(spacing::SM)
+            .align_y(Center)
+            .into(),
+        }
+    })
 }
 
 fn arch_label(arch: WineArch) -> &'static str {
