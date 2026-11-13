@@ -311,33 +311,54 @@ fn downloads<'a, Message: Clone + 'a>(
         container(Icon::Download.view().width(12).height(12)).center(24),
     ])
     .kind(ButtonKind::Transparent);
+    // Each download is a card of its own, a step lighter than the popover:
+    // its name and status over the progress bar, the percentage beside it.
     let rows = downloads
         .into_iter()
         .map(|download| -> Element<'a, Message> {
             let mut body = column![
-                text(download.name).size(17).medium(),
-                text(download.status).size(14),
+                text(download.name).size(18).medium(),
+                text(download.status).size(15).style(|theme| text::Style {
+                    color: Some(theme::colors(theme).accent_muted),
+                }),
             ]
-            .spacing(4)
+            .spacing(6)
             .width(Fill);
+            let mut card = row![].spacing(spacing::SM).align_y(iced::Alignment::Center);
             if let Some(progress) = download.progress {
-                body = body.push(ProgressBar::new(progress).percentage());
+                body = body.push(
+                    container(ProgressBar::new(progress)).padding(iced::Padding::ZERO.top(6)),
+                );
+                card = card.push(body).push(
+                    text(format!("{}%", (progress * 100.0).round()))
+                        .size(17)
+                        .medium(),
+                );
+            } else {
+                card = card.push(body);
             }
             container(
-                row![
-                    body,
+                card.push(
                     next_ui::widget::header_button("Cancel download", Icon::Cross)
                         .on_press(act(Action::CancelDownload(download.id))),
-                ]
-                .spacing(spacing::SM)
-                .align_y(iced::Alignment::Center),
+                ),
             )
-            .padding([spacing::SM, spacing::SM])
+            .padding(iced::Padding {
+                top: 16.0,
+                right: 8.0,
+                bottom: 18.0,
+                left: 24.0,
+            })
+            .style(|theme| {
+                container::Style::default()
+                    .background(theme::colors(theme).hover)
+                    .border(iced::Border::default().rounded(8))
+            })
             .into()
         });
     Some(
         Popover::new(trigger)
-            .content(column(rows).spacing(spacing::XS))
+            .content(column(rows).spacing(8))
             .width(420.0)
             .into(),
     )
