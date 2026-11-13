@@ -17,7 +17,7 @@ use next_ui::{layout::PaneContext, widget::HeaderBar};
 use crate::{
     app::Control,
     manage_profiles,
-    model::{Action, Activity, Experience, Listing, Model, Target},
+    model::{Activity, Experience, Listing, Model, Target},
 };
 
 /// A page body: content that scrolls, or a status page that fills the panel.

@@ -344,7 +344,7 @@ impl Ready {
                 _ => None,
             },
             Message::Next(message) => match &mut self.screen {
-                Screen::Next(state) => state.update(model, message),
+                Screen::Next(state) => state.update(message),
                 _ => None,
             },
             Message::Preferences(message) => self
