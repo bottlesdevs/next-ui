@@ -10,13 +10,14 @@ use next_ui::{
     layout::{PaneContext, Side, side_panel},
     widget::{
         ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
-        Popover, RowGroup, Search, StatusPage, Tab, Tabs, Tag, TextExt as _, Title, spacing,
+        Popover, ProgressBar, RowGroup, Search, StatusPage, Tab, Tabs, Tag, TextExt as _, Title,
+        spacing,
     },
 };
 
 use crate::{
     app::Request,
-    model::{Action, Experience, InstalledPlugin, Listing, Model},
+    model::{Action, AvailableRelease, Experience, InstalledPlugin, Listing, Model},
     parts,
 };
 
@@ -280,20 +281,20 @@ fn addons(model: &Model) -> Body<'_> {
             .into());
     }
     // Whether a bottle uses a release isn't known yet (`Model::release_users`),
-    // so every release offers Remove.
+    // so every downloaded release offers Remove.
     Ok(groups
         .into_iter()
-        .fold(column![].spacing(spacing::LG), |page, (title, releases)| {
-            let icon = match title {
+        .fold(column![].spacing(spacing::LG), |page, group| {
+            let icon = match group.title {
                 "Runners" => Icon::Run,
                 "WineBridge and UMU" => Icon::Computer,
                 "Dependencies" => Icon::Library,
                 _ => Icon::Chip,
             };
-            page.push(releases.into_iter().fold(
-                BoxedGroup::new().title(title).icon(icon),
-                |group, (id, label)| {
-                    group.row(ListRow::new(text(label).label().medium()).trailing(
+            let block = group.downloaded.into_iter().fold(
+                BoxedGroup::new().title(group.title).icon(icon),
+                |block, (id, label)| {
+                    block.row(ListRow::new(text(label).label().medium()).trailing(
                         Popover::confirm(
                             Button::new("Remove").icon(Icon::Trash),
                             "Remove this release?",
@@ -304,9 +305,58 @@ fn addons(model: &Model) -> Body<'_> {
                         ),
                     ))
                 },
-            ))
+            );
+            // What the catalogs offer follows in the same block, told apart by
+            // its paler name and its Download button.
+            page.push(
+                group
+                    .available
+                    .into_iter()
+                    .fold(block, |block, release| block.row(available_row(release))),
+            )
         })
         .into())
+}
+
+/// A release the catalogs offer: Download, or its progress while it
+/// downloads.
+fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
+    let name = text(release.label)
+        .label()
+        .medium()
+        .style(|theme| text::Style {
+            color: Some(next_ui::theme::colors(theme).accent_muted),
+        });
+    match release.download {
+        Some(download) => {
+            let progress = download.progress.unwrap_or(0.0);
+            ListRow::new(
+                column![name, ProgressBar::new(progress)]
+                    .spacing(spacing::SM)
+                    .width(Fill),
+            )
+            .trailing(
+                text(format!("{}%", (progress * 100.0).round()))
+                    .size(15)
+                    .medium(),
+            )
+            .trailing(
+                next_ui::widget::header_button("Cancel download", Icon::Cross)
+                    .on_press(Message::Act(Action::CancelDownload(release.id))),
+            )
+        }
+        None => ListRow::new(
+            column![name, text("Not downloaded").size(15).muted()].spacing(spacing::XS),
+        )
+        .trailing(
+            Button::custom(text("Download").size(15))
+                .trailing_icon(Icon::Arrow)
+                .icon_rotation(std::f32::consts::PI)
+                .icon_size(16.0)
+                .compact()
+                .on_press(Message::Act(Action::Download(release.id))),
+        ),
+    }
 }
 
 fn plugins<'a>(model: &'a Model, state: &'a State) -> Body<'a> {

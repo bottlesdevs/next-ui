@@ -61,6 +61,13 @@ pub(crate) struct Download {
 }
 
 /// A plugin installed on this computer.
+/// A group of releases on the Addons page.
+pub(crate) struct ReleaseGroup {
+    pub(crate) title: &'static str,
+    pub(crate) downloaded: Vec<(uuid::Uuid, String)>,
+    pub(crate) available: Vec<AvailableRelease>,
+}
+
 pub(crate) struct InstalledPlugin {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -195,7 +202,7 @@ impl Model {
                         (Err(error), _) => {
                             let retry = match then_select {
                                 Some(prefix) => Action::FetchRelease { prefix, release },
-                                None => Action::FetchEssentials,
+                                None => Action::Download(release),
                             };
                             self.notifications.push(
                                 Notification::new(
@@ -278,52 +285,60 @@ impl Model {
             .collect()
     }
 
-    /// Downloaded releases in the groups Preferences lists them in, each
-    /// newest first: runners, then each component slot, then WineBridge and
-    /// UMU, then dependencies.
-    pub(crate) fn release_groups(&self) -> Vec<(&'static str, Vec<(uuid::Uuid, String)>)> {
+    /// Releases in the groups Preferences lists them in: runners, then each
+    /// component slot, then WineBridge and UMU, then dependencies. Each group
+    /// has its downloaded releases, newest first, and the newest ones the
+    /// catalogs offer that aren't downloaded; groups with neither are left
+    /// out.
+    pub(crate) fn release_groups(&self) -> Vec<ReleaseGroup> {
         use bottles_core::{AddonRole, Slot};
-        let mut groups: Vec<(&'static str, Vec<bottles_core::Addon<AddonRole>>)> = vec![
-            ("Runners", Vec::new()),
-            ("DXVK", Vec::new()),
-            ("VKD3D", Vec::new()),
-            ("DXVK-NVAPI", Vec::new()),
-            ("LatencyFlex", Vec::new()),
-            ("WineBridge and UMU", Vec::new()),
-            ("Dependencies", Vec::new()),
+        const TITLES: [&str; 7] = [
+            "Runners",
+            "DXVK",
+            "VKD3D",
+            "DXVK-NVAPI",
+            "LatencyFlex",
+            "WineBridge and UMU",
+            "Dependencies",
         ];
+        let group = |role: AddonRole| match role {
+            AddonRole::Runner(_) => 0,
+            AddonRole::Component(component) => match component.slot {
+                Slot::Dxvk => 1,
+                Slot::Vkd3d => 2,
+                Slot::Nvapi => 3,
+                Slot::LatencyFlex => 4,
+            },
+            AddonRole::WineBridge(_) | AddonRole::Umu(_) => 5,
+            AddonRole::Dependency(_) => 6,
+        };
+        let mut downloaded: Vec<Vec<bottles_core::Addon<AddonRole>>> = vec![Vec::new(); 7];
         for release in self.sources.addons.releases::<AddonRole>() {
-            let group = match release.role() {
-                AddonRole::Runner(_) => 0,
-                AddonRole::Component(component) => match component.slot {
-                    Slot::Dxvk => 1,
-                    Slot::Vkd3d => 2,
-                    Slot::Nvapi => 3,
-                    Slot::LatencyFlex => 4,
-                },
-                AddonRole::WineBridge(_) | AddonRole::Umu(_) => 5,
-                AddonRole::Dependency(_) => 6,
-            };
-            groups[group].1.push(release);
+            downloaded[group(release.role())].push(release);
         }
-        groups
+        TITLES
             .into_iter()
-            .filter(|(_, releases)| !releases.is_empty())
-            .map(|(title, mut releases)| {
+            .zip(downloaded)
+            .enumerate()
+            .map(|(index, (title, mut releases))| {
                 releases.sort_by(|left, right| {
                     bottles_core::compare_versions(right.version(), left.version())
                 });
-                let rows = releases
-                    .iter()
-                    .map(|release| {
-                        (
-                            release.id(),
-                            format!("{} {}", release.name(), release.version()),
-                        )
-                    })
-                    .collect();
-                (title, rows)
+                ReleaseGroup {
+                    title,
+                    downloaded: releases
+                        .iter()
+                        .map(|release| {
+                            (
+                                release.id(),
+                                format!("{} {}", release.name(), release.version()),
+                            )
+                        })
+                        .collect(),
+                    available: self.available(|role| group(role) == index),
+                }
             })
+            .filter(|group| !group.downloaded.is_empty() || !group.available.is_empty())
             .collect()
     }
 
