@@ -87,6 +87,17 @@ pub(crate) enum Action {
     UninstallPlugin(String),
     /// Stops downloading a release.
     CancelDownload(Uuid),
+    /// Records the prefix just created as a bottle named `name`. Only follows
+    /// a creation, which supplies the prefix.
+    RecordBottle {
+        name: String,
+    },
+    /// Records the prefix just created as a standalone program. Only follows
+    /// a creation, which supplies the prefix.
+    RecordProgram {
+        name: String,
+        spec: ProgramSpec,
+    },
 }
 
 /// A change to how a prefix starts.
@@ -142,6 +153,9 @@ impl Model {
                 profiles.unlink(link);
                 Ok(())
             }),
+            Action::RecordBottle { .. } | Action::RecordProgram { .. } => {
+                unreachable!("a record only follows the creation of its prefix")
+            }
             Action::Stop(id) => self.on_prefix(id, Verb::Stop, |prefix| prefix.stop(false)),
             Action::Kill { prefix, group } => match self.core.prefixes().open(prefix) {
                 Ok(handle) => {
@@ -161,7 +175,7 @@ impl Model {
                 self.start(Subject::Prefix(id), Verb::Delete, operation)
             }
             Action::CreateBottle { name, runner, arch } => {
-                self.create_prefix(name, runner, arch, None)
+                self.create_prefix(runner, arch, Action::RecordBottle { name })
             }
             Action::Rename(id, name) => self.change_collection(move |collection| {
                 if let Some(bottle) = collection.bottles.get_mut(&id) {
@@ -216,23 +230,9 @@ impl Model {
                     handle.edit(move |edit| edit.remove_component(slot))
                 })
             }
-            Action::Download(release) => {
-                let operation = self.core.catalogs().fetch::<AddonRole>(release);
-                self.start(
-                    Subject::Addon(release),
-                    Verb::Fetch { then_select: None },
-                    operation,
-                )
-            }
+            Action::Download(release) => self.fetch(release, None),
             Action::FetchRelease { prefix, release } => {
-                let operation = self.core.catalogs().fetch::<AddonRole>(release);
-                self.start(
-                    Subject::Addon(release),
-                    Verb::Fetch {
-                        then_select: Some(prefix),
-                    },
-                    operation,
-                )
+                self.fetch(release, Some(Action::UseRelease { prefix, release }))
             }
             Action::Edit(id, change) => self.on_prefix(id, Verb::Edit, move |prefix| {
                 prefix.edit(move |edit| {
@@ -278,7 +278,11 @@ impl Model {
                     return Task::none();
                 };
                 let spec = program_spec(&executable, &options);
-                self.create_prefix(name, runner, WineArch::Win64, Some(spec))
+                self.create_prefix(
+                    runner,
+                    WineArch::Win64,
+                    Action::RecordProgram { name, spec },
+                )
             }
             Action::AddToBottle {
                 prefix,
@@ -302,14 +306,11 @@ impl Model {
                     .into_iter()
                     .filter(|entry| !self.installed(entry))
                     .collect::<Vec<_>>();
-                Task::batch(pending.into_iter().map(|entry| {
-                    let operation = self.core.catalogs().fetch::<AddonRole>(entry.id());
-                    self.start(
-                        Subject::Addon(entry.id()),
-                        Verb::Fetch { then_select: None },
-                        operation,
-                    )
-                }))
+                Task::batch(
+                    pending
+                        .into_iter()
+                        .map(|entry| self.fetch(entry.id(), None)),
+                )
             }
             Action::CancelEssentials => {
                 for entry in self.essential_entries() {
@@ -364,15 +365,8 @@ impl Model {
         }
     }
 
-    /// Creates a prefix for a bottle named `name`, or with `program`, for a
-    /// standalone program.
-    fn create_prefix(
-        &mut self,
-        name: String,
-        runner: Uuid,
-        arch: WineArch,
-        program: Option<ProgramSpec>,
-    ) -> Task<Message> {
+    /// Creates a prefix, then records it with `record`.
+    fn create_prefix(&mut self, runner: Uuid, arch: WineArch, record: Action) -> Task<Message> {
         let (Some(runner), Some(winebridge)) = (
             self.sources.addons.release::<Runner>(runner),
             self.winebridge(),
@@ -393,15 +387,28 @@ impl Model {
         self.operations
             .start(
                 Subject::Creation(Uuid::new_v4()),
-                Verb::Create { name, program },
+                Verb::Create,
+                Some(record),
                 operation,
                 |prefix| Outcome::Created(prefix.id()),
             )
             .map(|(subject, event)| Message::Operation(subject, event))
     }
 
+    /// Performs `then`, the continuation of an operation that finished with
+    /// `outcome`.
+    pub(super) fn follow(&mut self, then: Action, outcome: Outcome) -> Task<Message> {
+        match (then, outcome) {
+            (Action::RecordBottle { name }, Outcome::Created(id)) => self.record_bottle(id, name),
+            (Action::RecordProgram { name, spec }, Outcome::Created(id)) => {
+                self.record_program(id, name, spec)
+            }
+            (then, _) => self.perform(then),
+        }
+    }
+
     /// Adds the record of a bottle whose prefix was created.
-    pub(super) fn record_bottle(&mut self, id: Uuid, name: String) -> Task<Message> {
+    fn record_bottle(&mut self, id: Uuid, name: String) -> Task<Message> {
         self.change_collection(move |collection| {
             collection.bottles.insert(
                 id,
@@ -415,12 +422,7 @@ impl Model {
 
     /// Adds the record of a standalone program whose prefix was created. Its
     /// process group is its prefix.
-    pub(super) fn record_program(
-        &mut self,
-        id: Uuid,
-        name: String,
-        spec: ProgramSpec,
-    ) -> Task<Message> {
+    fn record_program(&mut self, id: Uuid, name: String, spec: ProgramSpec) -> Task<Message> {
         self.change_collection(move |collection| {
             collection.programs.insert(id, ProgramRecord { name, spec });
         })
@@ -434,6 +436,20 @@ impl Model {
             None => collection.programs.get(&prefix).filter(|_| prefix == group),
         };
         program.map(|program| program.spec.clone())
+    }
+
+    /// Downloads `release`, then performs `then`.
+    fn fetch(&mut self, release: Uuid, then: Option<Action>) -> Task<Message> {
+        let operation = self.core.catalogs().fetch::<AddonRole>(release);
+        self.operations
+            .start(
+                Subject::Addon(release),
+                Verb::Fetch,
+                then,
+                operation,
+                |_| Outcome::Done,
+            )
+            .map(|(subject, event)| Message::Operation(subject, event))
     }
 
     fn on_prefix<T: Send + 'static>(
@@ -458,7 +474,7 @@ impl Model {
         operation: Operation<T>,
     ) -> Task<Message> {
         self.operations
-            .start(subject, verb, operation, |_| Outcome::Done)
+            .start(subject, verb, None, operation, |_| Outcome::Done)
             .map(|(subject, event)| Message::Operation(subject, event))
     }
 }

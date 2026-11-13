@@ -4,7 +4,7 @@ use bottles_core::{AddonRole, Component, Slot, WineArch};
 use uuid::Uuid;
 
 use super::{
-    Model,
+    Action, Model,
     operations::{Subject, Verb},
 };
 
@@ -22,7 +22,8 @@ pub(crate) struct AvailableRelease {
 pub(crate) struct ReleaseDownload {
     /// The fraction done, when the size is known.
     pub(crate) progress: Option<f32>,
-    /// The bottle the release is selected in once it's downloaded.
+    /// The bottle the release is selected in once it's downloaded, read
+    /// from the download's continuation.
     pub(crate) then_select: Option<Uuid>,
 }
 
@@ -92,15 +93,16 @@ impl Model {
                 download: self
                     .operations
                     .get(&Subject::Addon(entry.id()))
-                    .and_then(|pending| match pending.verb {
-                        Verb::Fetch { then_select } => Some(ReleaseDownload {
-                            progress: pending
-                                .progress
-                                .as_ref()
-                                .and_then(bottles_core::Progress::fraction),
-                            then_select,
-                        }),
-                        _ => None,
+                    .filter(|pending| pending.verb == Verb::Fetch)
+                    .map(|pending| ReleaseDownload {
+                        progress: pending
+                            .progress
+                            .as_ref()
+                            .and_then(bottles_core::Progress::fraction),
+                        then_select: match pending.then {
+                            Some(Action::UseRelease { prefix, .. }) => Some(prefix),
+                            _ => None,
+                        },
                     }),
             })
             .collect()
