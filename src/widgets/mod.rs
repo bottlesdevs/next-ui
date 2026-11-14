@@ -16,6 +16,17 @@ pub mod spacing {
     pub const XG: f32 = 32.0;
 }
 
+/// Widths that keep content readable on a wide window: readable content
+/// gets at most one of these.
+pub mod width {
+    /// A paragraph or a small group, e.g. a status page's description.
+    pub const NARROW: f32 = 500.0;
+    /// A column of text beside art, or a short page such as About.
+    pub const MEDIUM: f32 = 680.0;
+    /// A page's content, e.g. settings or the empty library.
+    pub const WIDE: f32 = 880.0;
+}
+
 /// Shared corner radii.
 pub mod radius {
     /// A single row, card or control.

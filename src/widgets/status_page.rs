@@ -5,7 +5,7 @@ use iced::{
 
 use crate::{Element, icons::Icon};
 
-use super::{spacing, text::TextExt as _, text_size};
+use super::{spacing, text::TextExt as _, text_size, width};
 
 const ICON_TILE: f32 = 88.0;
 
@@ -72,7 +72,7 @@ impl<'a, Message: 'a> From<StatusPage<'a, Message>> for Element<'a, Message> {
         if let Some(description) = page.description {
             content = content.push(
                 container(text(description).size(text_size::HEADING).muted().center())
-                    .max_width(460),
+                    .max_width(width::NARROW),
             );
         }
 

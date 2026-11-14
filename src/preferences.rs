@@ -12,7 +12,7 @@ use next_ui::{
     widget::{
         ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
         Popover, ProgressBar, RowGroup, Search, StatusPage, Tab, Tabs, Tag, TextExt as _, Title,
-        spacing, text_size,
+        spacing, text_size, width,
     },
 };
 
@@ -129,7 +129,7 @@ impl State {
         };
         let body = match body {
             PageBody::Content(content) => PageBody::Content(
-                container(container(content).max_width(880))
+                container(container(content).max_width(width::WIDE))
                     .center_x(Fill)
                     .into(),
             ),
@@ -494,7 +494,7 @@ fn about<'a>() -> Element<'a, Message> {
             )),
     ]
     .spacing(spacing::MD)
-    .max_width(640);
+    .max_width(width::MEDIUM);
 
     container(content).center_x(Fill).into()
 }

@@ -9,7 +9,7 @@ use next_ui::{
     Element, Icon, Theme, chrome, theme,
     widget::{
         ActionRow, Button, ButtonKind, InfoCard, InfoCardKind, InfoRow, RowGroup, TextExt as _,
-        spacing, text_size,
+        spacing, text_size, width,
     },
 };
 
@@ -141,7 +141,7 @@ impl State {
             next_button("Apply Experience").on_press(Message::ApplyExperience),
         ]
         .spacing(72)
-        .max_width(900)
+        .max_width(width::WIDE)
         .align_x(Horizontal::Center)
         .into()
     }
@@ -199,7 +199,7 @@ impl State {
         };
         column![
             title("Almost Done", "Bottles needs these resources to be ready."),
-            container(group).width(Fill).max_width(500),
+            container(group).width(Fill).max_width(width::NARROW),
             action,
         ]
         .spacing(72)
@@ -276,7 +276,7 @@ fn tutorial_view(index: usize) -> Element<'static, Message> {
             icon,
             column![title(heading, ""), text(body).body().muted()]
                 .spacing(20)
-                .max_width(700)
+                .max_width(width::MEDIUM)
         ]
         .spacing(48)
         .align_y(Vertical::Center),

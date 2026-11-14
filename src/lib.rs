@@ -64,5 +64,6 @@ pub mod widget {
         text_row::TextRow,
         text_size,
         title::Title,
+        width,
     };
 }

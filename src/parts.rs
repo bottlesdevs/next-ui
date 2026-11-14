@@ -8,7 +8,7 @@ use next_ui::{
     Element, Icon, Theme, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
-        ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size,
+        ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size, width,
     },
 };
 
@@ -174,7 +174,7 @@ fn suggestions<'a, Message: Clone + 'a>(
         add,
     ]
     .spacing(spacing::MD)
-    .max_width(820);
+    .max_width(width::WIDE);
     container(content).center(Fill).padding(24).into()
 }
 
