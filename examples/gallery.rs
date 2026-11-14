@@ -1,5 +1,5 @@
 use iced::{
-    Center, Fill, Subscription, Task,
+    Fill, Subscription, Task,
     widget::{Space, column, container, grid, image, row, scrollable, text},
 };
 use next_ui::{
@@ -8,7 +8,7 @@ use next_ui::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
         ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,
         ProgressRing, RowGroup, Search, SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow,
-        Tab, Tabs, TextExt as _, TextRow, Title, WindowModal, text_size,
+        Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
     },
 };
 
@@ -535,49 +535,11 @@ impl Gallery {
 }
 
 fn action_tile_example<'a>(active: bool) -> ActionTile<'a, Message> {
-    const ICON_CONTAINER_SIZE: f32 = 44.0;
-
-    let icon = container(Icon::Plus.view().width(16).height(16))
-        .width(ICON_CONTAINER_SIZE)
-        .height(ICON_CONTAINER_SIZE)
-        .align_x(Center)
-        .align_y(Center)
-        .style(|theme: &Theme| {
-            container::Style::default()
-                .background(theme.colors().card)
-                .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
-        });
-    let labels = column![
-        text(if active {
-            "New Program"
-        } else {
-            "Unavailable target"
-        })
-        .size(text_size::HEADING)
-        .medium(),
-        text(if active {
-            "Install or add a program."
-        } else {
-            "Activation is disabled."
-        })
-        .size(text_size::SMALL),
-    ]
-    .spacing(6);
-
-    let content = container(row![icon, labels].spacing(16).align_y(Center))
-        .center_x(Fill)
-        .center_y(Fill);
-
     if active {
-        ActionTile::new(content, Message::OpenDialog)
-            .width(Fill)
-            .height(Fill)
-            .padding(24)
+        ActionTile::new(Icon::Plus, "New Program", "Install or add a program.")
+            .on_press(Message::OpenDialog)
     } else {
-        ActionTile::disabled(content)
-            .width(Fill)
-            .height(Fill)
-            .padding(24)
+        ActionTile::new(Icon::Plus, "Unavailable target", "Activation is disabled.")
     }
 }
 

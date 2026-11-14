@@ -6,7 +6,7 @@ use iced::{
     widget::{Grid, column, container, responsive, row, text},
 };
 use next_ui::{
-    Element, Icon, Theme,
+    Element, Icon,
     layout::PageBody,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, CardAction, CycleRow, ExpanderRow,
@@ -175,30 +175,8 @@ pub(super) fn programs<'a>(bottle: Bottle<'a>, model: &'a Model) -> Element<'a, 
 }
 
 fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
-    let icon = container(Icon::Plus.view().width(16).height(16))
-        .width(44)
-        .height(44)
-        .align_x(Center)
-        .align_y(Center)
-        .style(|theme: &Theme| {
-            container::Style::default()
-                .background(theme.colors().card)
-                .border(iced::Border::default().rounded(22))
-        });
-    let labels = column![
-        text("New Program").size(text_size::HEADING).medium(),
-        text("Install or add a program.").size(text_size::SMALL)
-    ]
-    .spacing(spacing::XS);
-    ActionTile::new(
-        container(row![icon, labels].spacing(16).align_y(Center))
-            .center_x(Fill)
-            .center_y(Fill),
-        Message::AddProgram(Some(bottle)),
-    )
-    .width(Fill)
-    .height(Fill)
-    .padding(spacing::LG)
+    ActionTile::new(Icon::Plus, "New Program", "Install or add a program.")
+        .on_press(Message::AddProgram(Some(bottle)))
 }
 
 /// The settings of `bottle`.

@@ -1,86 +1,81 @@
 use iced::{
-    Border, Length, Padding, Point, Rectangle, Renderer, border,
-    widget::{button, canvas, container, stack},
+    Alignment, Border, Length, Point, Rectangle, Renderer, border,
+    widget::{
+        button, canvas, column, container, row, stack, text,
+        text::{Fragment, IntoFragment},
+    },
 };
 
 use super::focusable_action::{ActionState, FocusableAction};
-use super::radius;
-use crate::{Element, Theme};
+use super::text::TextExt as _;
+use super::{radius, spacing, text_size};
+use crate::{Element, Theme, icons::Icon};
 
 const BORDER_WIDTH: f32 = 2.0;
 const DASH_PATTERN: &[f32] = &[6.0, 6.0];
 
-/// A dashed activation surface.
+const DISC: f32 = 44.0;
+const DISC_ICON: f32 = 16.0;
+
+/// A dashed tile that starts something new, e.g. adding a program: an icon
+/// in a disc beside a title and subtitle, centered in whatever space it is
+/// given. Without [`on_press`](Self::on_press) it is disabled.
 pub struct ActionTile<'a, Message> {
-    content: Element<'a, Message>,
-    on_activate: Option<Message>,
-    width: Length,
-    height: Length,
-    padding: Padding,
+    icon: Icon,
+    title: Fragment<'a>,
+    subtitle: Fragment<'a>,
+    on_press: Option<Message>,
 }
 
 impl<'a, Message> ActionTile<'a, Message> {
-    pub fn new(content: impl Into<Element<'a, Message>>, message: Message) -> Self {
+    pub fn new(icon: Icon, title: impl IntoFragment<'a>, subtitle: impl IntoFragment<'a>) -> Self {
         Self {
-            content: content.into(),
-            on_activate: Some(message),
-            width: Length::Shrink,
-            height: Length::Shrink,
-            padding: Padding::ZERO,
+            icon,
+            title: title.into_fragment(),
+            subtitle: subtitle.into_fragment(),
+            on_press: None,
         }
     }
 
-    pub fn disabled(content: impl Into<Element<'a, Message>>) -> Self {
-        Self {
-            content: content.into(),
-            on_activate: None,
-            width: Length::Shrink,
-            height: Length::Shrink,
-            padding: Padding::ZERO,
-        }
+    pub fn on_press(self, message: Message) -> Self {
+        self.on_press_maybe(Some(message))
     }
 
-    pub fn width(mut self, width: impl Into<Length>) -> Self {
-        self.width = width.into();
-        self
-    }
-
-    pub fn height(mut self, height: impl Into<Length>) -> Self {
-        self.height = height.into();
-        self
-    }
-
-    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
-        self.padding = padding.into();
+    pub fn on_press_maybe(mut self, message: Option<Message>) -> Self {
+        self.on_press = message;
         self
     }
 }
 
 impl<'a, Message: Clone + 'a> From<ActionTile<'a, Message>> for Element<'a, Message> {
-    fn from(target: ActionTile<'a, Message>) -> Self {
-        let ActionTile {
-            content,
-            on_activate,
-            width,
-            height,
-            padding,
-        } = target;
+    fn from(tile: ActionTile<'a, Message>) -> Self {
+        let disc = container(tile.icon.view().width(DISC_ICON).height(DISC_ICON))
+            .center(DISC)
+            .style(|theme: &Theme| {
+                container::Style::default()
+                    .background(theme.colors().card)
+                    .border(Border::default().rounded(DISC / 2.0))
+            });
+        let labels = column![
+            text(tile.title).size(text_size::HEADING).medium(),
+            text(tile.subtitle).size(text_size::SMALL),
+        ]
+        .spacing(spacing::XS);
         let content = stack![
-            container(content)
-                .width(width)
-                .height(height)
-                .padding(padding),
+            container(row![disc, labels].spacing(16).align_y(Alignment::Center))
+                .center(Length::Fill)
+                .padding(spacing::LG),
             canvas::Canvas::new(Outline)
                 .width(Length::Fill)
                 .height(Length::Fill),
         ]
-        .width(width)
-        .height(height);
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         FocusableAction::new(content)
-            .on_press_maybe(on_activate)
-            .width(width)
-            .height(height)
+            .on_press_maybe(tile.on_press)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(style)
             .into()
     }
@@ -134,21 +129,5 @@ impl<Message> canvas::Program<Message, Theme> for Outline {
         );
 
         vec![frame.into_geometry()]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use iced::widget::Space;
-
-    use super::*;
-
-    #[test]
-    fn constructors_make_activation_explicit() {
-        let disabled: ActionTile<'_, ()> = ActionTile::disabled(Space::new());
-        assert!(disabled.on_activate.is_none());
-
-        let active = ActionTile::new(Space::new(), ());
-        assert_eq!(active.on_activate, Some(()));
     }
 }
