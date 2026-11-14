@@ -5,7 +5,7 @@ mod bottle;
 use bottles_core::{PrefixBackend, WineArch};
 use iced::{Element, Fill, widget::column};
 use next_ui::{
-    Icon, chrome,
+    Icon,
     layout::{self, PageBody, PaneContext, Side, navigation_split, side_panel},
     widget::{Dialog, ListRow, Popover, Tab, Tabs, Title, WindowModal, header_button},
 };
@@ -72,7 +72,6 @@ pub enum Message {
     Delete,
     Dismiss,
     Act(Action),
-    Window(chrome::Action),
     Control(Control),
     OpenPreferences,
     /// Opens Add Program for a bottle, or from the Library for the selected
@@ -163,7 +162,6 @@ impl State {
             Message::Delete => return Some(Request::Act(Action::Delete(self.deleting.take()?))),
             Message::Dismiss => self.deleting = None,
             Message::Act(action) => return Some(Request::Act(action)),
-            Message::Window(action) => return Some(Request::Window(action)),
             Message::OpenPreferences => return Some(Request::OpenPreferences),
         }
         None
@@ -231,7 +229,7 @@ impl State {
         )
         .height(Fill);
         let has_bottles = !model.bottles().is_empty();
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             let header = parts::app_controls(header, model, pane, Message::Control);
             let header = header.start(parts::app_menu(
                 Experience::Classic,
@@ -267,7 +265,7 @@ impl State {
             return column![].into();
         };
         let can_create = self.can_create(model);
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             header
                 .start(parts::header_button(
                     "Cancel creation",
@@ -303,7 +301,7 @@ impl State {
         .into_iter()
         .chain(snapshots);
         let tabs = Tabs::new(tabs, Some(self.detail_tab), Message::Detail).height(Fill);
-        let header = pane.header(Message::Window(chrome::Action::Drag), |mut header| {
+        let header = pane.header(|mut header| {
             if pane.is_standalone() {
                 header = header.start(parts::header_button(
                     "Back to bottles",

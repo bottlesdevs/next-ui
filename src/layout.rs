@@ -15,7 +15,7 @@ use crate::{
     chrome::{self, WINDOW_CONTROL_AT_START},
     theme,
     widget::{HeaderBar, spacing},
-    widgets::focus::event_cursor,
+    widgets::{focus::event_cursor, inert::inert},
 };
 
 const BREAKPOINT: f32 = 900.0;
@@ -52,10 +52,9 @@ impl PaneContext {
 
     pub fn header<'a, Message: Clone + 'a>(
         self,
-        on_drag: Message,
         build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,
     ) -> Element<'a, Message> {
-        chrome::header(on_drag, self.owns_window_control, build)
+        chrome::header(self.owns_window_control, build)
     }
 }
 
@@ -72,10 +71,6 @@ enum Kind {
 }
 
 impl Kind {
-    fn base_is_blocked(self, show_second: bool, progress: f32) -> bool {
-        matches!(self, Self::SidePanel(_)) && (show_second || progress > 0.0)
-    }
-
     fn contexts(
         self,
         wide: bool,
@@ -139,6 +134,11 @@ pub fn side_panel<'a, Message: 'a>(
     base: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
     panel: impl Fn(PaneContext) -> Element<'a, Message> + 'a,
 ) -> Element<'a, Message> {
+    // The panel is modal over the base.
+    let base = move |pane| match open {
+        true => inert(base(pane)),
+        false => base(pane),
+    };
     adaptive_split(Kind::SidePanel(side), open, base, panel)
 }
 
@@ -248,12 +248,6 @@ struct AnimatedSplit<'a, Message> {
     kind: Kind,
 }
 
-impl<'a, Message> AnimatedSplit<'a, Message> {
-    fn base_is_blocked(&self, progress: f32) -> bool {
-        self.kind.base_is_blocked(self.show_second, progress)
-    }
-}
-
 #[derive(Debug)]
 struct State {
     transition: Animation<bool>,
@@ -348,7 +342,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
     ) {
         let bounds = layout.bounds();
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
-        let base_blocked = self.base_is_blocked(progress);
         operation.container(None, bounds);
         operation.traverse(&mut |operation| {
             for (_index, ((child, tree), child_layout)) in self
@@ -358,7 +351,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                 .zip(layout.children())
                 .enumerate()
                 .filter(|(index, (_, child_layout))| {
-                    pane_is_interactive(*index, self.wide, progress, base_blocked)
+                    pane_is_active(*index, self.wide, progress)
                         && child_layout.bounds().intersects(&bounds)
                 })
             {
@@ -391,10 +384,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
 
         let bounds = layout.bounds();
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
-        let base_blocked = self.base_is_blocked(progress);
 
         for (index, child_layout) in layout.children().enumerate().rev() {
-            if !pane_is_interactive(index, self.wide, progress, base_blocked)
+            if !pane_is_active(index, self.wide, progress)
                 || !child_layout.bounds().intersects(&bounds)
             {
                 continue;
@@ -434,8 +426,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         let mut layouts = layout.children();
         let master = layouts.next().expect("master layout");
         let detail = layouts.next().expect("detail layout");
-        let base_blocked = self.base_is_blocked(progress);
-        let index = if pane_is_interactive(1, self.wide, progress, base_blocked)
+        let index = if pane_is_active(1, self.wide, progress)
             && detail.bounds().intersects(&bounds)
             && cursor.is_over(detail.bounds())
         {
@@ -443,10 +434,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
         } else {
             0
         };
-
-        if index == 0 && base_blocked {
-            return mouse::Interaction::default();
-        }
 
         let child_layout = [master, detail][index];
 
@@ -538,20 +525,6 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
     ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
         let progress = tree.state.downcast_ref::<State>().progress(Instant::now());
 
-        if self.base_is_blocked(progress) {
-            if progress <= 0.0 {
-                return None;
-            }
-
-            return self.children[1].as_widget_mut().overlay(
-                &mut tree.children[1],
-                layout.children().nth(1).expect("detail layout"),
-                renderer,
-                viewport,
-                translation,
-            );
-        }
-
         if progress <= 0.0 {
             return self.children[0].as_widget_mut().overlay(
                 &mut tree.children[0],
@@ -589,10 +562,6 @@ fn pane_is_active(index: usize, wide: bool, progress: f32) -> bool {
         1 => progress > 0.0,
         _ => false,
     }
-}
-
-fn pane_is_interactive(index: usize, wide: bool, progress: f32, base_blocked: bool) -> bool {
-    pane_is_active(index, wide, progress) && (index != 0 || !base_blocked)
 }
 
 fn pane_bounds(size: Size, wide: bool, progress: f32, kind: Kind) -> [Rectangle; 2] {
@@ -720,8 +689,6 @@ mod tests {
         assert_eq!(open_master.size(), Size::new(420.0, 1000.0));
         assert_eq!(open_detail.position(), Point::new(432.0, 0.0));
         assert_eq!(open_detail.size(), Size::new(1168.0, 1000.0));
-        assert!(pane_is_interactive(0, true, 1.0, false));
-        assert!(pane_is_interactive(1, true, 1.0, false));
     }
 
     #[test]
@@ -764,18 +731,6 @@ mod tests {
         assert_eq!(end_open_base.size(), size);
         assert_eq!(end_open_panel.position(), Point::new(1180.0, 0.0));
         assert_eq!(end_open_panel.size(), Size::new(420.0, 1000.0));
-    }
-
-    #[test]
-    fn side_panels_block_the_base_until_the_transition_finishes() {
-        let side_panel = Kind::SidePanel(Side::End);
-
-        assert!(!side_panel.base_is_blocked(false, 0.0));
-        assert!(side_panel.base_is_blocked(true, 0.0));
-        assert!(side_panel.base_is_blocked(false, 0.5));
-        assert!(!Kind::Navigation(root_context()).base_is_blocked(true, 1.0));
-        assert!(!pane_is_interactive(0, true, 1.0, true));
-        assert!(pane_is_interactive(1, true, 1.0, true));
     }
 
     #[test]

@@ -454,7 +454,7 @@ impl Gallery {
         ]
         .spacing(18);
 
-        let header = chrome::header(Message::Window(chrome::Action::Drag), true, |header| {
+        let header = chrome::header(true, |header| {
             header.middle(
                 iced::widget::container(
                     Search::new(

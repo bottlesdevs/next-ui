@@ -3,7 +3,7 @@
 use bottles_core::Slot;
 use iced::{Element, Fill, widget::text};
 use next_ui::{
-    Icon, chrome,
+    Icon,
     layout::{self, PageBody, PaneContext},
     widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing, text_size},
 };
@@ -27,7 +27,6 @@ pub enum Message {
     Select(Uuid),
     Back,
     Act(Action),
-    Window(chrome::Action),
     Control(Control),
     OpenPreferences,
     AddProgram,
@@ -44,7 +43,6 @@ impl State {
     pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
             Message::Control(control) => return Some(Request::Control(control)),
-            Message::Window(action) => return Some(Request::Window(action)),
             Message::OpenPreferences => return Some(Request::OpenPreferences),
             Message::Act(action) => return Some(Request::Act(action)),
             Message::QueryChanged(query) => self.query = query,
@@ -73,7 +71,7 @@ impl State {
         pane: PaneContext,
         selected: bool,
     ) -> Element<'a, Message> {
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             let header = header.start(parts::app_menu(
                 Experience::Next,
                 Message::OpenPreferences,
@@ -114,13 +112,13 @@ impl State {
     fn detail_view<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
         let Some(program) = self.selected(model) else {
             return layout::page(
-                pane.header(Message::Window(chrome::Action::Drag), |header| header),
+                pane.header(|header| header),
                 PageBody::content(text("No program selected")),
             );
         };
         let stop = Message::Act(Action::Stop(program.prefix));
         let running = model.activity(&program.target().subject()) == Activity::Running;
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             let header = if pane.is_standalone() {
                 header.start(parts::header_button(
                     "Back to library",

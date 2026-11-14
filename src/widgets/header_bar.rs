@@ -1,6 +1,6 @@
 use iced::{
     Background, Border, Center, Element, Fill, Length, Theme,
-    widget::{Row, container, mouse_area, row},
+    widget::{Row, container, row},
 };
 
 use crate::{icons::Icon, theme};
@@ -8,6 +8,7 @@ use crate::{icons::Icon, theme};
 use super::{
     button::{Button, ButtonKind},
     header, radius, spacing,
+    window_handle::WindowHandle,
 };
 
 /// Builds a header-sized icon button; the caller supplies its action.
@@ -23,20 +24,20 @@ pub struct HeaderBar<'a, Message> {
     middle: Vec<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
     transparent: bool,
-    on_drag: Message,
 }
 
-impl<'a, Message> HeaderBar<'a, Message> {
-    pub fn new(on_drag: Message) -> Self {
+impl<Message> Default for HeaderBar<'_, Message> {
+    fn default() -> Self {
         Self {
             start: Vec::new(),
             middle: Vec::new(),
             end: Vec::new(),
             transparent: false,
-            on_drag,
         }
     }
+}
 
+impl<'a, Message> HeaderBar<'a, Message> {
     pub fn start(mut self, content: impl Into<Element<'a, Message>>) -> Self {
         self.start.push(content.into());
         self
@@ -58,14 +59,13 @@ impl<'a, Message> HeaderBar<'a, Message> {
     }
 }
 
-impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
+impl<'a, Message: 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
     fn from(header: HeaderBar<'a, Message>) -> Self {
         let HeaderBar {
             start,
             middle,
             end,
             transparent,
-            on_drag,
         } = header;
 
         // The sides share what the middle leaves equally, so the middle sits
@@ -97,7 +97,7 @@ impl<'a, Message: Clone + 'a> From<HeaderBar<'a, Message>> for Element<'a, Messa
             content = content.style(style);
         }
 
-        mouse_area(content).on_press(on_drag).into()
+        WindowHandle::new(content).into()
     }
 }
 
