@@ -6,7 +6,7 @@ use iced::{
     widget::{Space, column, row, text},
 };
 use next_ui::{
-    Icon, chrome,
+    Icon,
     layout::{self, PageBody, PaneContext},
     widget::{
         ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, RowGroup, TextExt as _, TextRow,
@@ -43,7 +43,6 @@ pub enum Message {
     Unlink(Uuid),
     /// Closes a confirmation without doing anything.
     Dismiss,
-    Window(chrome::Action),
 }
 
 impl State {
@@ -89,7 +88,6 @@ impl State {
             }
             Message::Unlink(link) => return Some(Request::Act(Action::Unlink(link))),
             Message::Dismiss => {}
-            Message::Window(action) => return Some(Request::Window(action)),
         }
         None
     }
@@ -102,7 +100,7 @@ impl State {
 
     /// The Manage Profiles side pane.
     pub fn pane<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             header
                 .start(parts::header_button(
                     "Close profiles",

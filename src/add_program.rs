@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use iced::{Element, widget::column};
 use next_ui::{
-    Icon, chrome,
+    Icon,
     layout::{self, PageBody, PaneContext},
     widget::{PickerRow, TextRow, Title, spacing},
 };
@@ -39,7 +39,6 @@ pub enum Message {
     PickFile,
     Add,
     Cancel,
-    Window(chrome::Action),
 }
 
 /// What the screen holding the pane does next.
@@ -48,7 +47,6 @@ pub enum Event {
     PickFile,
     Act(Action),
     Close,
-    Window(chrome::Action),
 }
 
 impl State {
@@ -78,7 +76,6 @@ impl State {
             Message::Options(options) => self.options = options,
             Message::PickFile => return Some(Event::PickFile),
             Message::Cancel => return Some(Event::Close),
-            Message::Window(action) => return Some(Event::Window(action)),
             Message::Add => {
                 let executable = self.file.clone().filter(|_| self.can_add())?;
                 let (name, options) = (self.name.trim().to_owned(), self.options.clone());
@@ -113,7 +110,7 @@ impl State {
             ),
         };
         let can_add = self.can_add();
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             header
                 .start(parts::header_button("Cancel", Icon::Arrow, Message::Cancel))
                 .middle(Title::new("Add Program").subtitle(subtitle))

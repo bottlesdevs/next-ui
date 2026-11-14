@@ -52,7 +52,6 @@ pub enum Message {
     NextTutorial,
     Refresh,
     Act(Action),
-    Window(chrome::Action),
 }
 
 impl State {
@@ -65,7 +64,6 @@ impl State {
 
     pub fn update(&mut self, message: Message) -> Option<Request> {
         match message {
-            Message::Window(action) => return Some(Request::Window(action)),
             Message::Act(action) => return Some(Request::Act(action)),
             Message::SelectExperience(experience) => self.experience = experience,
             Message::ApplyExperience => {
@@ -211,9 +209,7 @@ impl State {
 }
 
 pub(crate) fn shell<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    let header = chrome::header(Message::Window(chrome::Action::Drag), true, |header| {
-        header.transparent(true)
-    });
+    let header = chrome::header(true, |header| header.transparent(true));
     container(
         column![
             header,

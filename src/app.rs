@@ -63,7 +63,6 @@ impl Screen {
 /// What a screen asks of the shell.
 pub(crate) enum Request {
     Act(Action),
-    Window(chrome::Action),
     OpenPreferences,
     ClosePreferences,
     /// Opens the Add Program pane for programs going to `target`.
@@ -377,7 +376,6 @@ impl Ready {
             {
                 None => None,
                 Some(add_program::Event::PickFile) => return pick_program(Pick::AddProgram),
-                Some(add_program::Event::Window(action)) => Some(Request::Window(action)),
                 Some(add_program::Event::Close) => {
                     self.adding_open = false;
                     None
@@ -400,7 +398,6 @@ impl Ready {
 
     fn request(&mut self, request: Request) -> Task<Message> {
         match request {
-            Request::Window(action) => return Task::done(Message::Window(action)),
             Request::Act(action) => {
                 if let Action::SwitchExperience(experience) = action {
                     // The panes belong to the screen they were opened from.
@@ -491,7 +488,7 @@ fn shutdown(model: &Model) -> Task<Message> {
 
 fn status<'a>(title: &'a str, description: &'a str) -> Element<'a, Message> {
     use iced::widget::{column, container, text};
-    let header = chrome::header(Message::Window(chrome::Action::Drag), true, |header| header);
+    let header = chrome::header(true, |header| header);
     column![
         header,
         container(column![text(title).size(text_size::DISPLAY), text(description)].spacing(12))
