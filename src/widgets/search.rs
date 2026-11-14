@@ -23,8 +23,8 @@ use super::{
 pub enum SearchState<'a, Message> {
     Hidden,
     Loading,
-    /// Rows to pick from, each pressed as a whole and possibly holding a
-    /// trailing control.
+    /// Rows to pick from, each one item: pressed as a whole, with any
+    /// trailing control showing the row's action rather than taking focus.
     Results(Vec<ListRow<'a, Message>>),
     Empty,
     Error(&'a str),

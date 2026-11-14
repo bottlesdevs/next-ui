@@ -11,6 +11,7 @@ use crate::{Element, Theme, icons::Icon};
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
+    inert::inert,
     radius,
     sensitive::sensitive,
     size_group::{Key, Shared},
@@ -219,7 +220,9 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
-    /// Fits the row into a popup's list on `menu`.
+    /// Fits the row into a popup's list on `menu`, as one item: the keyboard
+    /// and pointer act on the row, and any controls it shows are part of
+    /// that item, taking no focus or input of their own.
     pub(crate) fn menu(mut self, menu: Menu) -> Self {
         self.menu = Some(menu);
         self.padding = Padding::from([spacing::XS, spacing::MD]);
@@ -361,7 +364,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
         let content = row.into_content(false);
 
         let row: Element<'a, Message> = if let Some(menu) = menu {
-            FocusableAction::new(content)
+            FocusableAction::new(inert(content))
                 .width(Fill)
                 .selected(selected)
                 .on_press_maybe(on_press)

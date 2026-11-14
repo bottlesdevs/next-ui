@@ -1,6 +1,6 @@
 use iced::{
     Center, Fill, Subscription, Task,
-    widget::{Space, column, container, grid, image, row, scrollable, text, tooltip},
+    widget::{Space, column, container, grid, image, row, scrollable, text},
 };
 use next_ui::{
     Element, Icon, Theme, chrome, theme,
@@ -269,25 +269,11 @@ impl Gallery {
                     .on_press(Message::Noop),
             )
             .item(
-                ListRow::labeled("Available account")
-                    .subtitle("Trailing action is the only interactive target")
-                    .trailing(
-                        Button::new("Link")
-                            .kind(ButtonKind::Surface)
-                            .on_press(Message::Noop),
-                    ),
+                ListRow::labeled("Link account")
+                    .subtitle("Available")
+                    .on_press(Message::Noop),
             )
-            .item(
-                ListRow::labeled("Unavailable account").trailing(
-                    tooltip(
-                        Button::new("Taken").kind(ButtonKind::Surface),
-                        text("Already linked to another profile"),
-                        tooltip::Position::Top,
-                    )
-                    .style(theme::surface(theme::Surface::Card))
-                    .padding(12),
-                ),
-            )
+            .item(ListRow::labeled("Unavailable account").subtitle("Already linked"))
             .item(ListRow::labeled("Manage profiles").on_press(Message::Noop));
         let popovers = column![popover].spacing(12);
         let fields = column![
