@@ -29,6 +29,8 @@ const INITIAL_LOG_RATIO: f32 = 0.3;
 const RESIZE_TARGET_HEIGHT: f32 = 8.0;
 const UNBOUNDED_LOG_HEIGHT: f32 = 180.0;
 const ICON_SIZE: f32 = 16.0;
+/// The bar's height, which the log toggle's target fills.
+const BAR_HEIGHT: f32 = 28.0;
 
 /// Domain-neutral status presentation.
 pub struct StatusBar<'a> {
@@ -60,7 +62,10 @@ impl<'a> StatusBar<'a> {
 
     fn header<Message: Clone + 'a>(self, toggle: Option<Message>) -> Element<'a, Message> {
         let danger = self.danger;
-        let mut header = row![].spacing(spacing::LG).align_y(Vertical::Center);
+        let mut header = row![]
+            .spacing(spacing::LG)
+            .height(BAR_HEIGHT)
+            .align_y(Vertical::Center);
 
         for (icon, label) in self.details {
             header = header.push(
@@ -95,7 +100,7 @@ impl<'a> StatusBar<'a> {
         if let Some(message) = toggle {
             header = header.push(
                 Button::icon_only("Toggle log", Icon::Computer)
-                    .diameter(ICON_SIZE)
+                    .diameter(BAR_HEIGHT)
                     .icon_size(ICON_SIZE)
                     .kind(ButtonKind::Flat)
                     .on_press(message),
@@ -109,9 +114,7 @@ impl<'a> StatusBar<'a> {
                 fill_mode: rule::FillMode::Full,
                 snap: true,
             }),
-            container(header)
-                .width(Fill)
-                .padding([spacing::XS, spacing::MD]),
+            container(header).width(Fill).padding([0.0, spacing::MD]),
         ]
         .into()
     }

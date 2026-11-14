@@ -14,6 +14,9 @@ use super::{button::Button, card::Card, spacing, text::TextExt as _};
 
 const ACTION_DIAMETER: f32 = 40.0;
 const PRIMARY_ACTION_DIAMETER: f32 = 48.0;
+/// The menu button's target; its icon stays 16px.
+const MENU_DIAMETER: f32 = 32.0;
+const MENU_ICON: f32 = 16.0;
 
 pub struct CardAction<'a, Message> {
     label: &'a str,
@@ -105,8 +108,8 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
                 action
                     .button()
                     .kind(ButtonKind::Flat)
-                    .diameter(16.0)
-                    .icon_size(16.0),
+                    .diameter(MENU_DIAMETER)
+                    .icon_size(MENU_ICON),
             );
         }
 
@@ -128,8 +131,9 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             );
         }
 
+        // Inset so the icon, not the larger target, sits `SM` from the corner.
         let menu = container(menu)
-            .padding(spacing::SM)
+            .padding(spacing::SM - (MENU_DIAMETER - MENU_ICON) / 2.0)
             .width(Fill)
             .height(Fill);
         let artwork: Element<'a, Message> = match card.banner {
