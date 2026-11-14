@@ -4,7 +4,7 @@ use iced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
-    widget::{Column, button, column, container, scrollable, text},
+    widget::{Column, button, column, container, rule, scrollable, text},
 };
 
 use crate::{Element, Theme, icons::Icon};
@@ -173,14 +173,7 @@ where
         let popup = selector.popup;
         let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING)).width(Fill);
         // The options continue the row: a hairline marks where the row ends.
-        let list = column![
-            container(iced::widget::Space::new().height(1))
-                .width(Fill)
-                .style(|theme: &Theme| {
-                    container::Style::default().background(theme.colors().selected)
-                }),
-            list,
-        ];
+        let list = column![rule::horizontal(1), list,];
         let panel = container(list).width(Fill).style(move |theme| {
             container::Style::default()
                 .background(theme.colors().raised)

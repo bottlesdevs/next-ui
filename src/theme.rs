@@ -435,9 +435,11 @@ impl progress_bar::Catalog for Theme {
 impl rule::Catalog for Theme {
     type Class<'a> = rule::StyleFn<'a, Self>;
 
+    /// Every separator: the text color, faintly, so one line suits any
+    /// surface.
     fn default<'a>() -> Self::Class<'a> {
         Box::new(|theme| rule::Style {
-            color: theme.colors().raised,
+            color: theme.colors().text.scale_alpha(0.15),
             radius: 0.0.into(),
             fill_mode: rule::FillMode::Full,
             snap: true,

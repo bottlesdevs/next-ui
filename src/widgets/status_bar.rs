@@ -108,12 +108,7 @@ impl<'a> StatusBar<'a> {
         }
 
         column![
-            rule::horizontal(1).style(|theme: &Theme| rule::Style {
-                color: theme.colors().raised,
-                radius: 0.0.into(),
-                fill_mode: rule::FillMode::Full,
-                snap: true,
-            }),
+            rule::horizontal(1),
             container(header).width(Fill).padding([0.0, spacing::MD]),
         ]
         .into()

@@ -1,14 +1,14 @@
 use std::cell::Cell;
 
 use iced::{
-    Event, Fill, Length, Rectangle, Size, Vector,
+    Event, Length, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
     },
     keyboard::{self, key},
     touch,
-    widget::{Space, container},
+    widget::{container, rule},
 };
 
 use super::{
@@ -430,14 +430,9 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
 
 /// A hairline between groups of rows in a popup's list.
 pub(super) fn separator<'a, Message: 'a>() -> Element<'a, Message> {
-    container(
-        container(Space::new())
-            .width(Fill)
-            .height(1)
-            .style(|theme: &Theme| container::Style::default().background(theme.colors().hovered)),
-    )
-    .padding([spacing::XS, spacing::SM])
-    .into()
+    container(rule::horizontal(1))
+        .padding([spacing::XS, spacing::SM])
+        .into()
 }
 
 impl<'a, Message: Clone + 'a> From<Popup<'a, Message>> for Element<'a, Message> {

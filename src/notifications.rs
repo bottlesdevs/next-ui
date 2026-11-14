@@ -2,7 +2,7 @@
 
 use iced::{
     Alignment, Fill,
-    widget::{Space, column, container, mouse_area, responsive, row, scrollable, text},
+    widget::{column, container, mouse_area, responsive, row, rule, scrollable, text},
 };
 use uuid::Uuid;
 
@@ -264,9 +264,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     container(
         row![
             label(toggle, Message::ExpandNotifications),
-            container(Space::new().width(1).height(18)).style(|theme: &Theme| {
-                container::Style::default().background(theme.colors().selected)
-            }),
+            container(rule::vertical(1)).height(18),
             label("Dismiss All".to_owned(), Message::DismissAllNotifications),
         ]
         .spacing(14)
