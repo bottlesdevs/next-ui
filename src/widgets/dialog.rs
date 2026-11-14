@@ -14,6 +14,7 @@ use crate::theme::{self, Surface};
 use super::{
     button::{Button, ButtonKind},
     focus::{cycle_descendant_focus, event_cursor, focus_first_descendant},
+    inert::inert,
     text::TextExt as _,
     text_size,
 };
@@ -119,11 +120,7 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
     fn from(modal: WindowModal<'a, Message>) -> Self {
         let open = modal.dialog.is_some();
         let base: Element<'a, Message> = container(modal.base).width(Fill).height(Fill).into();
-        let base = if open {
-            Element::new(ModalBase { content: base })
-        } else {
-            base
-        };
+        let base = if open { inert(base) } else { base };
         let mut layers = stack![base].width(Fill).height(Fill);
 
         if let Some(dialog) = modal.dialog {
@@ -138,57 +135,6 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
         }
 
         layers.into()
-    }
-}
-
-/// Draws the base without forwarding input, focus operations, or overlays.
-struct ModalBase<'a, Message> {
-    content: Element<'a, Message>,
-}
-
-impl<Message> Widget<Message, Theme, iced::Renderer> for ModalBase<'_, Message> {
-    fn tag(&self) -> tree::Tag {
-        self.content.as_widget().tag()
-    }
-
-    fn state(&self) -> tree::State {
-        self.content.as_widget().state()
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        self.content.as_widget().children()
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        self.content.as_widget().diff(tree);
-    }
-
-    fn size(&self) -> Size<Length> {
-        self.content.as_widget().size()
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &iced::Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        self.content.as_widget_mut().layout(tree, renderer, limits)
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        self.content
-            .as_widget()
-            .draw(tree, renderer, theme, style, layout, cursor, viewport);
     }
 }
 

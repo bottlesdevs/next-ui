@@ -5,6 +5,11 @@ use iced::{
 };
 
 use iced::{
+    Event, Length, Rectangle, Size, Theme, Vector,
+    advanced::{
+        Clipboard, Layout, Shell, Widget, layout, overlay, renderer,
+        widget::{Operation, Tree},
+    },
     alignment::{Horizontal, Vertical},
     mouse,
     widget::{Space, mouse_area, stack},
@@ -14,6 +19,7 @@ use iced::{
 use crate::{
     Icon, theme,
     widget::{HeaderBar, header, header_button},
+    widgets::window_handle,
 };
 
 const RESIZE_EDGE: f32 = 6.0;
@@ -120,15 +126,163 @@ pub fn window_frame<'a, Message: Clone + 'a>(
         .align_y(Vertical::Top)
         .padding(padding);
 
-    layers.push(close).into()
+    Element::new(Frame {
+        content: layers.push(close).into(),
+        on_drag: on_action(Action::Drag),
+    })
+}
+
+/// The root of the window: wraps everything [`window_frame`] builds, the
+/// app's content, the resize edges and the close control.
+///
+/// It owns moving the window. When a left press reaches it unhandled and
+/// lands within the bounds of a
+/// [`WindowHandle`](crate::widgets::window_handle::WindowHandle), including
+/// one in inert content, it publishes `on_drag` for the app to start the
+/// move.
+struct Frame<'a, Message> {
+    content: Element<'a, Message>,
+    on_drag: Message,
+}
+
+impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Frame<'_, Message> {
+    fn children(&self) -> Vec<Tree> {
+        vec![Tree::new(&self.content)]
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        tree.diff_children(std::slice::from_ref(&self.content));
+    }
+
+    fn size(&self) -> Size<Length> {
+        self.content.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.content
+            .as_widget_mut()
+            .layout(&mut tree.children[0], renderer, limits)
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(&mut tree.children[0], layout, renderer, operation);
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget_mut().update(
+            &mut tree.children[0],
+            event,
+            layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        );
+
+        if !shell.is_event_captured()
+            && matches!(
+                event,
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+            )
+            && let Some(position) = cursor.position()
+            && window_handle::is_over(
+                &mut self.content,
+                &mut tree.children[0],
+                layout,
+                renderer,
+                position,
+            )
+        {
+            shell.publish(self.on_drag.clone());
+            shell.capture_event();
+        }
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        self.content.as_widget().mouse_interaction(
+            &tree.children[0],
+            layout,
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut iced::Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
+    }
+
+    fn overlay<'a>(
+        &'a mut self,
+        tree: &'a mut Tree,
+        layout: Layout<'a>,
+        renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
+    }
 }
 
 pub fn header<'a, Message: Clone + 'a>(
-    on_drag: Message,
     owns_window_control: bool,
     build: impl FnOnce(HeaderBar<'a, Message>) -> HeaderBar<'a, Message>,
 ) -> Element<'a, Message> {
-    let header = HeaderBar::new(on_drag);
+    let header = HeaderBar::default();
 
     let header = if !owns_window_control {
         build(header)

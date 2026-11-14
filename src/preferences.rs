@@ -7,7 +7,7 @@ use iced::{
     widget::{column, container, row, text},
 };
 use next_ui::{
-    Icon, chrome,
+    Icon,
     layout::{self, PageBody, PaneContext, Side, side_panel},
     widget::{
         ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
@@ -61,7 +61,6 @@ pub enum Message {
     ClosePlugin,
     PluginQuery(String),
     PluginKind(PluginKind),
-    Window(chrome::Action),
 }
 
 impl State {
@@ -92,7 +91,6 @@ impl State {
             Message::PluginQuery(query) => self.plugin_query = query,
             Message::PluginKind(kind) => self.plugin_kind = kind,
             Message::Dismiss => {}
-            Message::Window(action) => return Some(Request::Window(action)),
         }
         None
     }
@@ -118,7 +116,7 @@ impl State {
             Message::Page,
         )
         .height(Fill);
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             header
                 .start(parts::header_button("Back", Icon::Arrow, Message::Back))
                 .middle(tabs)
@@ -142,7 +140,7 @@ impl State {
 
     /// The open plugin: what it adds to Bottles, and Uninstall.
     fn plugin_pane<'a>(&'a self, model: &'a Model, pane: PaneContext) -> Element<'a, Message> {
-        let header = pane.header(Message::Window(chrome::Action::Drag), |header| {
+        let header = pane.header(|header| {
             header
                 .start(parts::header_button(
                     "Close plugin",
