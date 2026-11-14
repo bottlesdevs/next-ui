@@ -5,8 +5,7 @@
 //! other.
 
 use bottles_core::{
-    Addon, AddonRole, CatalogEntry, Component, PrefixBackend, Runner, RunnerFlavor, Slot, Umu,
-    WineArch, WineBridge,
+    Addon, AddonRole, CatalogEntry, PrefixBackend, Runner, RunnerFlavor, Umu, WineArch, WineBridge,
 };
 use uuid::Uuid;
 
@@ -15,34 +14,43 @@ use super::Model;
 /// The backend new bottles are created with.
 pub(crate) const BACKEND: PrefixBackend = PrefixBackend::Standard;
 
-pub(crate) const REQUIRED: [AddonRole; 2] = [
-    AddonRole::Runner(Runner {
-        flavor: RunnerFlavor::Wine,
-    }),
-    AddonRole::WineBridge(WineBridge {}),
-];
-const OPTIONAL: [AddonRole; 4] = [
-    AddonRole::Umu(Umu {}),
-    AddonRole::Component(Component { slot: Slot::Dxvk }),
-    AddonRole::Component(Component { slot: Slot::Vkd3d }),
-    AddonRole::Component(Component {
-        slot: Slot::LatencyFlex,
-    }),
+/// The roles an installation needs before it is ready: a Wine runner and
+/// `WineBridge`. Anything else, such as UMU for Proton, is fetched when it is
+/// wanted.
+pub(crate) const REQUIRED: [(AddonRole, &str); 2] = [
+    (
+        AddonRole::Runner(Runner {
+            flavor: RunnerFlavor::Wine,
+        }),
+        "Runner",
+    ),
+    (AddonRole::WineBridge(WineBridge {}), "WineBridge"),
 ];
 
 impl Model {
-    /// The catalog entry to download for each essential role the catalogs offer.
-    pub(crate) fn essential_entries(&self) -> Vec<CatalogEntry> {
+    /// The installed release that fills `role`, the newest if several do.
+    pub(crate) fn installed_role(&self, role: AddonRole) -> Option<Addon<AddonRole>> {
+        newest(
+            self.sources
+                .addons
+                .releases::<AddonRole>()
+                .filter(|release| release.role() == role),
+        )
+    }
+
+    /// The catalog entry to download for each required role that no installed
+    /// release fills yet.
+    pub(crate) fn missing_essentials(&self) -> Vec<CatalogEntry> {
         REQUIRED
             .into_iter()
-            .chain(OPTIONAL)
-            .filter_map(|role| self.essential_entry(role))
+            .filter(|(role, _)| self.installed_role(*role).is_none())
+            .filter_map(|(role, _)| self.essential_entry(role))
             .cloned()
             .collect()
     }
 
     /// The newest supported entry of the first series the catalogs list for `role`.
-    fn essential_entry(&self, role: AddonRole) -> Option<&CatalogEntry> {
+    pub(crate) fn essential_entry(&self, role: AddonRole) -> Option<&CatalogEntry> {
         let supported = || {
             self.sources
                 .catalogs
@@ -68,12 +76,9 @@ impl Model {
 
     /// Returns whether a release of every required role is installed.
     pub(crate) fn has_essentials(&self) -> bool {
-        REQUIRED.iter().all(|role| {
-            self.sources
-                .addons
-                .releases::<AddonRole>()
-                .any(|release| release.role() == *role)
-        })
+        REQUIRED
+            .iter()
+            .all(|(role, _)| self.installed_role(*role).is_some())
     }
 
     /// Returns whether a bottle of `arch` can be created with the installed
@@ -113,7 +118,7 @@ impl Model {
                 .iter()
                 .filter(|runner| runner.flavor() == RunnerFlavor::Wine)
         };
-        let series = self.essential_entry(REQUIRED[0]).map(CatalogEntry::name);
+        let series = self.essential_entry(REQUIRED[0].0).map(CatalogEntry::name);
         wine()
             .find(|runner| Some(runner.name()) == series)
             .or_else(|| wine().next())
@@ -129,13 +134,6 @@ impl Model {
     pub(crate) fn umu(&self) -> Option<Addon<Umu>> {
         newest(self.sources.addons.releases())
     }
-}
-
-/// Returns whether `entries` cover every required role.
-pub(crate) fn required_available(entries: &[CatalogEntry]) -> bool {
-    REQUIRED
-        .iter()
-        .all(|role| entries.iter().any(|entry| entry.role() == *role))
 }
 
 /// The greatest version among releases of one series, with ties broken by identifier.

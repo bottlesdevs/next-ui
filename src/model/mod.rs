@@ -24,7 +24,7 @@ use tokio_util::task::TaskTracker;
 
 pub(crate) use action::{Action, Change};
 pub(crate) use components::AvailableRelease;
-pub(crate) use defaults::{REQUIRED, required_available};
+pub(crate) use defaults::REQUIRED;
 pub(crate) use library::{Activity, Bottle, Program, Source, Target};
 pub(crate) use operations::{Operations, Outcome, Subject, Then, Verb};
 pub(crate) use report::{Refusal, Report};

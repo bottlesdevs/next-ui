@@ -15,7 +15,7 @@ use next_ui::{
 
 use crate::{
     app::Request,
-    model::{Action, Experience, Model, REQUIRED, Subject, required_available},
+    model::{Action, Experience, Model, REQUIRED, Subject},
 };
 
 const TUTORIALS: [(&str, &str); 3] = [
@@ -148,24 +148,28 @@ impl State {
 
     fn downloads_view(&self, model: &Model) -> Element<'_, Message> {
         let preparing = model.operations.get(&Subject::Catalog).is_some();
-        let entries = model.essential_entries();
-        let available = required_available(&entries);
         let mut group = RowGroup::new();
         let mut running = false;
-        for (role, label) in REQUIRED.into_iter().zip(["Runner", "WineBridge"]) {
-            if !entries.iter().any(|entry| entry.role() == role) {
+        // Every role the catalogs can't fill yet; Download needs none of these.
+        let mut available = true;
+        // One row per required role: what fills it, or what will.
+        for (role, label) in REQUIRED {
+            if let Some(release) = model.installed_role(role) {
+                let label = format!("{} {}", release.name(), release.version());
+                group = group.row(ActionRow::progress(label, 1.0).description("Installed"));
+                continue;
+            }
+            let Some(entry) = model.essential_entry(role) else {
+                available = false;
                 group = group.row(InfoRow::new(label).description(if preparing {
                     "Preparing…"
                 } else {
                     "Unavailable for this system. Refresh the catalog to retry."
                 }));
-            }
-        }
-        for entry in &entries {
+                continue;
+            };
             let label = format!("{} {}", entry.name(), entry.version());
-            if model.installed(entry) {
-                group = group.row(ActionRow::progress(label, 1.0).description("Installed"));
-            } else if let Some(fetch) = model.operations.get(&Subject::Addon(entry.id())) {
+            if let Some(fetch) = model.operations.get(&Subject::Addon(entry.id())) {
                 running = true;
                 group = group.row(
                     ActionRow::progress(

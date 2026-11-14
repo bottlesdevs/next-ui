@@ -266,11 +266,7 @@ impl Model {
                 })
             }
             Action::FetchEssentials => {
-                let pending = self
-                    .essential_entries()
-                    .into_iter()
-                    .filter(|entry| !self.installed(entry))
-                    .collect::<Vec<_>>();
+                let pending = self.missing_essentials();
                 Task::batch(
                     pending
                         .into_iter()
@@ -278,7 +274,7 @@ impl Model {
                 )
             }
             Action::CancelEssentials => {
-                for entry in self.essential_entries() {
+                for entry in self.missing_essentials() {
                     self.operations.cancel(&Subject::Addon(entry.id()));
                 }
                 Task::none()
