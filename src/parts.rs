@@ -261,9 +261,7 @@ fn downloads<'a, Message: Clone + 'a>(
         .map(|download| -> Element<'a, Message> {
             let status = text(download_status(&download))
                 .size(text_size::DENSE)
-                .style(|theme: &Theme| text::Style {
-                    color: Some(theme.colors().accent_muted),
-                });
+                .accent();
             let name = text(download_name(model, &download))
                 .size(text_size::LABEL)
                 .medium();

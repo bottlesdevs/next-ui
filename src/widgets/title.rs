@@ -6,8 +6,8 @@ use iced::{
     },
 };
 
-use super::{spacing, text_size};
-use crate::{Element, Theme};
+use super::{spacing, text::TextExt as _, text_size};
+use crate::Element;
 
 enum Detail<'a> {
     Subtitle(Fragment<'a>),
@@ -49,15 +49,12 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
                 Detail::Status(label) => (label, true),
             };
 
-            content = content.push(text(label).size(detail_size).style(move |theme: &Theme| {
-                text::Style {
-                    color: Some(if is_status {
-                        theme.colors().accent_muted
-                    } else {
-                        theme.colors().muted
-                    }),
-                }
-            }));
+            let label = text(label).size(detail_size);
+            content = content.push(if is_status {
+                label.accent()
+            } else {
+                label.muted()
+            });
         }
 
         content

@@ -328,12 +328,7 @@ fn addons(model: &Model) -> PageBody<'_, Message> {
 /// A release the catalogs offer: Download, or its progress while it
 /// downloads.
 fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
-    let name = text(release.label)
-        .label()
-        .medium()
-        .style(|theme| text::Style {
-            color: Some(theme.colors().accent_muted),
-        });
+    let name = text(release.label).label().medium().accent();
     match release.download {
         Some(download) => {
             let progress = download.fraction().unwrap_or(0.0);
@@ -404,9 +399,7 @@ fn plugins<'a>(model: &'a Model, state: &'a State) -> PageBody<'a, Message> {
         let heading = text(format!("Installed · {}", shown.len()))
             .size(text_size::DENSE)
             .medium()
-            .style(|theme| text::Style {
-                color: Some(theme.colors().accent_muted),
-            });
+            .accent();
         let group = shown.into_iter().fold(BoxedGroup::new(), |group, plugin| {
             group.row(
                 ActionRow::new(plugin.name.clone(), Message::OpenPlugin(plugin.id.clone()))

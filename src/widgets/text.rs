@@ -13,6 +13,8 @@ pub trait TextExt: Sized {
     fn detail(self) -> Self;
     fn medium(self) -> Self;
     fn muted(self) -> Self;
+    /// The accent for text on a surface: a status line or an action label.
+    fn accent(self) -> Self;
 }
 
 impl<'a> TextExt for Text<'a, Theme> {
@@ -53,5 +55,9 @@ impl<'a> TextExt for Text<'a, Theme> {
 
     fn muted(self) -> Self {
         self.style(style::muted_text)
+    }
+
+    fn accent(self) -> Self {
+        self.style(style::accent_text)
     }
 }
