@@ -20,9 +20,12 @@ use crate::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DismissReason {
-    OutsidePress,
+    /// A press outside the panel, or a scroll outside a non-modal one.
+    Outside,
     Escape,
-    ContentMessage { keyboard: bool },
+    ContentMessage {
+        keyboard: bool,
+    },
     FocusLost,
 }
 
@@ -68,43 +71,28 @@ impl Default for Placement {
 ///
 /// [`Popup`]: super::popup::Popup
 pub(super) struct PopupCore<'a, Message> {
-    anchor: Rectangle,
-    viewport: Rectangle,
-    content: &'a mut dyn Widget<PopupMessage<Message>, Theme, iced::Renderer>,
-    tree: &'a mut Tree,
-    placement: Placement,
-    open: &'a mut bool,
-    focus: PopupFocus<'a, Message>,
+    pub(super) anchor: Rectangle,
+    pub(super) viewport: Rectangle,
+    pub(super) content: &'a mut dyn Widget<PopupMessage<Message>, Theme, iced::Renderer>,
+    pub(super) tree: &'a mut Tree,
+    pub(super) placement: Placement,
+    /// Whether the panel takes the pointer from what is under it while open:
+    /// a press outside only closes it, and the page does not scroll under
+    /// it, so it cannot drift off its anchor.
+    pub(super) modal: bool,
+    pub(super) open: &'a mut bool,
+    pub(super) focus: PopupFocus<'a, Message>,
 }
 
-impl<'a, Message> PopupCore<'a, Message> {
-    pub(super) fn new(
-        anchor: Rectangle,
-        viewport: Rectangle,
-        content: &'a mut dyn Widget<PopupMessage<Message>, Theme, iced::Renderer>,
-        tree: &'a mut Tree,
-        placement: Placement,
-        open: &'a mut bool,
-        focus: PopupFocus<'a, Message>,
-    ) -> Self {
-        Self {
-            anchor,
-            viewport,
-            content,
-            tree,
-            placement,
-            open,
-            focus,
-        }
-    }
-
+impl<Message> PopupCore<'_, Message> {
     /// Closes the popup and returns whether `reason`'s event is used up by
     /// that. Keyboard dismissals of a panel the keyboard is in hand focus
     /// back to the anchor; after the mouse, nothing is left focused.
     fn dismiss(&mut self, reason: DismissReason, renderer: &iced::Renderer) -> bool {
         let in_panel = *self.focus.state != PopupFocusState::None;
         let (captured, restore) = match reason {
-            DismissReason::FocusLost | DismissReason::OutsidePress => (false, false),
+            DismissReason::FocusLost => (false, false),
+            DismissReason::Outside => (self.modal, false),
             DismissReason::ContentMessage { keyboard } => (true, keyboard && in_panel),
             DismissReason::Escape => (true, in_panel),
         };
@@ -184,9 +172,9 @@ fn dismissal(event: &Event, cursor: mouse::Cursor, bounds: Rectangle) -> Option<
     match event {
         Event::Mouse(mouse::Event::ButtonPressed(_)) => (!cursor.is_over(bounds)
             && cursor.position().is_some())
-        .then_some(DismissReason::OutsidePress),
+        .then_some(DismissReason::Outside),
         Event::Touch(touch::Event::FingerPressed { position, .. }) => {
-            (!bounds.contains(*position)).then_some(DismissReason::OutsidePress)
+            (!bounds.contains(*position)).then_some(DismissReason::Outside)
         }
         Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Escape),
@@ -272,8 +260,24 @@ impl<Message: Clone> iced::advanced::Overlay<Message, Theme, iced::Renderer>
         // itself on release, and dismissing here too would reopen it.
         let on_anchor = matches!(event, Event::Mouse(_) | Event::Touch(_))
             && event_cursor(event, cursor).is_over(self.anchor);
+        // A scroll outside a modal panel goes nowhere; outside a non-modal
+        // one it closes the panel and scrolls what is under it.
+        if matches!(event, Event::Mouse(mouse::Event::WheelScrolled { .. }))
+            && !cursor.is_over(layout.bounds())
+        {
+            if self.modal {
+                shell.capture_event();
+            } else {
+                self.dismiss(DismissReason::Outside, renderer);
+                unfocus_descendants(self.content, self.tree, layout, renderer);
+                shell.request_redraw();
+            }
+
+            return;
+        }
+
         if let Some(reason) = dismissal(event, cursor, layout.bounds())
-            .filter(|reason| !(on_anchor && *reason == DismissReason::OutsidePress))
+            .filter(|reason| !(on_anchor && *reason == DismissReason::Outside))
         {
             let captured = self.dismiss(reason, renderer);
             unfocus_descendants(self.content, self.tree, layout, renderer);
@@ -579,7 +583,7 @@ mod tests {
                 mouse::Cursor::Unavailable,
                 Rectangle::new(Point::new(10.0, 10.0), Size::new(100.0, 100.0)),
             ),
-            Some(DismissReason::OutsidePress)
+            Some(DismissReason::Outside)
         );
     }
 }

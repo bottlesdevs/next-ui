@@ -410,20 +410,21 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
         } = state;
         let (anchor_tree, panel_tree) = children.split_at_mut(1);
 
-        Some(overlay::Element::new(Box::new(PopupCore::new(
-            Rectangle::new(bounds.position() + translation, bounds.size()),
-            *viewport,
-            self.panel.as_widget_mut(),
-            &mut panel_tree[0],
-            self.placement,
+        Some(overlay::Element::new(Box::new(PopupCore {
+            anchor: Rectangle::new(bounds.position() + translation, bounds.size()),
+            viewport: *viewport,
+            content: self.panel.as_widget_mut(),
+            tree: &mut panel_tree[0],
+            placement: self.placement,
+            modal: matches!(self.trigger, Trigger::Toggle),
             open,
-            PopupFocus {
+            focus: PopupFocus {
                 state: panel_focus,
                 anchor: self.anchor.as_widget_mut(),
                 anchor_tree: &mut anchor_tree[0],
                 anchor_layout: layout,
             },
-        ))))
+        })))
     }
 }
 
