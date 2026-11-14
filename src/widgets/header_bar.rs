@@ -1,13 +1,17 @@
 use iced::{
-    Background, Border, Center, Fill, Length,
-    widget::{Row, container, row},
+    Background, Border, Center, Fill, Length, Point, Size,
+    advanced::{layout, widget::Tree},
+    widget::{Row, Space, container},
 };
 
 use crate::{Element, Theme, icons::Icon};
 
 use super::{
+    arranged::Arrangement,
     button::{Button, ButtonKind},
-    header, radius, spacing,
+    header,
+    natural::natural_layout,
+    radius, spacing,
     window_handle::WindowHandle,
 };
 
@@ -21,7 +25,7 @@ pub fn header_button<Message>(label: &str, icon: Icon) -> Button<'_, Message> {
 
 pub struct HeaderBar<'a, Message> {
     start: Vec<Element<'a, Message>>,
-    middle: Vec<Element<'a, Message>>,
+    middle: Option<Element<'a, Message>>,
     end: Vec<Element<'a, Message>>,
     transparent: bool,
 }
@@ -30,7 +34,7 @@ impl<Message> Default for HeaderBar<'_, Message> {
     fn default() -> Self {
         Self {
             start: Vec::new(),
-            middle: Vec::new(),
+            middle: None,
             end: Vec::new(),
             transparent: false,
         }
@@ -43,8 +47,11 @@ impl<'a, Message> HeaderBar<'a, Message> {
         self
     }
 
+    /// Sets the one widget centred in the bar, e.g. a title, tabs or a
+    /// search entry. It gets the space between the sides, so one that fills
+    /// grows up to its own maximum width.
     pub fn middle(mut self, content: impl Into<Element<'a, Message>>) -> Self {
-        self.middle.push(content.into());
+        self.middle = Some(content.into());
         self
     }
 
@@ -68,26 +75,11 @@ impl<'a, Message: 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
             transparent,
         } = header;
 
-        // The sides share what the middle leaves equally, so the middle sits
-        // at the centre of the bar whatever either side holds.
-        let content = row![
-            container(section(start))
-                .align_left(Fill)
-                .height(Fill)
-                .align_y(Center)
-                .clip(true),
-            container(section(middle))
-                .width(Length::Shrink)
-                .height(Fill)
-                .align_y(Center),
-            container(section(end))
-                .align_right(Fill)
-                .height(Fill)
-                .align_y(Center)
-                .clip(true),
-        ]
-        .height(Fill)
-        .align_y(Center);
+        let content = CenterBox.arrange([
+            container(section(start)).clip(true).into(),
+            middle.unwrap_or_else(|| Space::new().into()),
+            container(section(end)).clip(true).into(),
+        ]);
 
         let mut content = container(content)
             .width(Fill)
@@ -112,5 +104,68 @@ fn style(current_theme: &Theme) -> container::Style {
         background: Some(Background::Color(current_theme.colors().chrome)),
         border: Border::default().rounded(iced::border::top(radius::ROW)),
         ..container::Style::default()
+    }
+}
+
+/// Lays out a header's start, middle and end. Each side is as wide as the
+/// wider of the two wants, so the middle sits at the centre of the bar
+/// whatever either side holds; the middle gets everything between them, so
+/// what in it fills, e.g. a search entry, grows up to its own maximum, and
+/// what doesn't keeps its natural width, centred.
+struct CenterBox;
+
+impl Arrangement for CenterBox {
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Fill, Length::Fill)
+    }
+
+    fn layout<Message>(
+        &self,
+        children: &mut [Element<'_, Message>],
+        trees: &mut [Tree],
+        renderer: &iced::Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        let bar = limits.max();
+        let [start, middle, end] = children else {
+            unreachable!("a header has a start, a middle and an end")
+        };
+        let [start_tree, middle_tree, end_tree] = trees else {
+            unreachable!("a header has a start, a middle and an end")
+        };
+
+        let side = natural_layout(start, start_tree, renderer, bar)
+            .size()
+            .width
+            .max(natural_layout(end, end_tree, renderer, bar).size().width);
+        let room = (bar.width - 2.0 * (side + spacing::SM)).max(0.0);
+        let middle = middle.as_widget_mut().layout(
+            middle_tree,
+            renderer,
+            &layout::Limits::new(Size::ZERO, Size::new(room, bar.height)),
+        );
+        let middle_x = (bar.width - middle.size().width) / 2.0;
+
+        // Each side takes the space beside the middle, up to its edge.
+        let beside = (middle_x - spacing::SM).max(0.0);
+        let side_limits = layout::Limits::new(Size::ZERO, Size::new(beside, bar.height));
+        let start = start
+            .as_widget_mut()
+            .layout(start_tree, renderer, &side_limits);
+        let end = end.as_widget_mut().layout(end_tree, renderer, &side_limits);
+
+        let centred = |node: layout::Node, x: f32| {
+            let y = (bar.height - node.size().height) / 2.0;
+            node.move_to(Point::new(x, y))
+        };
+        let end_x = bar.width - end.size().width;
+        layout::Node::with_children(
+            bar,
+            vec![
+                centred(start, 0.0),
+                centred(middle, middle_x),
+                centred(end, end_x),
+            ],
+        )
     }
 }
