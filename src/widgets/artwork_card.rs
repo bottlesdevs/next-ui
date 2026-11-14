@@ -1,13 +1,10 @@
 use iced::{
-    Center, ContentFit, Event, Fill, Length, Rectangle, Size, Vector,
-    advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree},
-    },
+    Center, ContentFit, Fill, Length, Size,
+    advanced::{layout, widget::Tree},
     widget::{Space, column, container, image, row, stack, text},
 };
 
-use super::radius;
+use super::{arranged::Arrangement, radius};
 use crate::{Element, Theme, icons::Icon, widgets::button::ButtonKind};
 
 use super::{button::Button, card::Card, spacing, text::TextExt as _};
@@ -163,9 +160,8 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
         )
         .width(Fill)
         .padding([spacing::MD, spacing::LG]);
-        let actions = Element::new(BoundaryActions {
-            content: container(main_actions).padding([0.0, spacing::SM]).into(),
-        });
+        let actions =
+            BoundaryActions.arrange([container(main_actions).padding([0.0, spacing::SM]).into()]);
         let bottom = stack![labels, actions].width(Fill);
 
         Card::new(column![top, bottom].width(Fill).height(Fill))
@@ -175,128 +171,26 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
     }
 }
 
-/// Positions actions across the boundary without creating a widget overlay.
-struct BoundaryActions<'a, Message> {
-    content: Element<'a, Message>,
-}
+/// Positions actions across the boundary without creating a widget overlay:
+/// its one child, raised by half its height.
+struct BoundaryActions;
 
-impl<Message> Widget<Message, Theme, iced::Renderer> for BoundaryActions<'_, Message> {
-    fn size(&self) -> Size<Length> {
-        self.content.as_widget().size()
+impl Arrangement for BoundaryActions {
+    fn size<Message>(&self, children: &[Element<'_, Message>]) -> Size<Length> {
+        children[0].as_widget().size()
     }
 
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.content)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(std::slice::from_ref(&self.content));
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
+    fn layout<Message>(
+        &self,
+        children: &mut [Element<'_, Message>],
+        trees: &mut [Tree],
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let actions = self
-            .content
+        let actions = children[0]
             .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, limits);
+            .layout(&mut trees[0], renderer, limits);
         let size = actions.size();
         layout::Node::with_children(size, vec![actions.move_to((0.0, -size.height / 2.0))])
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        self.content.as_widget_mut().operate(
-            &mut tree.children[0],
-            layout.children().next().expect("actions layout"),
-            renderer,
-            operation,
-        );
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        self.content.as_widget_mut().update(
-            &mut tree.children[0],
-            event,
-            layout.children().next().expect("actions layout"),
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        self.content.as_widget().mouse_interaction(
-            &tree.children[0],
-            layout.children().next().expect("actions layout"),
-            cursor,
-            viewport,
-            renderer,
-        )
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        self.content.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            style,
-            layout.children().next().expect("actions layout"),
-            cursor,
-            viewport,
-        );
-    }
-
-    fn overlay<'a>(
-        &'a mut self,
-        tree: &'a mut Tree,
-        layout: Layout<'a>,
-        renderer: &iced::Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
-        self.content.as_widget_mut().overlay(
-            &mut tree.children[0],
-            layout.children().next().expect("actions layout"),
-            renderer,
-            viewport,
-            translation,
-        )
     }
 }

@@ -75,11 +75,11 @@ impl<'a, Message: 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
             transparent,
         } = header;
 
-        let content = CenterBox.arrange([
-            container(section(start)).clip(true).into(),
+        let content = center_box(
+            container(section(start)).clip(true),
             middle.unwrap_or_else(|| Space::new().into()),
-            container(section(end)).clip(true).into(),
-        ]);
+            container(section(end)).clip(true),
+        );
 
         let mut content = container(content)
             .width(Fill)
@@ -107,6 +107,16 @@ fn style(current_theme: &Theme) -> container::Style {
     }
 }
 
+/// Lays out a header's `start`, `middle` and `end`, the only children a
+/// [`CenterBox`] is ever given.
+fn center_box<'a, Message: 'a>(
+    start: impl Into<Element<'a, Message>>,
+    middle: impl Into<Element<'a, Message>>,
+    end: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    CenterBox.arrange([start.into(), middle.into(), end.into()])
+}
+
 /// Lays out a header's start, middle and end. Each side is as wide as the
 /// wider of the two wants, so the middle sits at the centre of the bar
 /// whatever either side holds; the middle gets everything between them, so
@@ -115,7 +125,7 @@ fn style(current_theme: &Theme) -> container::Style {
 struct CenterBox;
 
 impl Arrangement for CenterBox {
-    fn size(&self) -> Size<Length> {
+    fn size<Message>(&self, _: &[Element<'_, Message>]) -> Size<Length> {
         Size::new(Length::Fill, Length::Fill)
     }
 
@@ -127,11 +137,9 @@ impl Arrangement for CenterBox {
         limits: &layout::Limits,
     ) -> layout::Node {
         let bar = limits.max();
-        let [start, middle, end] = children else {
-            unreachable!("a header has a start, a middle and an end")
-        };
-        let [start_tree, middle_tree, end_tree] = trees else {
-            unreachable!("a header has a start, a middle and an end")
+        // `center_box` gives every center box exactly these three.
+        let ([start, middle, end], [start_tree, middle_tree, end_tree]) = (children, trees) else {
+            unreachable!("a center box has a start, a middle and an end")
         };
 
         let side = natural_layout(start, start_tree, renderer, bar)

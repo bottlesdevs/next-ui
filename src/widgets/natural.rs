@@ -64,7 +64,7 @@ impl NaturalColumn {
 }
 
 impl Arrangement for NaturalColumn {
-    fn size(&self) -> Size<Length> {
+    fn size<Message>(&self, _: &[Element<'_, Message>]) -> Size<Length> {
         Size::new(Length::Shrink, Length::Shrink)
     }
 

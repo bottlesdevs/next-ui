@@ -17,8 +17,8 @@ use crate::{Element, Theme};
 
 /// How a container places its children.
 pub(crate) trait Arrangement {
-    /// The container's size, as any widget reports it.
-    fn size(&self) -> Size<Length>;
+    /// The container's size, as any widget reports it, given its `children`.
+    fn size<Message>(&self, children: &[Element<'_, Message>]) -> Size<Length>;
 
     /// Lays out `children`, each with its tree in `trees`, within `limits`,
     /// returning the container's node with one child node per child.
@@ -61,7 +61,7 @@ impl<Message, A: Arrangement> Widget<Message, Theme, iced::Renderer> for Arrange
     }
 
     fn size(&self) -> Size<Length> {
-        self.arrangement.size()
+        self.arrangement.size(&self.children)
     }
 
     fn layout(
