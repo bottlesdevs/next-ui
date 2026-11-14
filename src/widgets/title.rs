@@ -14,6 +14,8 @@ enum Detail<'a> {
     Status(Fragment<'a>),
 }
 
+/// A title with an optional detail line below it: the title is the same
+/// size whether or not a detail follows it.
 pub struct Title<'a> {
     title: &'a str,
     detail: Option<Detail<'a>>,
@@ -40,8 +42,7 @@ impl<'a> Title<'a> {
 
 impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
     fn from(title: Title<'a>) -> Self {
-        let (title_size, detail_size) = typography(title.detail.as_ref());
-        let mut content = column![text(title.title).size(title_size)];
+        let mut content = column![text(title.title).size(text_size::HEADING)];
 
         if let Some(detail) = title.detail {
             let (label, is_status) = match detail {
@@ -49,7 +50,7 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
                 Detail::Status(label) => (label, true),
             };
 
-            let label = text(label).size(detail_size);
+            let label = text(label).size(text_size::CAPTION);
             content = content.push(if is_status {
                 label.accent()
             } else {
@@ -61,13 +62,5 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
             .align_x(Alignment::Center)
             .spacing(spacing::XS)
             .into()
-    }
-}
-
-fn typography(detail: Option<&Detail<'_>>) -> (f32, f32) {
-    match detail {
-        Some(Detail::Subtitle(_)) => (text_size::HEADING, text_size::CAPTION),
-        Some(Detail::Status(_)) => (text_size::HEADLINE, text_size::BODY),
-        None => (text_size::DISPLAY, text_size::HEADLINE),
     }
 }
