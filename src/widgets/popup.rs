@@ -65,7 +65,6 @@ pub(super) struct Popup<'a, Message> {
     panel: Element<'a, PopupMessage<Message>>,
     trigger: Trigger<'a>,
     focusable: bool,
-    enabled: bool,
     placement: Placement,
 }
 
@@ -110,7 +109,6 @@ impl<'a, Message> Popup<'a, Message> {
             panel: panel.into(),
             trigger: Trigger::Toggle,
             focusable: true,
-            enabled: true,
             placement: Placement::default(),
         }
     }
@@ -128,12 +126,6 @@ impl<'a, Message> Popup<'a, Message> {
     /// moves past the panel.
     pub(super) fn focusable(mut self, focusable: bool) -> Self {
         self.focusable = focusable;
-        self
-    }
-
-    /// Closes the popup, and keeps it closed, unless `enabled`.
-    pub(super) fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
         self
     }
 
@@ -200,10 +192,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Popup<'_, Messag
         tree.children[0].diff(&self.anchor);
         tree.children[1].diff(&self.panel);
         let state = tree.state.downcast_mut::<State>();
-
-        if !self.enabled {
-            state.open = false;
-        }
 
         if let Trigger::Focus { visible, key } = self.trigger {
             if state.key != key {

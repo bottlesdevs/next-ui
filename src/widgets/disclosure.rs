@@ -33,7 +33,6 @@ const CARET: f32 = 20.0;
 pub(super) struct Disclosure<'a, Message> {
     header: Element<'a, Message>,
     panel: Element<'a, PopupMessage<Message>>,
-    enabled: bool,
     gap: f32,
     dismissible: bool,
 }
@@ -52,16 +51,9 @@ impl<'a, Message> Disclosure<'a, Message> {
         Self {
             header: header.into(),
             panel: panel.into(),
-            enabled: true,
             gap: 0.0,
             dismissible: false,
         }
-    }
-
-    /// Closes the panel, and keeps it closed, unless `enabled`.
-    pub(super) fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
     }
 
     /// Sets the space between the header and the panel.
@@ -113,13 +105,11 @@ impl<'a, Message> Disclosure<'a, Message> {
     ) {
         let (header, _) = parts(layout);
 
-        if self.enabled {
-            operation.focusable(
-                None,
-                header.bounds(),
-                &mut tree.state.downcast_mut::<State>().interaction,
-            );
-        }
+        operation.focusable(
+            None,
+            header.bounds(),
+            &mut tree.state.downcast_mut::<State>().interaction,
+        );
 
         self.header
             .as_widget_mut()
@@ -160,10 +150,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
     fn diff(&self, tree: &mut Tree) {
         tree.children[0].diff(&self.header);
         tree.children[1].diff(&self.panel);
-
-        if !self.enabled {
-            set_open(tree, false);
-        }
     }
 
     fn size(&self) -> Size<Length> {
@@ -255,7 +241,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
             event,
             header.bounds().intersection(viewport).unwrap_or_default(),
             cursor,
-            self.enabled,
+            true,
             shell,
         ) || (self.dismissible && state.open && dismisses(event, cursor, layout.bounds()))
         {
@@ -292,10 +278,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
             ));
         }
 
-        if interaction == mouse::Interaction::default()
-            && self.enabled
-            && cursor.is_over(header.bounds())
-        {
+        if interaction == mouse::Interaction::default() && cursor.is_over(header.bounds()) {
             mouse::Interaction::Pointer
         } else {
             interaction
@@ -314,11 +297,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
     ) {
         let state = tree.state.downcast_ref::<State>();
         let (header, panel) = parts(layout);
-        let theme = &if self.enabled {
-            *theme
-        } else {
-            theme.disabled()
-        };
         let colors = theme.colors();
 
         if state.open {
@@ -337,7 +315,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
             header.bounds(),
             state
                 .interaction
-                .state(self.enabled, state.open, header.bounds(), cursor),
+                .state(true, state.open, header.bounds(), cursor),
             false,
             |renderer| {
                 self.header.as_widget().draw(

@@ -14,7 +14,9 @@ use super::{
     focusable_action::{FocusableAction, Interaction},
     list_row::{ListRow, Menu},
     popup::{self, AnchorMessage, Popup, PopupMessage},
-    radius, spacing,
+    radius,
+    sensitive::sensitive,
+    spacing,
     switcher::Switcher,
     text::TextExt as _,
     text_size,
@@ -189,30 +191,29 @@ where
                 })))
         });
 
+        // Disabled as a whole, header switch included.
         if !popup {
-            return Disclosure::new(header, panel)
-                .enabled(enabled)
-                .dismissible()
-                .into();
+            return sensitive(enabled, Disclosure::new(header, panel).dismissible());
         }
 
         let anchor = FocusableAction::new(header.map(AnchorMessage::Emit))
             .width(Fill)
-            .on_press_maybe(enabled.then_some(AnchorMessage::Toggle))
+            .on_press_maybe(Some(AnchorMessage::Toggle))
             .without_frame()
             .style(|theme, _| button::Style {
                 text_color: theme.colors().text,
                 ..button::Style::default()
             });
 
-        Element::new(PopupSelector {
-            popup: Popup::new(anchor, panel)
-                .enabled(enabled)
-                .match_anchor_width()
-                .attached()
-                .into(),
+        sensitive(
             enabled,
-        })
+            Element::new(PopupSelector {
+                popup: Popup::new(anchor, panel)
+                    .match_anchor_width()
+                    .attached()
+                    .into(),
+            }),
+        )
     }
 }
 
@@ -244,7 +245,6 @@ fn header<'a, Message: 'a>(
 /// caret around a [`Popup`] the row toggles.
 struct PopupSelector<'a, Message> {
     popup: Element<'a, Message>,
-    enabled: bool,
 }
 
 impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_, Message> {
@@ -331,17 +331,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_
         let open = popup::is_open(tree);
         let bounds = layout.bounds();
         let interaction = popup::anchor(tree).state.downcast_ref::<Interaction>();
-        let theme = &if self.enabled {
-            *theme
-        } else {
-            theme.disabled()
-        };
-
         disclosure::draw_header(
             renderer,
             theme,
             bounds,
-            interaction.state(self.enabled, open, bounds, cursor),
+            interaction.state(true, open, bounds, cursor),
             open,
             |renderer| {
                 self.popup
