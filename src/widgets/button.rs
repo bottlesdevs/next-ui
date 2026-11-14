@@ -249,7 +249,7 @@ fn appearance(
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
-    let colors = colors(theme, state.hovered || state.pressed || state.focused, kind);
+    let colors = colors(theme, state.highlighted(), kind);
 
     iced::widget::button::Style {
         background: Some(Background::Color(colors.color)),

@@ -331,6 +331,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_
         let open = popup::is_open(tree);
         let bounds = layout.bounds();
         let interaction = popup::anchor(tree).state.downcast_ref::<Interaction>();
+        let theme = &if self.enabled {
+            *theme
+        } else {
+            theme.disabled()
+        };
 
         disclosure::draw_header(
             renderer,

@@ -123,7 +123,7 @@ fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = theme.colors();
 
     button::Style {
-        text_color: if state.selected || state.hovered || state.pressed || state.focused {
+        text_color: if state.highlighted() {
             colors.text
         } else {
             colors.muted

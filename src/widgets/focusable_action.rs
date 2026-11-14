@@ -22,6 +22,14 @@ pub(crate) struct ActionState {
     pub(crate) selected: bool,
 }
 
+impl ActionState {
+    /// Whether a muted label shows in full: while the action is selected or
+    /// interacted with.
+    pub(crate) fn highlighted(self) -> bool {
+        self.selected || self.hovered || self.pressed || self.focused
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PressOrigin {
     Mouse,
@@ -364,12 +372,10 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
         );
         // A disabled action, with all it holds, is drawn as usual but with
         // the disabled theme.
-        let disabled;
-        let theme = if state.enabled {
-            theme
+        let theme = &if state.enabled {
+            *theme
         } else {
-            disabled = theme.disabled();
-            &disabled
+            theme.disabled()
         };
         let style = (self.style)(theme, state);
         if self.frame {
@@ -478,13 +484,11 @@ pub(crate) fn draw_frame(
     }
     if state.focused {
         renderer.fill_quad(
-            quad(corners.color(theme.colors().accent).width(FOCUS_RING)),
+            quad(theme.focus_ring().rounded(style.border.radius)),
             Color::TRANSPARENT,
         );
     }
 }
-
-const FOCUS_RING: f32 = 2.0;
 
 impl<'a, Message: Clone + 'a> From<FocusableAction<'a, Message>> for Element<'a, Message> {
     fn from(action: FocusableAction<'a, Message>) -> Self {

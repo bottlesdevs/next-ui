@@ -84,7 +84,7 @@ impl<'a, Message: Clone + 'a> From<TextField<'a, Message>> for Element<'a, Messa
             .secure(field.secure)
             .on_input_maybe(field.on_input)
             .on_submit_maybe(field.on_submit)
-            .style(move |theme, _| style(theme, error, muted));
+            .style(move |theme, status| style(theme, status, error, muted));
 
         if let Some(size) = field.size {
             input = input.size(size);
@@ -98,7 +98,14 @@ impl<'a, Message: Clone + 'a> From<TextField<'a, Message>> for Element<'a, Messa
     }
 }
 
-fn style(theme: &Theme, error: bool, muted: bool) -> text_input::Style {
+/// A field with no `on_input` is disabled, and draws with the disabled
+/// theme like every other disabled widget. Focus shows in the caret: the
+/// field is text inside its host, so a focus ring would belong to the host.
+fn style(theme: &Theme, status: text_input::Status, error: bool, muted: bool) -> text_input::Style {
+    let theme = &match status {
+        text_input::Status::Disabled => theme.disabled(),
+        _ => *theme,
+    };
     let colors = theme.colors();
 
     text_input::Style {
@@ -123,8 +130,8 @@ mod tests {
     fn input_borders_match_the_original_visual_contract() {
         let theme = Theme::new(iced::theme::Mode::Dark);
         let colors = theme.colors();
-        let error = style(&theme, true, true);
-        let idle = style(&theme, false, true);
+        let error = style(&theme, text_input::Status::Active, true, true);
+        let idle = style(&theme, text_input::Status::Active, false, true);
 
         assert_eq!(error.border.color, colors.danger);
         assert_eq!(error.border.width, 0.0);

@@ -314,6 +314,11 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
     ) {
         let state = tree.state.downcast_ref::<State>();
         let (header, panel) = parts(layout);
+        let theme = &if self.enabled {
+            *theme
+        } else {
+            theme.disabled()
+        };
         let colors = theme.colors();
 
         if state.open {
@@ -340,11 +345,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
             renderer,
             theme,
             &renderer::Style {
-                text_color: if self.enabled {
-                    colors.text
-                } else {
-                    colors.muted
-                },
+                text_color: colors.text,
             },
             header,
             cursor,

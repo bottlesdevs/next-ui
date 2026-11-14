@@ -415,14 +415,13 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
 
 pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> button::Style {
     let colors = theme.colors();
-    let highlighted = state.selected || state.hovered || state.pressed || state.focused;
 
     button::Style {
         background: state.selected.then_some(Background::Color(match menu {
             Menu::Floating => colors.hovered,
             Menu::Attached => colors.selected,
         })),
-        text_color: if highlighted {
+        text_color: if state.highlighted() {
             colors.text
         } else {
             colors.muted

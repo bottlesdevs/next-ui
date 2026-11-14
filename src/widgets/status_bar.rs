@@ -690,17 +690,20 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for LogWidget<'_> 
             );
         }
 
+        // The handle is the panel's top edge, so its focus shows as that
+        // edge drawn in the focus ring.
         if state.open && operation::Focusable::is_focused(&state.resize_focus) {
+            let ring = theme.focus_ring();
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: Rectangle {
-                        height: 2.0,
+                        height: ring.width,
                         ..layout.bounds()
                     },
                     snap: true,
                     ..renderer::Quad::default()
                 },
-                Background::Color(theme.colors().accent_muted),
+                Background::Color(ring.color),
             );
         }
     }

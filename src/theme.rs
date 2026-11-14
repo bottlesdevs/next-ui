@@ -67,6 +67,12 @@ impl Theme {
         }
     }
 
+    /// The ring around whatever has keyboard focus: actions, text fields and
+    /// resize handles alike. Callers round it to their own corners.
+    pub(crate) fn focus_ring(&self) -> Border {
+        Border::default().color(self.colors().accent).width(2)
+    }
+
     /// The palette's colors for the inherited state.
     pub fn colors(&self) -> Colors {
         if self.disabled {
