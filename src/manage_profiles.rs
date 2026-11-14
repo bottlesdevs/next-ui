@@ -205,7 +205,8 @@ pub fn button(model: &Model) -> Element<'_, Message> {
         .spacing(10)
         .align_y(Alignment::Center),
     )
-    .kind(ButtonKind::Flat);
+    .kind(ButtonKind::Flat)
+    .compact();
 
     let mut menu = Popover::new(trigger);
     for profile in &profiles.profiles {

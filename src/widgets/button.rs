@@ -100,6 +100,16 @@ impl<'a, Message> Button<'a, Message> {
         }
     }
 
+    /// A square button like [`icon_only`](Self::icon_only) holding any
+    /// `content` in place of an icon, e.g. a progress ring.
+    pub fn square(tooltip: &'a str, content: impl Into<Element<'a, Message>>) -> Self {
+        Self {
+            shape: Shape::IconOnly,
+            tooltip: Some(tooltip),
+            ..Self::custom(content)
+        }
+    }
+
     pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
         self.icon_trailing = false;
@@ -156,13 +166,11 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
         let content: Element<'a, Message> = if button.loading {
             container(text("…").label()).center(Fill).into()
         } else if button.shape == Shape::IconOnly {
-            container(icon_element(
-                button.icon.expect("icon-only buttons always have an icon"),
-                button.icon_size,
-                button.kind,
-            ))
-            .center(Fill)
-            .into()
+            let content = match button.icon {
+                Some(icon) => icon_element(icon, button.icon_size, button.kind),
+                None => button.content,
+            };
+            container(content).center(Fill).into()
         } else {
             let mut row = Row::new()
                 .spacing(if button.kind == ButtonKind::Primary {

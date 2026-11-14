@@ -8,7 +8,8 @@ use next_ui::{
     Element, Icon, Theme, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
-        ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size, width,
+        ProgressBar, ProgressRing, StatusPage, TextExt as _, header, radius, spacing, text_size,
+        width,
     },
 };
 
@@ -249,10 +250,16 @@ fn downloads<'a, Message: Clone + 'a>(
         .map(|download| download.fraction().unwrap_or(0.0))
         .sum::<f32>()
         / downloads.len() as f32;
-    let trigger = Button::custom(stack![
-        ProgressRing::new(overall),
-        container(Icon::Download.view().width(12).height(12)).center(24),
-    ])
+    // Sized like the header's other controls, so it sits as close to its
+    // neighbours as they do.
+    let trigger = Button::square(
+        "Downloads",
+        stack![
+            ProgressRing::new(overall),
+            container(Icon::Download.view().width(12).height(12)).center(24),
+        ],
+    )
+    .diameter(header::CONTROL)
     .kind(ButtonKind::Flat);
     // Each download is a card of its own, set a step darker into the popover:
     // its name over the progress bar, whose caption is its status.
