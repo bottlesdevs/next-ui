@@ -69,7 +69,7 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
         ListRow::labeled(cycle.title)
             .subtitle(cycle.value)
             .centered()
-            .dimmed(!enabled)
+            .sensitive(enabled)
             .leading(previous)
             .trailing(next)
             .padding([spacing::MD, spacing::LG])

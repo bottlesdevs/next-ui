@@ -41,10 +41,8 @@ impl<'a, Message> Switcher<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Message> {
     fn from(switcher: Switcher<'a, Message>) -> Self {
-        let enabled = switcher.on_toggle.is_some();
         let knob = canvas::Canvas::new(AnimatedKnob {
             is_on: switcher.is_on,
-            enabled,
         })
         .width(Fill)
         .height(Fill);
@@ -64,7 +62,6 @@ impl<'a, Message: Clone + 'a> From<Switcher<'a, Message>> for Element<'a, Messag
 
 struct AnimatedKnob {
     is_on: bool,
-    enabled: bool,
 }
 
 #[derive(Debug, Default)]
@@ -118,12 +115,8 @@ impl<Message> canvas::Program<Message, Theme> for AnimatedKnob {
             |animation| animation.interpolate(0.0, 1.0, Instant::now()),
         );
         let diameter = bounds.height;
-        let colors = theme.colors;
-        let color = if self.enabled {
-            palette::mix(colors.selected, colors.accent, progress)
-        } else {
-            colors.muted
-        };
+        let colors = theme.colors();
+        let color = palette::mix(colors.selected, colors.accent, progress);
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
         frame.fill(
@@ -142,7 +135,7 @@ impl<Message> canvas::Program<Message, Theme> for AnimatedKnob {
 }
 
 fn track_style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
 
     button::Style {
         background: Some(Background::Color(colors.page)),

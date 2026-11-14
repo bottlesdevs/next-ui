@@ -129,7 +129,7 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
         if let Some(dialog) = modal.dialog {
             let content = container(dialog.content)
                 .center(Fill)
-                .style(|theme| container::Style::default().background(theme.colors.scrim));
+                .style(|theme| container::Style::default().background(theme.colors().scrim));
 
             layers = layers.push(Element::new(ModalScope {
                 content: content.into(),

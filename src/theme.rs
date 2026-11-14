@@ -3,29 +3,58 @@
 use crate::widgets::radius;
 use iced::{
     Background, Border, Color, Shadow, Vector,
-    theme::{Base, Mode, Palette, Style as ApplicationStyle, palette::Pair},
+    theme::{
+        Base, Mode, Palette, Style as ApplicationStyle,
+        palette::{self, Pair},
+    },
     widget::{button, container, progress_bar, rule, scrollable, svg, text, text_input},
 };
 
-/// The theme every toolkit widget is drawn with.
+/// The theme every toolkit widget is drawn with: a palette, and the state
+/// inherited from the widgets above the one being drawn.
+///
+/// Disabled is a property of widgets. iced does not propagate widget state
+/// down the tree, but the theme reaches every widget it draws, so it carries
+/// that state. [`Theme::colors`] then resolves the palette for it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Theme {
     pub mode: Mode,
-    pub colors: Colors,
+    palette: Colors,
+    disabled: bool,
 }
 
 impl Theme {
     /// The theme for `mode`; with no preference, dark.
     pub fn new(mode: Mode) -> Self {
-        match mode {
-            Mode::Light => Self {
-                mode,
-                colors: Colors::LIGHT,
-            },
-            Mode::Dark | Mode::None => Self {
-                mode: Mode::Dark,
-                colors: Colors::DARK,
-            },
+        let (mode, palette) = match mode {
+            Mode::Light => (mode, Colors::LIGHT),
+            Mode::Dark | Mode::None => (Mode::Dark, Colors::DARK),
+        };
+
+        Self {
+            mode,
+            palette,
+            disabled: false,
+        }
+    }
+
+    /// The theme for drawing a disabled widget and everything inside it.
+    /// Widgets draw as usual with it, so none needs a disabled style of its
+    /// own, and a disabled widget inside a disabled group looks the same as
+    /// one on its own.
+    pub fn disabled(self) -> Self {
+        Self {
+            disabled: true,
+            ..self
+        }
+    }
+
+    /// The palette's colors for the inherited state.
+    pub fn colors(&self) -> Colors {
+        if self.disabled {
+            self.palette.disabled()
+        } else {
+            self.palette
         }
     }
 }
@@ -74,6 +103,35 @@ const WARNING: Color = Color::from_rgb8(107, 93, 71);
 const SUCCESS: Color = Color::from_rgb8(53, 71, 51);
 
 impl Colors {
+    /// The disabled color group: every color faded halfway into the page,
+    /// except the page itself and the scrim.
+    fn disabled(self) -> Self {
+        let fade = |color| palette::mix(color, self.page, 0.5);
+
+        Self {
+            chrome: fade(self.chrome),
+            page: self.page,
+            card: fade(self.card),
+            raised: fade(self.raised),
+            selected: fade(self.selected),
+            hovered: fade(self.hovered),
+            sunken: fade(self.sunken),
+            control: fade(self.control),
+            chrome_border: fade(self.chrome_border),
+            chrome_hovered: fade(self.chrome_hovered),
+            text: fade(self.text),
+            muted: fade(self.muted),
+            accent: fade(self.accent),
+            accent_muted: fade(self.accent_muted),
+            scrim: self.scrim,
+            info: fade(self.info),
+            danger: fade(self.danger),
+            warning: fade(self.warning),
+            success: fade(self.success),
+            on_status: fade(self.on_status),
+        }
+    }
+
     const DARK: Self = Self {
         chrome: Color::from_rgb8(41, 34, 37),
         page: Color::from_rgb8(58, 50, 53),
@@ -135,7 +193,7 @@ impl Base for Theme {
     fn base(&self) -> ApplicationStyle {
         ApplicationStyle {
             background_color: Color::TRANSPARENT,
-            text_color: self.colors.text,
+            text_color: self.colors().text,
         }
     }
 
@@ -183,7 +241,7 @@ pub enum Tone {
 impl Surface {
     /// The fill and the text color on it.
     pub fn colors(self, theme: &Theme) -> Pair {
-        let colors = theme.colors;
+        let colors = theme.colors();
         let on = |color| Pair {
             color,
             text: colors.text,
@@ -232,7 +290,7 @@ impl button::Catalog for Theme {
 
     fn default<'a>() -> Self::Class<'a> {
         Box::new(|theme, _| button::Style {
-            text_color: theme.colors.text,
+            text_color: theme.colors().text,
             ..button::Style::default()
         })
     }
@@ -273,10 +331,10 @@ impl text_input::Catalog for Theme {
         Box::new(|theme, _| text_input::Style {
             background: Background::Color(Color::TRANSPARENT),
             border: Border::default(),
-            icon: theme.colors.muted,
-            placeholder: theme.colors.muted,
-            value: theme.colors.text,
-            selection: theme.colors.accent,
+            icon: theme.colors().muted,
+            placeholder: theme.colors().muted,
+            value: theme.colors().text,
+            selection: theme.colors().accent,
         })
     }
 
@@ -290,7 +348,7 @@ impl scrollable::Catalog for Theme {
 
     fn default<'a>() -> Self::Class<'a> {
         Box::new(|theme, _| {
-            let colors = theme.colors;
+            let colors = theme.colors();
             let rail = scrollable::Rail {
                 background: None,
                 border: Border::default(),
@@ -344,8 +402,8 @@ impl progress_bar::Catalog for Theme {
 
     fn default<'a>() -> Self::Class<'a> {
         Box::new(|theme| progress_bar::Style {
-            background: Background::Color(theme.colors.sunken),
-            bar: Background::Color(theme.colors.accent),
+            background: Background::Color(theme.colors().sunken),
+            bar: Background::Color(theme.colors().accent),
             border: Border::default().rounded(radius::PILL),
         })
     }
@@ -360,7 +418,7 @@ impl rule::Catalog for Theme {
 
     fn default<'a>() -> Self::Class<'a> {
         Box::new(|theme| rule::Style {
-            color: theme.colors.raised,
+            color: theme.colors().raised,
             radius: 0.0.into(),
             fill_mode: rule::FillMode::Full,
             snap: true,

@@ -73,7 +73,7 @@ pub fn window_frame<'a, Message: Clone + 'a>(
         .height(Fill)
         .padding(PANEL_INSET)
         .style(|current_theme| {
-            let colors = current_theme.colors;
+            let colors = current_theme.colors();
 
             container::Style {
                 background: Some(Background::Color(colors.chrome)),

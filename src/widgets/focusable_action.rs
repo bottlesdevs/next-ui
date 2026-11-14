@@ -182,7 +182,7 @@ impl<'a, Message> FocusableAction<'a, Message> {
             height: Length::Shrink,
             padding: Padding::ZERO,
             style: Box::new(|theme, _| button::Style {
-                text_color: theme.colors.text,
+                text_color: theme.colors().text,
                 ..button::Style::default()
             }),
         }
@@ -343,11 +343,16 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
             layout.bounds(),
             cursor,
         );
-        let mut style = (self.style)(theme, state);
-
-        if !state.enabled {
-            style.text_color = theme.colors.muted;
-        }
+        // A disabled action, with all it holds, is drawn as usual but with
+        // the disabled theme.
+        let disabled;
+        let theme = if state.enabled {
+            theme
+        } else {
+            disabled = theme.disabled();
+            &disabled
+        };
+        let style = (self.style)(theme, state);
 
         if style.background.is_some() || style.border.width > 0.0 || style.shadow.color.a > 0.0 {
             renderer.fill_quad(

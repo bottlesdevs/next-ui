@@ -5,7 +5,7 @@ use iced::{Fill, widget::text};
 use next_ui::{
     Element, Icon,
     layout::{self, PageBody, PaneContext},
-    widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing, text_size},
+    widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, sensitive, spacing, text_size},
 };
 use uuid::Uuid;
 
@@ -134,12 +134,13 @@ impl State {
             );
             parts::app_controls(header, model, pane, Message::Control)
         });
+        // Components can't change while an operation on the prefix is in
+        // flight.
         let editable = model
             .activity(&Subject::Prefix(program.prefix))
             .is_settled();
-        let switch = |slot, title, description| {
-            component_switch(model, &program, slot, title, description, editable)
-        };
+        let switch =
+            |slot, title, description| component_switch(model, &program, slot, title, description);
         layout::page(
             header,
             PageBody::content(
@@ -147,15 +148,18 @@ impl State {
                     RowGroup::new()
                         .row(InfoRow::new("Executable").description(program.spec.executable()))
                         .row(InfoRow::new("Runner").description(program.state.runner.name())),
-                    RowGroup::new()
-                        .title("Graphics")
-                        .row(switch(Slot::Dxvk, "DXVK", "Vulkan-based D3D9/D3D10/D3D11"))
-                        .row(switch(Slot::Vkd3d, "VKD3D", "Vulkan-based D3D12"))
-                        .row(switch(
-                            Slot::LatencyFlex,
-                            "LatencyFlex",
-                            "Lower input latency"
-                        )),
+                    sensitive(
+                        editable,
+                        RowGroup::new()
+                            .title("Graphics")
+                            .row(switch(Slot::Dxvk, "DXVK", "Vulkan-based D3D9/D3D10/D3D11"))
+                            .row(switch(Slot::Vkd3d, "VKD3D", "Vulkan-based D3D12"))
+                            .row(switch(
+                                Slot::LatencyFlex,
+                                "LatencyFlex",
+                                "Lower input latency"
+                            )),
+                    ),
                     text(
                         "Next always uses the newest downloaded release. Turning a component on \
                      downloads it if needed."
@@ -181,7 +185,6 @@ fn component_switch<'a>(
     slot: Slot,
     title: &'a str,
     description: &'a str,
-    editable: bool,
 ) -> SwitcherRow<'a, Message> {
     let prefix = program.prefix;
     let on = program.state.component(slot).is_some();
@@ -215,9 +218,5 @@ fn component_switch<'a>(
         (None, None) => row.description("Not available on this system"),
         (None, Some(_)) => row.description(description),
     };
-    row.on_toggle_maybe(
-        action
-            .filter(|_| editable)
-            .map(|action| move |_| Message::Act(action.clone())),
-    )
+    row.on_toggle_maybe(action.map(|action| move |_| Message::Act(action.clone())))
 }

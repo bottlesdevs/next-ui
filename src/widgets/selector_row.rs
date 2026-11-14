@@ -175,13 +175,13 @@ where
             container(iced::widget::Space::new().height(1))
                 .width(Fill)
                 .style(|theme: &Theme| {
-                    container::Style::default().background(theme.colors.selected)
+                    container::Style::default().background(theme.colors().selected)
                 }),
             list,
         ];
         let panel = container(list).width(Fill).style(move |theme| {
             container::Style::default()
-                .background(theme.colors.raised)
+                .background(theme.colors().raised)
                 .border(Border::default().rounded(iced::border::bottom(if popup {
                     radius::BOX
                 } else {
@@ -200,7 +200,7 @@ where
             .width(Fill)
             .on_press_maybe(enabled.then_some(AnchorMessage::Toggle))
             .style(|theme, _| button::Style {
-                text_color: theme.colors.text,
+                text_color: theme.colors().text,
                 ..button::Style::default()
             });
 

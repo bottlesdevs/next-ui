@@ -5,10 +5,12 @@
 //! greyed out. iced widgets have no common base to hang such properties on,
 //! so here they are wrapper widgets around a subtree.
 //!
-//! [`inert`] is the one wrapper so far, and combines all of them, because
-//! every current user (the content behind a dialog and the base behind a
-//! side panel) needs all of them at once. Split it into separate wrappers
-//! when something needs one without the others, for example:
+//! [`inert`] blocks both pointer input and focus, because every user (the
+//! content behind a dialog, the base behind a side panel, and a disabled
+//! group) needs both at once. [`sensitive`](super::sensitive::sensitive) is
+//! `inert` plus the disabled look, which comes from
+//! [`Theme::disabled`](crate::Theme::disabled). Split `inert` into separate
+//! wrappers when something needs one without the other, for example:
 //!
 //! - **No focus, still clickable**: an area the pointer can use but Tab
 //!   should skip. Pass input on, but drop focus operations, as
@@ -16,12 +18,6 @@
 //! - **Click-through**: an overlay the pointer passes through to what is
 //!   below, while the keyboard can still reach it. Drop pointer events and
 //!   report no mouse interaction, but pass operations on.
-//! - **Disabled group**: one switch for a group of controls, instead of
-//!   passing a flag such as `activity.is_settled()` to each of them.
-//!   Blocking input is easy; the greyed look is not. iced 0.14 cannot draw a
-//!   subtree with lower opacity, so each widget still has to style its own
-//!   disabled state. This needs subtree opacity in iced, or disabled styling
-//!   that the theme owns.
 
 use iced::{
     Length, Rectangle, Size,

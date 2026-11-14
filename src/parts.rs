@@ -131,7 +131,7 @@ fn suggestions<'a, Message: Clone + 'a>(
             .height(120)
             .style(|theme: &Theme| {
                 container::Style::default()
-                    .background(theme.colors.selected)
+                    .background(theme.colors().selected)
                     .border(iced::Border::default().rounded(iced::border::top(radius::ROW)))
             });
         let footer = row![
@@ -262,7 +262,7 @@ fn downloads<'a, Message: Clone + 'a>(
             let status = text(download_status(&download))
                 .size(text_size::DENSE)
                 .style(|theme: &Theme| text::Style {
-                    color: Some(theme.colors.accent_muted),
+                    color: Some(theme.colors().accent_muted),
                 });
             let name = text(download_name(model, &download))
                 .size(text_size::LABEL)

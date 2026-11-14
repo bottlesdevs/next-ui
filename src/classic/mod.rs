@@ -7,7 +7,7 @@ use iced::{Fill, widget::column};
 use next_ui::{
     Element, Icon,
     layout::{self, PageBody, PaneContext, Side, navigation_split, side_panel},
-    widget::{Dialog, ListRow, Popover, Tab, Tabs, Title, WindowModal, header_button},
+    widget::{Dialog, ListRow, Popover, Tab, Tabs, Title, WindowModal, header_button, sensitive},
 };
 use uuid::Uuid;
 
@@ -334,7 +334,12 @@ impl State {
         let content = match self.detail_tab {
             Detail::Programs => bottle::programs(bottle, model),
             Detail::Settings => {
-                bottle::settings(bottle, model, self.rename.as_deref(), activity.is_settled())
+                // Settings can't change while an operation on the bottle is
+                // in flight.
+                sensitive(
+                    activity.is_settled(),
+                    bottle::settings(bottle, model, self.rename.as_deref()),
+                )
             }
             Detail::Snapshots => Title::new("Snapshots")
                 .subtitle("Snapshot management is coming later.")

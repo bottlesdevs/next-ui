@@ -46,7 +46,7 @@ impl<'a, Message: 'a> From<ProgressBar<'a, Message>> for Element<'a, Message> {
             .length(Fill)
             .girth(THICKNESS)
             .style(|theme: &Theme| {
-                let colors = theme.colors;
+                let colors = theme.colors();
 
                 progress_bar::Style {
                     background: Background::Color(colors.sunken),

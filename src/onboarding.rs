@@ -243,7 +243,7 @@ fn title<'a>(heading: &'a str, subtitle: &'a str) -> Element<'a, Message> {
                 ..iced::Font::DEFAULT
             })
             .style(|theme: &Theme| text::Style {
-                color: Some(theme.colors.accent)
+                color: Some(theme.colors().accent)
             }),
         text(subtitle).size(text_size::DETAIL).medium().muted(),
     ]
@@ -269,7 +269,7 @@ fn tutorial_view(index: usize) -> Element<'static, Message> {
         .width(160)
         .height(160)
         .style(|theme: &Theme, _| svg::Style {
-            color: Some(theme.colors.accent),
+            color: Some(theme.colors().accent),
         });
     column![
         row![

@@ -95,7 +95,7 @@ impl<Message> canvas::Program<Message, Theme> for AnimatedRing {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = bounds.width.min(bounds.height) / 2.0 - STROKE_WIDTH / 2.0;
-        let colors = theme.colors;
+        let colors = theme.colors();
         let track = canvas::Path::circle(center, radius);
 
         frame.stroke(

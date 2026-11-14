@@ -99,7 +99,7 @@ impl<'a, Message: Clone + 'a> From<TextField<'a, Message>> for Element<'a, Messa
 }
 
 fn style(theme: &Theme, error: bool, muted: bool) -> text_input::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
 
     text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn input_borders_match_the_original_visual_contract() {
         let theme = Theme::new(iced::theme::Mode::Dark);
-        let colors = theme.colors;
+        let colors = theme.colors();
         let error = style(&theme, true, true);
         let idle = style(&theme, false, true);
 

@@ -82,7 +82,7 @@ impl<'a, Message: 'a> From<Avatar<'a>> for Element<'a, Message> {
         .center(Length::Fixed(size))
         .padding(iced::Padding::ZERO.top(font * 0.15))
         .style(move |theme: &Theme| {
-            let colors = theme.colors;
+            let colors = theme.colors();
             let (background, foreground) = match (color, active) {
                 (Some(color), _) => (color, colors.text),
                 (None, true) => (colors.accent, colors.chrome),

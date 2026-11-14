@@ -255,7 +255,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
             text(label)
                 .size(text_size::DENSE)
                 .style(|theme: &Theme| text::Style {
-                    color: Some(theme.colors.accent_muted),
+                    color: Some(theme.colors().accent_muted),
                 }),
         )
         .interaction(iced::mouse::Interaction::Pointer)
@@ -265,7 +265,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
         row![
             label(toggle, Message::ExpandNotifications),
             container(Space::new().width(1).height(18)).style(|theme: &Theme| {
-                container::Style::default().background(theme.colors.selected)
+                container::Style::default().background(theme.colors().selected)
             }),
             label("Dismiss All".to_owned(), Message::DismissAllNotifications),
         ]
@@ -276,7 +276,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     .padding([0, 16])
     .align_y(Alignment::Center)
     .style(|theme| {
-        let colors = theme.colors;
+        let colors = theme.colors();
         container::Style::default()
             .background(colors.raised)
             .border(iced::Border::default().rounded(20))

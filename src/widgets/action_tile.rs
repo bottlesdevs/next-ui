@@ -87,7 +87,7 @@ impl<'a, Message: Clone + 'a> From<ActionTile<'a, Message>> for Element<'a, Mess
 }
 
 fn style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
 
     button::Style {
         background: if state.pressed {
@@ -136,7 +136,7 @@ impl<Message> canvas::Program<Message, Theme> for Outline {
                 },
                 ..canvas::Stroke::default()
                     .with_width(BORDER_WIDTH)
-                    .with_color(theme.colors.raised)
+                    .with_color(theme.colors().raised)
             },
         );
 

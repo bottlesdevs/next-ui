@@ -24,7 +24,7 @@ impl<'a, Message: 'a> From<Tag<'a>> for Element<'a, Message> {
             .style(|theme| {
                 Surface::Raised
                     .style(theme)
-                    .color(theme.colors.accent_muted)
+                    .color(theme.colors().accent_muted)
             })
             .into()
     }

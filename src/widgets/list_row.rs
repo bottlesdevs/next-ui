@@ -12,6 +12,7 @@ use crate::{Element, Theme, icons::Icon};
 use super::{
     focusable_action::{ActionState, FocusableAction},
     radius,
+    sensitive::sensitive,
     size_group::{Key, Shared},
     spacing,
     text::TextExt as _,
@@ -45,6 +46,7 @@ pub struct ListRow<'a, Message> {
     on_press: Option<Message>,
     selected: bool,
     menu: Option<Menu>,
+    sensitive: bool,
 }
 
 /// The panel a row of a popup's list sits on. Such rows are compact, read
@@ -68,7 +70,6 @@ struct Labels<'a, Message> {
     title_suffix: Vec<Element<'a, Message>>,
     subtitle: Option<Subtitle<'a, Message>>,
     centered: bool,
-    dimmed: bool,
 }
 
 enum Subtitle<'a, Message> {
@@ -92,7 +93,6 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             title_suffix: Vec::new(),
             subtitle: None,
             centered: false,
-            dimmed: false,
         }))
     }
 
@@ -107,6 +107,7 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
             on_press: None,
             selected: false,
             menu: None,
+            sensitive: true,
         }
     }
 
@@ -203,11 +204,9 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
         self
     }
 
-    /// Mutes the title, for a row whose controls are all disabled.
-    pub(crate) fn dimmed(mut self, dimmed: bool) -> Self {
-        if let Body::Labels(labels) = &mut self.body {
-            labels.dimmed = dimmed;
-        }
+    /// Disables the whole row unless `sensitive`; see [`sensitive`].
+    pub(crate) fn sensitive(mut self, sensitive: bool) -> Self {
+        self.sensitive = sensitive;
         self
     }
 
@@ -250,8 +249,8 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
                     .height(16)
                     .style(move |theme: &Theme, _| svg::Style {
                         color: Some(match menu {
-                            Menu::Floating => theme.colors.accent,
-                            Menu::Attached => theme.colors.muted,
+                            Menu::Floating => theme.colors().accent,
+                            Menu::Attached => theme.colors().muted,
                         }),
                     })
                     .into(),
@@ -302,9 +301,6 @@ impl<'a, Message: 'a> Labels<'a, Message> {
         let mut title = text(self.title).label();
         if !compact {
             title = title.medium();
-        }
-        if self.dimmed {
-            title = title.muted();
         }
         let title: Element<'a, Message> = if self.title_suffix.is_empty() {
             title.into()
@@ -361,9 +357,10 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
     fn from(mut row: ListRow<'a, Message>) -> Self {
         let (corners, menu) = (row.corners, row.menu);
         let (pressable, on_press, selected) = (row.pressable, row.on_press.take(), row.selected);
+        let enabled = row.sensitive;
         let content = row.into_content(false);
 
-        if let Some(menu) = menu {
+        let row: Element<'a, Message> = if let Some(menu) = menu {
             FocusableAction::new(content)
                 .width(Fill)
                 .selected(selected)
@@ -388,12 +385,13 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
                 .width(Fill)
                 .style(move |theme| control_style(theme, corners))
                 .into()
-        }
+        };
+        sensitive(enabled, row)
     }
 }
 
 fn control_style(theme: &Theme, corners: Radius) -> container::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
 
     container::Style::default()
         .background(colors.card)
@@ -402,7 +400,7 @@ fn control_style(theme: &Theme, corners: Radius) -> container::Style {
 }
 
 pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
     let color = if state.pressed {
         colors.selected
     } else if state.selected || state.focused {
@@ -422,7 +420,7 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
 }
 
 pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> button::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
     let highlighted =
         state.enabled && (state.selected || state.hovered || state.pressed || state.focused);
 

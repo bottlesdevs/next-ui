@@ -314,7 +314,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
     ) {
         let state = tree.state.downcast_ref::<State>();
         let (header, panel) = parts(layout);
-        let colors = theme.colors;
+        let colors = theme.colors();
 
         if state.open {
             draw_bridge(
@@ -486,7 +486,7 @@ pub(super) fn draw_caret(
     renderer.draw_svg(
         iced::advanced::svg::Svg {
             handle,
-            color: Some(theme.colors.muted),
+            color: Some(theme.colors().muted),
             rotation: (std::f32::consts::PI * f32::from(open)).into(),
             opacity: 1.0,
         },

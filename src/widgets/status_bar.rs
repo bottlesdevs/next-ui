@@ -81,9 +81,9 @@ impl<'a> StatusBar<'a> {
                     .size(text_size::CAPTION)
                     .style(move |theme: &Theme| text::Style {
                         color: Some(if danger {
-                            theme.colors.danger
+                            theme.colors().danger
                         } else {
-                            theme.colors.muted
+                            theme.colors().muted
                         }),
                     }),
             ]
@@ -104,7 +104,7 @@ impl<'a> StatusBar<'a> {
 
         column![
             rule::horizontal(1).style(|theme: &Theme| rule::Style {
-                color: theme.colors.raised,
+                color: theme.colors().raised,
                 radius: 0.0.into(),
                 fill_mode: rule::FillMode::Full,
                 snap: true,
@@ -168,14 +168,14 @@ impl<'a, Message: 'static> From<LogPanel<'a>> for Element<'a, Message> {
         let log = container(scrollable(log).height(Fill))
             .padding([spacing::MD, spacing::LG])
             .width(Fill)
-            .style(|current_theme: &Theme| container::background(current_theme.colors.chrome))
+            .style(|current_theme: &Theme| container::background(current_theme.colors().chrome))
             .into();
 
         container(Element::new(LogWidget {
             children: [header, log],
         }))
         .width(Fill)
-        .style(|current_theme: &Theme| container::background(current_theme.colors.page))
+        .style(|current_theme: &Theme| container::background(current_theme.colors().page))
         .into()
     }
 }
@@ -185,7 +185,7 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a, Theme> {
 
     if danger {
         icon.style(|theme: &Theme, _| svg::Style {
-            color: Some(theme.colors.danger),
+            color: Some(theme.colors().danger),
         })
     } else {
         icon
@@ -193,7 +193,7 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a, Theme> {
 }
 
 fn bar_style(theme: &Theme) -> container::Style {
-    container::background(theme.colors.page)
+    container::background(theme.colors().page)
         .border(iced::Border::default().rounded(iced::border::bottom(radius::ROW)))
 }
 
@@ -700,7 +700,7 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for LogWidget<'_> 
                     snap: true,
                     ..renderer::Quad::default()
                 },
-                Background::Color(theme.colors.accent_muted),
+                Background::Color(theme.colors().accent_muted),
             );
         }
     }

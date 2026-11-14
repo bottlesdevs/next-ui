@@ -109,7 +109,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 
 fn style(current_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(current_theme.colors.chrome)),
+        background: Some(Background::Color(current_theme.colors().chrome)),
         border: Border::default().rounded(iced::border::top(radius::ROW)),
         ..container::Style::default()
     }

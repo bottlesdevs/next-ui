@@ -182,7 +182,7 @@ fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(theme.colors.card)
+                .background(theme.colors().card)
                 .border(iced::Border::default().rounded(22))
         });
     let labels = column![
@@ -201,25 +201,20 @@ fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
     .padding(spacing::LG)
 }
 
-/// The settings of `bottle`, editable unless an operation on it is in flight.
+/// The settings of `bottle`.
 pub(super) fn settings<'a>(
     bottle: Bottle<'a>,
     model: &'a Model,
     rename: Option<&'a str>,
-    editable: bool,
 ) -> Element<'a, Message> {
     const SETTINGS_TRACK_MIN_WIDTH: f32 = 300.0;
-    let editing = !editable;
     let (id, name, state) = (bottle.id, bottle.name, bottle.state);
     responsive(move |size| {
         let columns = usize::from(size.width >= SETTINGS_TRACK_MIN_WIDTH * 2.0 + spacing::SM) + 1;
         let value = rename.unwrap_or(name);
-        let mut name = TextRow::new("Bottle Name", value);
-        if !editing {
-            name = name.on_input(Message::Rename);
-            if !value.trim().is_empty() {
-                name = name.on_submit(Message::SaveName);
-            }
+        let mut name = TextRow::new("Bottle Name", value).on_input(Message::Rename);
+        if !value.trim().is_empty() {
+            name = name.on_submit(Message::SaveName);
         }
         let unavailable =
             || InfoRow::new("Not available yet").description("This setting is not supported yet.");
@@ -227,7 +222,7 @@ pub(super) fn settings<'a>(
             .title("Bottle")
             .columns(columns)
             .row(name)
-            .row(runner(model, bottle, editable))
+            .row(runner(model, bottle))
             .expander(
                 ExpanderRow::new("Dependencies")
                     .description("Install fonts, codecs, libraries...")
@@ -242,15 +237,9 @@ pub(super) fn settings<'a>(
         let graphics = RowGroup::new()
             .title("Graphics")
             .columns(columns)
-            .row(component(model, bottle, Slot::Dxvk, "DXVK", editable))
-            .row(component(model, bottle, Slot::Vkd3d, "VKD3D", editable))
-            .row(component(
-                model,
-                bottle,
-                Slot::LatencyFlex,
-                "LatencyFlex",
-                editable,
-            ))
+            .row(component(model, bottle, Slot::Dxvk, "DXVK"))
+            .row(component(model, bottle, Slot::Vkd3d, "VKD3D"))
+            .row(component(model, bottle, Slot::LatencyFlex, "LatencyFlex"))
             .row(SwitcherRow::new("DLSS", false).description("Deep Learning Super Sampling"))
             .row(SwitcherRow::new("vkBasalt", false).description("Add post-processing effects"))
             .row(
@@ -267,9 +256,9 @@ pub(super) fn settings<'a>(
             .row(
                 SwitcherRow::new("Gamescope", wrappers.gamescope.enabled)
                     .description("Use the SteamOS compositor")
-                    .on_toggle_maybe((!editing).then_some(move |enabled| {
+                    .on_toggle(move |enabled| {
                         Message::Act(Action::Edit(id, Change::Gamescope(enabled)))
-                    })),
+                    }),
             )
             .expander(
                 ExpanderRow::with_header(
@@ -281,9 +270,9 @@ pub(super) fn settings<'a>(
             .row(
                 SwitcherRow::new("MangoHud", wrappers.mangohud.enabled)
                     .description("Show a performance overlay")
-                    .on_toggle_maybe((!editing).then_some(move |enabled| {
+                    .on_toggle(move |enabled| {
                         Message::Act(Action::Edit(id, Change::MangoHud(enabled)))
-                    })),
+                    }),
             );
         column![bottle_group, graphics].spacing(spacing::SM).into()
     })
@@ -309,7 +298,6 @@ fn component<'a>(
     bottle: Bottle<'a>,
     slot: Slot,
     title: &'a str,
-    editable: bool,
 ) -> Element<'a, Message> {
     let prefix = bottle.id;
     let options = model
@@ -345,28 +333,22 @@ fn component<'a>(
     } else {
         turn_on
     };
-    let mut row = SelectorRow::new(title, &options, selected)
+    SelectorRow::new(title, &options, selected)
         .placeholder("Off")
         .popup()
         .options_title("Downloaded")
         .section("Available", available_rows(available, prefix))
         .switch(
             on,
-            toggle
-                .filter(|_| editable)
-                .map(|action| move |_| Message::Act(action.clone())),
-        );
-    if editable {
-        row = row.on_selected(move |Choice(release, _)| {
-            Message::Act(Action::UseRelease { prefix, release })
-        });
-    }
-    row.into()
+            toggle.map(|action| move |_| Message::Act(action.clone())),
+        )
+        .on_selected(move |Choice(release, _)| Message::Act(Action::UseRelease { prefix, release }))
+        .into()
 }
 
 /// A picker for the bottle's runner: the downloaded runners it can use and
 /// the newest ones the catalogs offer, which are selected once downloaded.
-fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'a, Message> {
+fn runner<'a>(model: &'a Model, bottle: Bottle<'a>) -> Element<'a, Message> {
     let prefix = bottle.id;
     let current = &bottle.state.runner;
     let selected = Choice(
@@ -382,20 +364,16 @@ fn runner<'a>(model: &'a Model, bottle: Bottle<'a>, editable: bool) -> Element<'
     if !options.contains(&selected) {
         options.insert(0, selected.clone());
     }
-    let mut row = SelectorRow::new("Runner", &options, Some(selected))
+    SelectorRow::new("Runner", &options, Some(selected))
         .icon(Icon::Run)
         .popup()
         .options_title("Downloaded")
         .section(
             "Available",
             available_rows(model.available_runners(), prefix),
-        );
-    if editable {
-        row = row.on_selected(move |Choice(release, _)| {
-            Message::Act(Action::UseRelease { prefix, release })
-        });
-    }
-    row.into()
+        )
+        .on_selected(move |Choice(release, _)| Message::Act(Action::UseRelease { prefix, release }))
+        .into()
 }
 
 /// The releases a picker offers to download, or shows downloading.

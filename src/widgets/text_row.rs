@@ -105,7 +105,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         if let Some(error) = text_row.error {
             subtitle = subtitle.push(text(error).size(text_size::DETAIL).style(|theme: &Theme| {
                 text::Style {
-                    color: Some(theme.colors.danger),
+                    color: Some(theme.colors().danger),
                 }
             }));
         }
@@ -126,9 +126,9 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
         .height(size)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if error {
-                theme.colors.danger
+                theme.colors().danger
             } else {
-                theme.colors.muted
+                theme.colors().muted
             }),
         })
         .into()

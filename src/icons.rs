@@ -67,7 +67,7 @@ impl Icon {
             .width(SIZE)
             .height(SIZE)
             .style(|theme: &Theme, _| svg::Style {
-                color: Some(theme.colors.muted),
+                color: Some(theme.colors().muted),
             })
     }
 

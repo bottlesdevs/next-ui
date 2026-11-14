@@ -179,7 +179,7 @@ fn boxed<'a, Message: Clone + 'a>(
                 .width(Length::Fill)
                 .padding([spacing::SM, spacing::LG])
                 .style(move |theme| {
-                    let colors = theme.colors;
+                    let colors = theme.colors();
                     container::Style::default()
                         .background(colors.card)
                         .color(colors.accent_muted)

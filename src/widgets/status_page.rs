@@ -54,7 +54,7 @@ impl<'a, Message: 'a> From<StatusPage<'a, Message>> for Element<'a, Message> {
                 container(icon.view().width(30).height(30))
                     .center(ICON_TILE)
                     .style(|theme| {
-                        let colors = theme.colors;
+                        let colors = theme.colors();
                         container::Style::default()
                             .background(colors.card)
                             .border(iced::Border::default().rounded(22))

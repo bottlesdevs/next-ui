@@ -47,7 +47,7 @@ impl<'a, T: Copy + PartialEq + 'a, Message: Clone + 'a> From<FilterChips<'a, T, 
                 .on_press_maybe(on_select.as_ref().map(|on_select| on_select(value)))
                 .padding([6, 14])
                 .style(move |theme, state| {
-                    let colors = theme.colors;
+                    let colors = theme.colors();
                     let background = if active {
                         Some(colors.raised)
                     } else if state.hovered || state.focused {

@@ -158,7 +158,7 @@ fn footer_row<'a, Message: Clone + 'a>(label: &'a str, message: Message) -> Elem
     .padding(spacing::MD)
     .on_press_maybe(Some(message))
     .style(|theme, state| button::Style {
-        background: Some(Background::Color(theme.colors.hovered)),
+        background: Some(Background::Color(theme.colors().hovered)),
         border: Border::default().rounded(iced::border::bottom(radius::ROW)),
         ..list_row::menu_style(theme, state, Menu::Floating)
     })
@@ -168,9 +168,9 @@ fn footer_row<'a, Message: Clone + 'a>(label: &'a str, message: Message) -> Elem
 fn status_row<'a, Message: 'a>(label: &'a str, error: bool) -> Element<'a, Message> {
     container(text(label).label().style(move |theme: &Theme| text::Style {
         color: Some(if error {
-            theme.colors.danger
+            theme.colors().danger
         } else {
-            theme.colors.muted
+            theme.colors().muted
         }),
     }))
     .width(Fill)

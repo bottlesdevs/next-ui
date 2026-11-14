@@ -558,7 +558,7 @@ fn action_tile_example<'a>(active: bool) -> ActionTile<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(theme.colors.card)
+                .background(theme.colors().card)
                 .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
         });
     let labels = column![

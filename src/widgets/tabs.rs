@@ -81,7 +81,7 @@ where
                     .width(Fill)
                     .style(move |theme: &Theme| {
                         container::Style::default().background(Background::Color(if selected {
-                            theme.colors.accent
+                            theme.colors().accent
                         } else {
                             iced::Color::TRANSPARENT
                         }))
@@ -119,7 +119,7 @@ where
 }
 
 fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = theme.colors;
+    let colors = theme.colors();
 
     button::Style {
         background: (state.focused && !state.hovered && !state.pressed)

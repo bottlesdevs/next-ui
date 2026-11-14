@@ -445,7 +445,7 @@ pub(super) fn separator<'a, Message: 'a>() -> Element<'a, Message> {
         container(Space::new())
             .width(Fill)
             .height(1)
-            .style(|theme: &Theme| container::Style::default().background(theme.colors.hovered)),
+            .style(|theme: &Theme| container::Style::default().background(theme.colors().hovered)),
     )
     .padding([spacing::XS, spacing::SM])
     .into()

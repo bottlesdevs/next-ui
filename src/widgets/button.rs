@@ -151,7 +151,6 @@ impl<'a, Message> Button<'a, Message> {
 
 impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message> {
     fn from(button: Button<'a, Message>) -> Self {
-        let disabled = button.loading || button.on_press.is_none();
         let content: Element<'a, Message> = if button.loading {
             container(text("…").label()).center(Fill).into()
         } else if button.shape == Shape::IconOnly {
@@ -159,7 +158,6 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 button.icon.expect("icon-only buttons always have an icon"),
                 button.icon_size,
                 button.kind,
-                disabled,
             ))
             .center(Fill)
             .into()
@@ -173,13 +171,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
                 .align_y(Center);
 
             if let Some(icon) = button.icon.filter(|_| !button.icon_trailing) {
-                row = row.push(icon_element(icon, button.icon_size, button.kind, disabled));
+                row = row.push(icon_element(icon, button.icon_size, button.kind));
             }
 
             row = row.push(button.content);
 
             if let Some(icon) = button.icon.filter(|_| button.icon_trailing) {
-                row = row.push(icon_element(icon, button.icon_size, button.kind, disabled));
+                row = row.push(icon_element(icon, button.icon_size, button.kind));
             }
 
             row.into()
@@ -229,18 +227,13 @@ impl<'a, Message: Clone + 'a> From<Button<'a, Message>> for Element<'a, Message>
 }
 
 /// The button's icon, in the colour of its label so both follow its state.
-fn icon_element<'a, Message: 'a>(
-    icon: Icon,
-    size: f32,
-    kind: ButtonKind,
-    disabled: bool,
-) -> Element<'a, Message> {
-    if disabled || kind == ButtonKind::Primary {
+fn icon_element<'a, Message: 'a>(icon: Icon, size: f32, kind: ButtonKind) -> Element<'a, Message> {
+    if kind == ButtonKind::Primary {
         icon.view()
             .width(size)
             .height(size)
             .style(|theme: &Theme, _| svg::Style {
-                color: Some(theme.colors.muted),
+                color: Some(theme.colors().muted),
             })
             .into()
     } else {
@@ -254,14 +247,8 @@ fn appearance(
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
-    let semantic = theme.colors;
-    let colors = colors(
-        theme,
-        !state.enabled,
-        state.hovered || state.focused,
-        state.pressed,
-        kind,
-    );
+    let semantic = theme.colors();
+    let colors = colors(theme, state.hovered || state.focused, state.pressed, kind);
 
     iced::widget::button::Style {
         background: if kind == ButtonKind::Transparent {
@@ -282,15 +269,8 @@ fn appearance(
     }
 }
 
-fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
-    let colors = theme.colors;
-
-    if disabled {
-        return Pair {
-            color: colors.page,
-            text: colors.muted,
-        };
-    }
+fn colors(theme: &Theme, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
+    let colors = theme.colors();
 
     match kind {
         ButtonKind::Primary => {
