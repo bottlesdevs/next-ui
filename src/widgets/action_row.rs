@@ -22,10 +22,12 @@ impl<'a, Message: 'a> ActionRow<'a, Message> {
     }
 
     /// A row showing `progress` in a ring after its trailing widgets.
+    /// It reports status rather than acting, so it is not pressable, and so
+    /// not drawn disabled the way an action without a handler is.
     pub fn progress(title: impl IntoFragment<'a>, progress: f32) -> Self {
         Self {
+            row: ListRow::labeled(title),
             progress: Some(progress),
-            ..Self::new(title, None)
         }
     }
 
