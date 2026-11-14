@@ -317,21 +317,19 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
                 .interaction
                 .state(true, state.open, header.bounds(), cursor),
             false,
-            |renderer| {
-                self.header.as_widget().draw(
-                    &tree.children[0],
-                    renderer,
-                    theme,
-                    &renderer::Style {
-                        text_color: colors.text,
-                    },
-                    header,
-                    cursor,
-                    viewport,
-                );
-                draw_caret(renderer, theme, header.bounds(), state.open);
-            },
         );
+        self.header.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            &renderer::Style {
+                text_color: colors.text,
+            },
+            header,
+            cursor,
+            viewport,
+        );
+        draw_caret(renderer, theme, header.bounds(), state.open);
 
         if state.open {
             self.panel.as_widget().draw(
@@ -411,8 +409,8 @@ pub(super) fn place(header: layout::Node, panel: Option<layout::Node>) -> layout
         .move_to(bounds.position())
 }
 
-/// Draws a disclosure's header as a list row around its `content`, `selected`
-/// while its panel shows. An `attached` panel continues the header, so the
+/// Draws a disclosure's header frame as a list row that is `selected` while
+/// its panel shows. An `attached` panel continues the header, so the
 /// header's bottom corners go.
 pub(super) fn draw_header(
     renderer: &mut iced::Renderer,
@@ -420,13 +418,12 @@ pub(super) fn draw_header(
     bounds: Rectangle,
     state: ActionState,
     attached: bool,
-    content: impl FnOnce(&mut iced::Renderer),
 ) {
     let mut style = list_row::action_style(theme, state);
     if attached {
         style.border = Border::default().rounded(iced::border::top(radius::ROW));
     }
-    super::focusable_action::draw_frame(renderer, theme, bounds, &style, state, content);
+    super::focusable_action::draw_frame(renderer, theme, bounds, &style, state);
 }
 
 /// Draws the caret in the slot a disclosure's `header` keeps for it,

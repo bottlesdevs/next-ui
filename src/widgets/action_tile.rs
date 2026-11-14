@@ -51,9 +51,10 @@ impl<'a, Message: Clone + 'a> From<ActionTile<'a, Message>> for Element<'a, Mess
     fn from(tile: ActionTile<'a, Message>) -> Self {
         let disc = container(tile.icon.view().width(DISC_ICON).height(DISC_ICON))
             .center(DISC)
+            // Translucent, so the tile's state layer shows through it.
             .style(|theme: &Theme| {
                 container::Style::default()
-                    .background(theme.colors().card)
+                    .background(theme.colors().text.scale_alpha(0.06))
                     .border(Border::default().rounded(DISC / 2.0))
             });
         let labels = column![

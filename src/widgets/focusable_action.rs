@@ -378,19 +378,6 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
             theme.disabled()
         };
         let style = (self.style)(theme, state);
-        let content = |renderer: &mut iced::Renderer| {
-            self.content.as_widget().draw(
-                &tree.children[0],
-                renderer,
-                theme,
-                &renderer::Style {
-                    text_color: style.text_color,
-                },
-                layout.children().next().expect("action content layout"),
-                cursor,
-                viewport,
-            );
-        };
 
         if self.frame {
             let shown = if self.state_layer {
@@ -402,10 +389,20 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
                     ..state
                 }
             };
-            draw_frame(renderer, theme, layout.bounds(), &style, shown, content);
-        } else {
-            content(renderer);
+            draw_frame(renderer, theme, layout.bounds(), &style, shown);
         }
+
+        self.content.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            &renderer::Style {
+                text_color: style.text_color,
+            },
+            layout.children().next().expect("action content layout"),
+            cursor,
+            viewport,
+        );
     }
 
     fn mouse_interaction(
@@ -451,22 +448,21 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
     }
 }
 
-/// Draws an action around its `content`: its resting look from `style`
-/// below, then the interaction states every action shares above, so no style
+/// Draws an action's frame under its content: its resting look from
+/// `style`, then the interaction states every action shares, so no style
 /// draws its own: the [`Theme::state_layer`] while hovered or pressed, and a
 /// focus ring while it has keyboard focus (a press hands focus to the
 /// pointer, so the ring only shows for the keyboard).
 ///
-/// The state layer covers the content's own fills, e.g. an icon's disc, so
-/// the whole action responds. iced draws text and images above a layer's
-/// fills, so the label and icons stay as they are.
+/// The layer stays under the content, so controls inside the action, such as
+/// a row's switch, keep their own look. A fill inside the action that should
+/// respond with it must let the layer show through, as a translucent one does.
 pub(crate) fn draw_frame(
     renderer: &mut iced::Renderer,
     theme: &Theme,
     bounds: Rectangle,
     style: &button::Style,
     state: ActionState,
-    content: impl FnOnce(&mut iced::Renderer),
 ) {
     let quad = |border| renderer::Quad {
         bounds,
@@ -486,8 +482,6 @@ pub(crate) fn draw_frame(
                 .unwrap_or(Background::Color(Color::TRANSPARENT)),
         );
     }
-
-    content(renderer);
 
     let corners = Border::default().rounded(style.border.radius);
     if let Some(layer) = theme.state_layer(style.text_color, state.hovered, state.pressed) {
