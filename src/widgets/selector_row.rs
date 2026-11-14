@@ -343,11 +343,13 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for PopupSelector<'_
             bounds,
             interaction.state(self.enabled, open, bounds, cursor),
             open,
+            |renderer| {
+                self.popup
+                    .as_widget()
+                    .draw(tree, renderer, theme, style, layout, cursor, viewport);
+                disclosure::draw_caret(renderer, theme, bounds, open);
+            },
         );
-        self.popup
-            .as_widget()
-            .draw(tree, renderer, theme, style, layout, cursor, viewport);
-        disclosure::draw_caret(renderer, theme, bounds, open);
     }
 
     fn overlay<'a>(
