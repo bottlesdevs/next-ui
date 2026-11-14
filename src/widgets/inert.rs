@@ -8,9 +8,10 @@
 //! [`inert`] blocks both pointer input and focus, because every user (the
 //! content behind a dialog, the base behind a side panel, and a disabled
 //! group) needs both at once. [`sensitive`](super::sensitive::sensitive) is
-//! `inert` plus the disabled look, which comes from
-//! [`Theme::disabled`](crate::Theme::disabled). Split `inert` into separate
-//! wrappers when something needs one without the other, for example:
+//! the same [`Inert`] drawn with
+//! [`Theme::disabled`](crate::Theme::disabled), so blocking and the disabled
+//! look share one widget. Split `inert` into separate wrappers when
+//! something needs one without the other, for example:
 //!
 //! - **No focus, still clickable**: an area the pointer can use but Tab
 //!   should skip. Pass input on, but drop focus operations, as
@@ -39,13 +40,22 @@ use crate::{Element, Theme};
 pub(crate) fn inert<'a, Message: 'a>(
     content: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
-    Element::new(Inert {
-        content: content.into(),
-    })
+    Element::new(Inert::new(content, false))
 }
 
-struct Inert<'a, Message> {
+/// Content out of interaction, and drawn disabled if `disabled`.
+pub(crate) struct Inert<'a, Message> {
     content: Element<'a, Message>,
+    disabled: bool,
+}
+
+impl<'a, Message> Inert<'a, Message> {
+    pub(crate) fn new(content: impl Into<Element<'a, Message>>, disabled: bool) -> Self {
+        Self {
+            content: content.into(),
+            disabled,
+        }
+    }
 }
 
 impl<Message> Widget<Message, Theme, iced::Renderer> for Inert<'_, Message> {
@@ -100,11 +110,21 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Inert<'_, Message> {
         _cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        let (theme, style) = if self.disabled {
+            let theme = theme.disabled();
+            let style = renderer::Style {
+                text_color: theme.colors().text,
+            };
+            (theme, style)
+        } else {
+            (*theme, *style)
+        };
+
         self.content.as_widget().draw(
             tree,
             renderer,
-            theme,
-            style,
+            &theme,
+            &style,
             layout,
             mouse::Cursor::Unavailable,
             viewport,
