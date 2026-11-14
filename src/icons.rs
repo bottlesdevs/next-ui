@@ -1,4 +1,5 @@
-use iced::{Theme, widget::svg};
+use crate::{Element, Theme};
+use iced::widget::svg;
 use rust_embed::RustEmbed;
 
 pub(crate) const SIZE: f32 = 24.0;
@@ -61,12 +62,12 @@ impl Icon {
     }
 
     /// Builds an SVG widget using the current semantic muted color.
-    pub fn view<'a>(self) -> svg::Svg<'a> {
+    pub fn view<'a>(self) -> svg::Svg<'a, Theme> {
         svg(self.handle())
             .width(SIZE)
             .height(SIZE)
             .style(|theme: &Theme, _| svg::Style {
-                color: Some(crate::theme::muted(theme)),
+                color: Some(theme.colors.muted),
             })
     }
 
@@ -179,7 +180,7 @@ impl<Message> iced::advanced::Widget<Message, Theme, iced::Renderer> for Inherit
     }
 }
 
-impl<'a, Message> From<Inherited> for iced::Element<'a, Message> {
+impl<'a, Message> From<Inherited> for Element<'a, Message> {
     fn from(icon: Inherited) -> Self {
         Self::new(icon)
     }

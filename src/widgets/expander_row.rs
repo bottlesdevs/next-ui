@@ -1,6 +1,7 @@
-use iced::{Element, widget::text::IntoFragment};
+use iced::widget::text::IntoFragment;
 
 use super::{list_row::ListRow, row_group::standalone_expander};
+use crate::Element;
 
 /// A row that discloses more rows beneath it, like `AdwExpanderRow`.
 pub struct ExpanderRow<'a, Message> {

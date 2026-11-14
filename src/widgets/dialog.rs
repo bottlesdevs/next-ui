@@ -1,5 +1,5 @@
 use iced::{
-    Element, Event, Fill, Length, Rectangle, Size, Theme,
+    Event, Fill, Length, Rectangle, Size,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
@@ -9,7 +9,10 @@ use iced::{
     window,
 };
 
-use crate::theme::{self, Surface};
+use crate::{
+    Element, Theme,
+    theme::{self, Surface},
+};
 
 use super::{
     button::{Button, ButtonKind},
@@ -126,7 +129,7 @@ impl<'a, Message: Clone + 'a> From<WindowModal<'a, Message>> for Element<'a, Mes
         if let Some(dialog) = modal.dialog {
             let content = container(dialog.content)
                 .center(Fill)
-                .style(|theme| container::Style::default().background(theme::scrim(theme)));
+                .style(|theme| container::Style::default().background(theme.colors.scrim));
 
             layers = layers.push(Element::new(ModalScope {
                 content: content.into(),

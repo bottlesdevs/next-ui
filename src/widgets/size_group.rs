@@ -2,8 +2,9 @@
 //! with the same key is as wide as the widest of them, so what sits beside
 //! them lines up across rows whatever each one holds.
 
+use crate::{Element, Theme};
 use iced::{
-    Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
+    Event, Length, Point, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},

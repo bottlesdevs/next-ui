@@ -1,6 +1,6 @@
-use iced::{Element, widget::text::IntoFragment};
+use iced::widget::text::IntoFragment;
 
-use crate::icons::Icon;
+use crate::{Element, icons::Icon};
 
 use super::{list_row::ListRow, progress_ring::ProgressRing};
 

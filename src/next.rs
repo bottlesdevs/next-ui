@@ -1,9 +1,9 @@
 //! The Next experience: one library, with details for standalone programs.
 
 use bottles_core::Slot;
-use iced::{Element, Fill, widget::text};
+use iced::{Fill, widget::text};
 use next_ui::{
-    Icon,
+    Element, Icon,
     layout::{self, PageBody, PaneContext},
     widget::{InfoRow, RowGroup, Search, SwitcherRow, TextExt as _, spacing, text_size},
 };

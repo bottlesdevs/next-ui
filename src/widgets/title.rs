@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Element, Theme,
+    Alignment,
     widget::{
         column, text,
         text::{Fragment, IntoFragment},
@@ -7,6 +7,7 @@ use iced::{
 };
 
 use super::{spacing, text_size};
+use crate::{Element, Theme};
 
 enum Detail<'a> {
     Subtitle(Fragment<'a>),
@@ -40,7 +41,7 @@ impl<'a> Title<'a> {
 impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
     fn from(title: Title<'a>) -> Self {
         let (title_size, detail_size) = typography(title.detail.as_ref());
-        let mut content = column![text(title.title).size(title_size).style(text::base)];
+        let mut content = column![text(title.title).size(title_size)];
 
         if let Some(detail) = title.detail {
             let (label, is_status) = match detail {
@@ -51,9 +52,9 @@ impl<'a, Message: 'a> From<Title<'a>> for Element<'a, Message> {
             content = content.push(text(label).size(detail_size).style(move |theme: &Theme| {
                 text::Style {
                     color: Some(if is_status {
-                        crate::theme::colors(theme).accent_muted
+                        theme.colors.accent_muted
                     } else {
-                        crate::theme::colors(theme).muted
+                        theme.colors.muted
                     }),
                 }
             }));

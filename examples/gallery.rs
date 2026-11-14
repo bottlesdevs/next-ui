@@ -1,9 +1,9 @@
 use iced::{
-    Center, Element, Fill, Subscription, Task, Theme,
+    Center, Fill, Subscription, Task,
     widget::{Space, column, container, grid, image, row, scrollable, text, tooltip},
 };
 use next_ui::{
-    Icon, chrome, theme,
+    Element, Icon, Theme, chrome, theme,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
         ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,
@@ -39,7 +39,6 @@ fn main() -> iced::Result {
         .title("Bottles Next component gallery")
         .theme(theme)
         .subscription(Gallery::subscription)
-        .style(|_, current_theme| theme::application(current_theme))
         .window_size((1200.0, 900.0))
         .decorations(false)
         .transparent(true)
@@ -47,7 +46,7 @@ fn main() -> iced::Result {
 }
 
 fn theme(_: &Gallery) -> Theme {
-    theme::dark()
+    Theme::new(iced::theme::Mode::Dark)
 }
 
 struct Gallery {
@@ -285,7 +284,7 @@ impl Gallery {
                         text("Already linked to another profile"),
                         tooltip::Position::Top,
                     )
-                    .style(container::rounded_box)
+                    .style(theme::surface(theme::Surface::Card))
                     .padding(12),
                 ),
             )
@@ -498,7 +497,6 @@ impl Gallery {
                 .scroller_width(4)
                 .margin(12),
         ))
-        .style(theme::scrollbar)
         .width(Fill)
         .height(Fill);
 
@@ -560,7 +558,7 @@ fn action_tile_example<'a>(active: bool) -> ActionTile<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(theme::colors(theme).card)
+                .background(theme.colors.card)
                 .border(iced::Border::default().rounded(ICON_CONTAINER_SIZE / 2.0))
         });
     let labels = column![

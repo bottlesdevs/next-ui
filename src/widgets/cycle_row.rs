@@ -1,9 +1,6 @@
-use iced::{
-    Element,
-    widget::text::{Fragment, IntoFragment},
-};
+use iced::widget::text::{Fragment, IntoFragment};
 
-use crate::icons::Icon;
+use crate::{Element, icons::Icon};
 
 use super::{
     button::{Button, ButtonKind},

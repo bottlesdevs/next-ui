@@ -3,9 +3,9 @@
 
 use std::path::PathBuf;
 
-use iced::{Element, widget::column};
+use iced::widget::column;
 use next_ui::{
-    Icon,
+    Element, Icon,
     layout::{self, PageBody, PaneContext},
     widget::{PickerRow, TextRow, Title, spacing},
 };

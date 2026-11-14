@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Background, Border, Element, Fill, Length, Theme,
+    Alignment, Background, Border, Fill, Length,
     widget::{Row, Space, button, container, stack, text},
 };
 
@@ -8,7 +8,7 @@ use super::{
     radius, spacing,
     text::TextExt as _,
 };
-use crate::theme;
+use crate::{Element, Theme};
 
 pub struct Tab<'a, T> {
     value: T,
@@ -81,7 +81,7 @@ where
                     .width(Fill)
                     .style(move |theme: &Theme| {
                         container::Style::default().background(Background::Color(if selected {
-                            theme::colors(theme).accent
+                            theme.colors.accent
                         } else {
                             iced::Color::TRANSPARENT
                         }))
@@ -119,7 +119,7 @@ where
 }
 
 fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = theme::colors(theme);
+    let colors = theme.colors;
 
     button::Style {
         background: (state.focused && !state.hovered && !state.pressed)

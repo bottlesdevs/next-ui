@@ -1,57 +1,34 @@
-//! Semantic colors for the toolkit.
+//! The toolkit's theme: its semantic colors, and how iced widgets take them.
 
 use crate::widgets::radius;
 use iced::{
-    Background, Border, Color, Theme as IcedTheme,
-    theme::{
-        Mode, Palette, Style as ApplicationStyle,
-        palette::{
-            Background as BackgroundPalette, Danger, Extended, Pair, Primary, Secondary, Success,
-            Warning,
-        },
-    },
-    widget::{container, scrollable},
+    Background, Border, Color, Shadow, Vector,
+    theme::{Base, Mode, Palette, Style as ApplicationStyle, palette::Pair},
+    widget::{button, container, progress_bar, rule, scrollable, svg, text, text_input},
 };
 
-// The fill ramp, in order; see `Colors`.
-const CHROME: Color = Color::from_rgb8(41, 34, 37);
-const PAGE: Color = Color::from_rgb8(58, 50, 53);
-const CARD: Color = Color::from_rgb8(65, 57, 60);
-const RAISED: Color = Color::from_rgb8(76, 66, 70);
-const SELECTED: Color = Color::from_rgb8(89, 78, 82);
-const HOVERED: Color = Color::from_rgb8(96, 85, 89);
+/// The theme every toolkit widget is drawn with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Theme {
+    pub mode: Mode,
+    pub colors: Colors,
+}
 
-const SUNKEN: Color = Color::from_rgb8(27, 25, 26);
-const CONTROL: Color = Color::from_rgb8(47, 40, 43);
-const CHROME_BORDER: Color = Color::from_rgb8(54, 44, 49);
-
-const MUTED: Color = Color::from_rgb8(166, 147, 154);
-const TEXT: Color = Color::from_rgb8(250, 236, 241);
-const ACCENT: Color = Color::from_rgb8(250, 230, 237);
-const ACCENT_MUTED: Color = Color::from_rgb8(199, 172, 182);
-
-const INFO: Color = Color::from_rgb8(51, 53, 71);
-const ERROR: Color = Color::from_rgb8(92, 63, 63);
-const WARNING: Color = Color::from_rgb8(107, 93, 71);
-const SUCCESS: Color = Color::from_rgb8(53, 71, 51);
-const WHITE: Color = Color::WHITE;
-
-const CHROME_LIGHT: Color = Color::from_rgb8(255, 253, 254);
-const PAGE_LIGHT: Color = Color::from_rgb8(247, 242, 243);
-const CARD_LIGHT: Color = Color::from_rgb8(238, 231, 233);
-const RAISED_LIGHT: Color = Color::from_rgb8(223, 212, 216);
-const SELECTED_LIGHT: Color = Color::from_rgb8(216, 201, 206);
-const HOVERED_LIGHT: Color = Color::from_rgb8(206, 190, 195);
-
-const SUNKEN_LIGHT: Color = Color::from_rgb8(251, 248, 249);
-const CONTROL_LIGHT: Color = Color::from_rgb8(230, 221, 224);
-const CHROME_BORDER_LIGHT: Color = Color::from_rgb8(226, 215, 219);
-const CHROME_HOVERED_LIGHT: Color = Color::from_rgb8(214, 200, 204);
-
-const MUTED_LIGHT: Color = Color::from_rgb8(135, 116, 122);
-const TEXT_LIGHT: Color = Color::from_rgb8(36, 28, 31);
-const ACCENT_LIGHT: Color = Color::from_rgb8(168, 76, 104);
-const ACCENT_MUTED_LIGHT: Color = Color::from_rgb8(196, 150, 164);
+impl Theme {
+    /// The theme for `mode`; with no preference, dark.
+    pub fn new(mode: Mode) -> Self {
+        match mode {
+            Mode::Light => Self {
+                mode,
+                colors: Colors::LIGHT,
+            },
+            Mode::Dark | Mode::None => Self {
+                mode: Mode::Dark,
+                colors: Colors::DARK,
+            },
+        }
+    }
+}
 
 /// Semantic colors used by toolkit widgets.
 ///
@@ -80,178 +57,97 @@ pub struct Colors {
     pub muted: Color,
     pub accent: Color,
     pub accent_muted: Color,
+    /// Dims what a dialog covers.
     pub scrim: Color,
     pub info: Color,
     pub danger: Color,
     pub warning: Color,
     pub success: Color,
+    /// Text on the `info`, `danger`, `warning` and `success` fills.
+    pub on_status: Color,
 }
 
-/// Builds the dark Iced appearance used by the toolkit.
-pub fn dark() -> IcedTheme {
-    custom(
-        "Bottles Next",
-        Palette {
-            background: PAGE,
-            text: TEXT,
-            primary: ACCENT,
-            success: SUCCESS,
-            warning: WARNING,
-            danger: ERROR,
-        },
-        Extended {
-            background: BackgroundPalette {
-                base: pair(PAGE, TEXT),
-                weakest: pair(SUNKEN, TEXT),
-                weaker: pair(PAGE, TEXT),
-                weak: pair(CARD, TEXT),
-                neutral: pair(RAISED, TEXT),
-                strong: pair(HOVERED, TEXT),
-                stronger: pair(SELECTED, TEXT),
-                strongest: pair(CHROME_BORDER, TEXT),
-            },
-            primary: Primary {
-                base: pair(MUTED, TEXT),
-                weak: pair(CHROME, TEXT),
-                strong: pair(ACCENT_MUTED, TEXT),
-            },
-            secondary: Secondary {
-                base: pair(SUNKEN, MUTED),
-                weak: pair(PAGE, MUTED),
-                strong: pair(CHROME_BORDER, MUTED),
-            },
-            success: Success {
-                base: pair(SUCCESS, WHITE),
-                weak: pair(SUCCESS, WHITE),
-                strong: pair(SUCCESS, WHITE),
-            },
-            warning: Warning {
-                base: pair(WARNING, WHITE),
-                weak: pair(WARNING, WHITE),
-                strong: pair(WARNING, WHITE),
-            },
-            danger: Danger {
-                base: pair(ERROR, WHITE),
-                weak: pair(ERROR, WHITE),
-                strong: pair(ERROR, WHITE),
-            },
-            is_dark: true,
-        },
-    )
-}
+const SCRIM_ALPHA: f32 = 171.0 / 255.0;
+const INFO: Color = Color::from_rgb8(51, 53, 71);
+const DANGER: Color = Color::from_rgb8(92, 63, 63);
+const WARNING: Color = Color::from_rgb8(107, 93, 71);
+const SUCCESS: Color = Color::from_rgb8(53, 71, 51);
 
-/// Builds the light Iced appearance used by the toolkit.
-pub fn light() -> IcedTheme {
-    custom(
-        "Bottles Next Light",
-        Palette {
-            background: PAGE_LIGHT,
-            text: TEXT_LIGHT,
-            primary: ACCENT_LIGHT,
-            success: SUCCESS,
-            warning: WARNING,
-            danger: ERROR,
-        },
-        Extended {
-            background: BackgroundPalette {
-                base: pair(PAGE_LIGHT, TEXT_LIGHT),
-                weakest: pair(SUNKEN_LIGHT, TEXT_LIGHT),
-                weaker: pair(PAGE_LIGHT, TEXT_LIGHT),
-                weak: pair(CARD_LIGHT, TEXT_LIGHT),
-                neutral: pair(RAISED_LIGHT, TEXT_LIGHT),
-                strong: pair(HOVERED_LIGHT, TEXT_LIGHT),
-                stronger: pair(SELECTED_LIGHT, TEXT_LIGHT),
-                strongest: pair(CHROME_BORDER_LIGHT, TEXT_LIGHT),
-            },
-            primary: Primary {
-                base: pair(MUTED_LIGHT, TEXT_LIGHT),
-                weak: pair(CHROME_LIGHT, TEXT_LIGHT),
-                strong: pair(ACCENT_MUTED_LIGHT, TEXT_LIGHT),
-            },
-            secondary: Secondary {
-                base: pair(SUNKEN_LIGHT, MUTED_LIGHT),
-                weak: pair(PAGE_LIGHT, MUTED_LIGHT),
-                strong: pair(CHROME_HOVERED_LIGHT, MUTED_LIGHT),
-            },
-            success: Success {
-                base: pair(SUCCESS, WHITE),
-                weak: pair(SUCCESS, WHITE),
-                strong: pair(SUCCESS, WHITE),
-            },
-            warning: Warning {
-                base: pair(WARNING, WHITE),
-                weak: pair(WARNING, WHITE),
-                strong: pair(WARNING, WHITE),
-            },
-            danger: Danger {
-                base: pair(ERROR, WHITE),
-                weak: pair(ERROR, WHITE),
-                strong: pair(ERROR, WHITE),
-            },
-            is_dark: false,
-        },
-    )
-}
-
-/// Resolves semantic toolkit colors from an Iced appearance.
-pub fn colors(theme: &IcedTheme) -> Colors {
-    let extended = theme.extended_palette();
-    let text = theme.palette().text;
-    let scrim = if extended.is_dark {
-        extended.background.weakest.color
-    } else {
-        text
-    }
-    .scale_alpha(171.0 / 255.0);
-
-    Colors {
-        chrome: extended.primary.weak.color,
-        page: extended.background.base.color,
-        card: extended.background.weak.color,
-        raised: extended.background.neutral.color,
-        selected: extended.background.stronger.color,
-        hovered: extended.background.strong.color,
-        sunken: extended.background.weakest.color,
-        control: if extended.is_dark {
-            CONTROL
-        } else {
-            CONTROL_LIGHT
-        },
-        chrome_border: extended.background.strongest.color,
-        chrome_hovered: extended.secondary.strong.color,
-        text,
-        muted: extended.secondary.weak.text,
-        accent: theme.palette().primary,
-        accent_muted: extended.primary.strong.color,
-        scrim,
+impl Colors {
+    const DARK: Self = Self {
+        chrome: Color::from_rgb8(41, 34, 37),
+        page: Color::from_rgb8(58, 50, 53),
+        card: Color::from_rgb8(65, 57, 60),
+        raised: Color::from_rgb8(76, 66, 70),
+        selected: Color::from_rgb8(89, 78, 82),
+        hovered: Color::from_rgb8(96, 85, 89),
+        sunken: Color::from_rgb8(27, 25, 26),
+        control: Color::from_rgb8(47, 40, 43),
+        chrome_border: Color::from_rgb8(54, 44, 49),
+        chrome_hovered: Color::from_rgb8(54, 44, 49),
+        text: Color::from_rgb8(250, 236, 241),
+        muted: Color::from_rgb8(166, 147, 154),
+        accent: Color::from_rgb8(250, 230, 237),
+        accent_muted: Color::from_rgb8(199, 172, 182),
+        scrim: Color::from_rgba8(27, 25, 26, SCRIM_ALPHA),
         info: INFO,
-        danger: theme.palette().danger,
-        warning: theme.palette().warning,
-        success: theme.palette().success,
+        danger: DANGER,
+        warning: WARNING,
+        success: SUCCESS,
+        on_status: Color::WHITE,
+    };
+
+    const LIGHT: Self = Self {
+        chrome: Color::from_rgb8(255, 253, 254),
+        page: Color::from_rgb8(247, 242, 243),
+        card: Color::from_rgb8(238, 231, 233),
+        raised: Color::from_rgb8(223, 212, 216),
+        selected: Color::from_rgb8(216, 201, 206),
+        hovered: Color::from_rgb8(206, 190, 195),
+        sunken: Color::from_rgb8(251, 248, 249),
+        control: Color::from_rgb8(230, 221, 224),
+        chrome_border: Color::from_rgb8(226, 215, 219),
+        chrome_hovered: Color::from_rgb8(214, 200, 204),
+        text: Color::from_rgb8(36, 28, 31),
+        muted: Color::from_rgb8(135, 116, 122),
+        accent: Color::from_rgb8(168, 76, 104),
+        accent_muted: Color::from_rgb8(196, 150, 164),
+        scrim: Color::from_rgba8(36, 28, 31, SCRIM_ALPHA),
+        info: INFO,
+        danger: DANGER,
+        warning: WARNING,
+        success: SUCCESS,
+        on_status: Color::WHITE,
+    };
+}
+
+impl Base for Theme {
+    fn default(preference: Mode) -> Self {
+        Self::new(preference)
     }
-}
 
-#[doc(hidden)]
-pub fn for_mode(mode: Mode) -> IcedTheme {
-    match mode {
-        Mode::Light => light(),
-        Mode::Dark | Mode::None => dark(),
+    fn mode(&self) -> Mode {
+        self.mode
     }
-}
 
-pub(crate) fn muted(theme: &IcedTheme) -> Color {
-    colors(theme).muted
-}
+    /// The application root is transparent, so the window frame can round
+    /// its corners.
+    fn base(&self) -> ApplicationStyle {
+        ApplicationStyle {
+            background_color: Color::TRANSPARENT,
+            text_color: self.colors.text,
+        }
+    }
 
-pub(crate) fn scrim(theme: &IcedTheme) -> Color {
-    colors(theme).scrim
-}
+    fn palette(&self) -> Option<Palette> {
+        None
+    }
 
-/// Styles the transparent Iced application root.
-pub fn application(theme: &IcedTheme) -> ApplicationStyle {
-    ApplicationStyle {
-        background_color: Color::TRANSPARENT,
-        text_color: colors(theme).text,
+    fn name(&self) -> &str {
+        match self.mode {
+            Mode::Light => "Bottles Next Light",
+            Mode::Dark | Mode::None => "Bottles Next",
+        }
     }
 }
 
@@ -286,9 +182,16 @@ pub enum Tone {
 
 impl Surface {
     /// The fill and the text color on it.
-    pub fn colors(self, theme: &IcedTheme) -> Pair {
-        let colors = colors(theme);
-        let on = |color| pair(color, colors.text);
+    pub fn colors(self, theme: &Theme) -> Pair {
+        let colors = theme.colors;
+        let on = |color| Pair {
+            color,
+            text: colors.text,
+        };
+        let status = |color| Pair {
+            color,
+            text: colors.on_status,
+        };
 
         match self {
             Self::Page => on(colors.page),
@@ -296,14 +199,14 @@ impl Surface {
             Self::Raised | Self::Boxed => on(colors.raised),
             Self::Overlay => on(colors.selected),
             Self::Banner(Tone::Hint) => on(colors.chrome),
-            Self::Banner(Tone::Info) => pair(colors.info, WHITE),
-            Self::Banner(Tone::Error) => pair(colors.danger, WHITE),
-            Self::Banner(Tone::Warning) => pair(colors.warning, WHITE),
-            Self::Banner(Tone::Success) => pair(colors.success, WHITE),
+            Self::Banner(Tone::Info) => status(colors.info),
+            Self::Banner(Tone::Error) => status(colors.danger),
+            Self::Banner(Tone::Warning) => status(colors.warning),
+            Self::Banner(Tone::Success) => status(colors.success),
         }
     }
 
-    pub fn style(self, theme: &IcedTheme) -> container::Style {
+    pub fn style(self, theme: &Theme) -> container::Style {
         let colors = self.colors(theme);
 
         container::Style::default()
@@ -317,31 +220,154 @@ impl Surface {
 }
 
 /// Styles a container as `role`, for `container(..).style(surface(..))`.
-pub fn surface(role: Surface) -> impl Fn(&IcedTheme) -> container::Style {
+pub fn surface(role: Surface) -> impl Fn(&Theme) -> container::Style {
     move |theme| role.style(theme)
 }
 
-/// Styles a scrollbar using semantic muted colors.
-pub fn scrollbar(theme: &IcedTheme, status: scrollable::Status) -> scrollable::Style {
-    let mut style = scrollable::default(theme, status);
-    let rail = scrollable::Rail {
-        background: None,
-        border: Border::default(),
-        scroller: scrollable::Scroller {
-            background: Background::Color(muted(theme)),
+// Every iced widget the toolkit draws takes its style as a closure over this
+// theme. The defaults are the toolkit's look for a widget given no style.
+
+impl button::Catalog for Theme {
+    type Class<'a> = button::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|theme, _| button::Style {
+            text_color: theme.colors.text,
+            ..button::Style::default()
+        })
+    }
+
+    fn style(&self, class: &Self::Class<'_>, status: button::Status) -> button::Style {
+        class(self, status)
+    }
+}
+
+impl container::Catalog for Theme {
+    type Class<'a> = container::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(container::transparent)
+    }
+
+    fn style(&self, class: &Self::Class<'_>) -> container::Style {
+        class(self)
+    }
+}
+
+impl text::Catalog for Theme {
+    type Class<'a> = text::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|_| text::Style::default())
+    }
+
+    fn style(&self, class: &Self::Class<'_>) -> text::Style {
+        class(self)
+    }
+}
+
+impl text_input::Catalog for Theme {
+    type Class<'a> = text_input::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|theme, _| text_input::Style {
+            background: Background::Color(Color::TRANSPARENT),
+            border: Border::default(),
+            icon: theme.colors.muted,
+            placeholder: theme.colors.muted,
+            value: theme.colors.text,
+            selection: theme.colors.accent,
+        })
+    }
+
+    fn style(&self, class: &Self::Class<'_>, status: text_input::Status) -> text_input::Style {
+        class(self, status)
+    }
+}
+
+impl scrollable::Catalog for Theme {
+    type Class<'a> = scrollable::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|theme, _| {
+            let colors = theme.colors;
+            let rail = scrollable::Rail {
+                background: None,
+                border: Border::default(),
+                scroller: scrollable::Scroller {
+                    background: Background::Color(colors.muted),
+                    border: Border::default().rounded(radius::PILL),
+                },
+            };
+
+            scrollable::Style {
+                container: container::Style::default(),
+                vertical_rail: rail,
+                horizontal_rail: rail,
+                gap: None,
+                auto_scroll: scrollable::AutoScroll {
+                    background: Background::Color(colors.page.scale_alpha(0.9)),
+                    border: Border::default()
+                        .rounded(radius::PILL)
+                        .width(1)
+                        .color(colors.text.scale_alpha(0.8)),
+                    shadow: Shadow {
+                        color: Color::BLACK.scale_alpha(0.7),
+                        offset: Vector::ZERO,
+                        blur_radius: 2.0,
+                    },
+                    icon: colors.text.scale_alpha(0.8),
+                },
+            }
+        })
+    }
+
+    fn style(&self, class: &Self::Class<'_>, status: scrollable::Status) -> scrollable::Style {
+        class(self, status)
+    }
+}
+
+impl svg::Catalog for Theme {
+    type Class<'a> = svg::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|_, _| svg::Style::default())
+    }
+
+    fn style(&self, class: &Self::Class<'_>, status: svg::Status) -> svg::Style {
+        class(self, status)
+    }
+}
+
+impl progress_bar::Catalog for Theme {
+    type Class<'a> = progress_bar::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|theme| progress_bar::Style {
+            background: Background::Color(theme.colors.sunken),
+            bar: Background::Color(theme.colors.accent),
             border: Border::default().rounded(radius::PILL),
-        },
-    };
+        })
+    }
 
-    style.vertical_rail = rail;
-    style.horizontal_rail = rail;
-    style
+    fn style(&self, class: &Self::Class<'_>) -> progress_bar::Style {
+        class(self)
+    }
 }
 
-fn custom(name: &'static str, palette: Palette, extended: Extended) -> IcedTheme {
-    IcedTheme::custom_with_fn(name, palette, move |_| extended)
-}
+impl rule::Catalog for Theme {
+    type Class<'a> = rule::StyleFn<'a, Self>;
 
-const fn pair(color: Color, text: Color) -> Pair {
-    Pair { color, text }
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|theme| rule::Style {
+            color: theme.colors.raised,
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
+        })
+    }
+
+    fn style(&self, class: &Self::Class<'_>) -> rule::Style {
+        class(self)
+    }
 }

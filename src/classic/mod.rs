@@ -3,9 +3,9 @@
 mod bottle;
 
 use bottles_core::{PrefixBackend, WineArch};
-use iced::{Element, Fill, widget::column};
+use iced::{Fill, widget::column};
 use next_ui::{
-    Icon,
+    Element, Icon,
     layout::{self, PageBody, PaneContext, Side, navigation_split, side_panel},
     widget::{Dialog, ListRow, Popover, Tab, Tabs, Title, WindowModal, header_button},
 };

@@ -1,8 +1,9 @@
 //! The toolkit's one styled text input: borderless and transparent, so it
 //! reads as text inside whatever row or field hosts it.
 
+use crate::{Element, Theme};
 use iced::{
-    Background, Border, Color, Element, Fill, Theme,
+    Background, Border, Color, Fill,
     widget::{Id, text_input},
 };
 
@@ -98,7 +99,7 @@ impl<'a, Message: Clone + 'a> From<TextField<'a, Message>> for Element<'a, Messa
 }
 
 fn style(theme: &Theme, error: bool, muted: bool) -> text_input::Style {
-    let colors = crate::theme::colors(theme);
+    let colors = theme.colors;
 
     text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
@@ -120,8 +121,8 @@ mod tests {
 
     #[test]
     fn input_borders_match_the_original_visual_contract() {
-        let theme = crate::theme::dark();
-        let colors = crate::theme::colors(&theme);
+        let theme = Theme::new(iced::theme::Mode::Dark);
+        let colors = theme.colors;
         let error = style(&theme, true, true);
         let idle = style(&theme, false, true);
 

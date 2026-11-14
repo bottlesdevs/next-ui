@@ -1,11 +1,9 @@
 //! Chrome for undecorated application windows.
 
-use iced::{
-    Background, Border, Element, Fill, Subscription, event, keyboard, widget::container, window,
-};
+use iced::{Background, Border, Fill, Subscription, event, keyboard, widget::container, window};
 
 use iced::{
-    Event, Length, Rectangle, Size, Theme, Vector,
+    Event, Length, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, overlay, renderer,
         widget::{Operation, Tree},
@@ -17,7 +15,7 @@ use iced::{
 };
 
 use crate::{
-    Icon, theme,
+    Element, Icon, Theme,
     widget::{HeaderBar, header, header_button},
     widgets::window_handle,
 };
@@ -75,7 +73,7 @@ pub fn window_frame<'a, Message: Clone + 'a>(
         .height(Fill)
         .padding(PANEL_INSET)
         .style(|current_theme| {
-            let colors = theme::colors(current_theme);
+            let colors = current_theme.colors;
 
             container::Style {
                 background: Some(Background::Color(colors.chrome)),

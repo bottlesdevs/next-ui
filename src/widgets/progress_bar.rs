@@ -1,9 +1,10 @@
 use iced::{
-    Alignment, Background, Border, Element, Fill,
+    Alignment, Background, Border, Fill,
     widget::{Space, column, progress_bar, row, text},
 };
 
 use super::{spacing, text::TextExt as _, text_size};
+use crate::{Element, Theme};
 
 const THICKNESS: f32 = 4.0;
 
@@ -44,8 +45,8 @@ impl<'a, Message: 'a> From<ProgressBar<'a, Message>> for Element<'a, Message> {
         let track = progress_bar(0.0..=1.0, bar.progress)
             .length(Fill)
             .girth(THICKNESS)
-            .style(|theme| {
-                let colors = crate::theme::colors(theme);
+            .style(|theme: &Theme| {
+                let colors = theme.colors;
 
                 progress_bar::Style {
                     background: Background::Color(colors.sunken),

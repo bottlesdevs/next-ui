@@ -1,5 +1,5 @@
 use iced::{
-    Element, Fill, Length,
+    Fill, Length,
     widget::{Space, column, container, row, scrollable, text, text::IntoFragment},
 };
 
@@ -11,7 +11,10 @@ use super::{
     popup::{self, AnchorMessage, Popup, PopupMessage},
     spacing, text_size,
 };
-use crate::theme::{self, Surface};
+use crate::{
+    Element,
+    theme::{self, Surface},
+};
 
 const WIDTH: f32 = 240.0;
 

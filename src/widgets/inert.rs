@@ -24,7 +24,7 @@
 //!   that the theme owns.
 
 use iced::{
-    Element, Length, Rectangle, Size, Theme,
+    Length, Rectangle, Size,
     advanced::{
         Layout, Widget, layout, mouse, renderer,
         widget::{Operation, Tree, tree},
@@ -32,6 +32,7 @@ use iced::{
 };
 
 use super::window_handle::HandlesOnly;
+use crate::{Element, Theme};
 
 /// Shows `content` but takes it out of interaction: it gets no input, focus
 /// or overlays while something above it is modal. Its window handles still

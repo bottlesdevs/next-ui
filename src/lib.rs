@@ -15,6 +15,11 @@ pub mod theme;
 mod widgets;
 
 pub use icons::Icon;
+pub use theme::Theme;
+
+/// An element drawn with the toolkit's [`Theme`].
+pub type Element<'a, Message> = iced::Element<'a, Message, Theme, iced::Renderer>;
+
 /// The complete public widget catalog.
 ///
 /// The caller owns values and semantic messages. Widgets own their interaction

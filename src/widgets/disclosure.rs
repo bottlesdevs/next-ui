@@ -2,8 +2,7 @@
 //! below down, like `AdwExpanderRow`.
 
 use iced::{
-    Background, Border, Color, ContentFit, Element, Event, Length, Point, Rectangle, Shadow, Size,
-    Theme, Vector,
+    Background, Border, Color, ContentFit, Event, Length, Point, Rectangle, Shadow, Size, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         svg::Renderer as _,
@@ -18,6 +17,7 @@ use super::{
     popup::{self, PopupMessage},
     radius,
 };
+use crate::{Element, Theme};
 
 /// The corners of the header and panel, which the bridge between them
 /// continues.
@@ -314,7 +314,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for Disclosure<'_, M
     ) {
         let state = tree.state.downcast_ref::<State>();
         let (header, panel) = parts(layout);
-        let colors = crate::theme::colors(theme);
+        let colors = theme.colors;
 
         if state.open {
             draw_bridge(
@@ -486,7 +486,7 @@ pub(super) fn draw_caret(
     renderer.draw_svg(
         iced::advanced::svg::Svg {
             handle,
-            color: Some(crate::theme::colors(theme).muted),
+            color: Some(theme.colors.muted),
             rotation: (std::f32::consts::PI * f32::from(open)).into(),
             opacity: 1.0,
         },

@@ -1,12 +1,15 @@
 //! Session notifications and their overlay layer.
 
 use iced::{
-    Alignment, Element, Fill,
+    Alignment, Fill,
     widget::{Space, column, container, mouse_area, responsive, row, scrollable, text},
 };
 use uuid::Uuid;
 
-use next_ui::widget::{InfoCardKind, Notification as NotificationCard, text_size};
+use next_ui::{
+    Element, Theme,
+    widget::{InfoCardKind, Notification as NotificationCard, text_size},
+};
 
 use crate::{
     app::Message,
@@ -251,8 +254,8 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
         mouse_area(
             text(label)
                 .size(text_size::DENSE)
-                .style(|theme| text::Style {
-                    color: Some(next_ui::theme::colors(theme).accent_muted),
+                .style(|theme: &Theme| text::Style {
+                    color: Some(theme.colors.accent_muted),
                 }),
         )
         .interaction(iced::mouse::Interaction::Pointer)
@@ -261,8 +264,8 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     container(
         row![
             label(toggle, Message::ExpandNotifications),
-            container(Space::new().width(1).height(18)).style(|theme| {
-                container::Style::default().background(next_ui::theme::colors(theme).selected)
+            container(Space::new().width(1).height(18)).style(|theme: &Theme| {
+                container::Style::default().background(theme.colors.selected)
             }),
             label("Dismiss All".to_owned(), Message::DismissAllNotifications),
         ]
@@ -273,7 +276,7 @@ fn pill<'a>(folded: usize) -> Element<'a, Message> {
     .padding([0, 16])
     .align_y(Alignment::Center)
     .style(|theme| {
-        let colors = next_ui::theme::colors(theme);
+        let colors = theme.colors;
         container::Style::default()
             .background(colors.raised)
             .border(iced::Border::default().rounded(20))

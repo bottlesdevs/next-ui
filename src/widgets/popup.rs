@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use iced::{
-    Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
+    Event, Fill, Length, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
@@ -16,6 +16,7 @@ use super::{
     focus::{descendant_is_focused, event_cursor, unfocus_descendants},
     spacing,
 };
+use crate::{Element, Theme};
 
 /// A message published from a popup's panel, saying whether it also closes
 /// the popup: picking an option does, starting a download beside it doesn't.
@@ -444,9 +445,7 @@ pub(super) fn separator<'a, Message: 'a>() -> Element<'a, Message> {
         container(Space::new())
             .width(Fill)
             .height(1)
-            .style(|theme| {
-                container::Style::default().background(crate::theme::colors(theme).hovered)
-            }),
+            .style(|theme: &Theme| container::Style::default().background(theme.colors.hovered)),
     )
     .padding([spacing::XS, spacing::SM])
     .into()

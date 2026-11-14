@@ -1,9 +1,10 @@
 use iced::{
-    Center, Element, Length, Theme,
+    Center, Length,
     widget::{column, container, row, svg, text, text::Fragment, text::IntoFragment},
 };
 
 use crate::{
+    Element, Theme,
     icons::Icon,
     theme::{self, Surface},
 };
@@ -70,7 +71,7 @@ impl<'a, Message: 'a> From<InfoCard<'a>> for Element<'a, Message> {
     }
 }
 
-pub(super) fn icon<'a>(kind: Kind) -> svg::Svg<'a> {
+pub(super) fn icon<'a>(kind: Kind) -> svg::Svg<'a, Theme> {
     let icon = match kind {
         Kind::Hint => Icon::Wand,
         Kind::Info => Icon::Info,

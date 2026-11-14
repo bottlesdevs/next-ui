@@ -1,5 +1,5 @@
 use iced::{
-    Color, Element, Event, Length, Padding, Rectangle, Size, Theme, Vector,
+    Color, Event, Length, Padding, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
@@ -11,6 +11,7 @@ use iced::{
 };
 
 use super::focus::event_cursor;
+use crate::{Element, Theme};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ActionState {
@@ -181,7 +182,7 @@ impl<'a, Message> FocusableAction<'a, Message> {
             height: Length::Shrink,
             padding: Padding::ZERO,
             style: Box::new(|theme, _| button::Style {
-                text_color: crate::theme::colors(theme).text,
+                text_color: theme.colors.text,
                 ..button::Style::default()
             }),
         }
@@ -345,7 +346,7 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
         let mut style = (self.style)(theme, state);
 
         if !state.enabled {
-            style.text_color = crate::theme::colors(theme).muted;
+            style.text_color = theme.colors.muted;
         }
 
         if style.background.is_some() || style.border.width > 0.0 || style.shadow.color.a > 0.0 {

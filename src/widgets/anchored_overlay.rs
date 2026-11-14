@@ -1,5 +1,5 @@
 use iced::{
-    Event, Point, Rectangle, Size, Theme, Vector,
+    Event, Point, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Id, Operation, Tree, operation},
@@ -16,6 +16,7 @@ use super::{
     popup::{AnchorMessage, PopupMessage, forward},
     spacing,
 };
+use crate::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DismissReason {

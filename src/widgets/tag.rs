@@ -1,11 +1,8 @@
-use iced::{
-    Element,
-    widget::{container, text, text::IntoFragment},
-};
+use iced::widget::{container, text, text::IntoFragment};
 
 use super::text::TextExt as _;
 use super::text_size;
-use crate::theme::Surface;
+use crate::{Element, theme::Surface};
 
 /// A short label describing what something is, e.g. "Account" or "Library".
 pub struct Tag<'a> {
@@ -27,7 +24,7 @@ impl<'a, Message: 'a> From<Tag<'a>> for Element<'a, Message> {
             .style(|theme| {
                 Surface::Raised
                     .style(theme)
-                    .color(crate::theme::colors(theme).accent_muted)
+                    .color(theme.colors.accent_muted)
             })
             .into()
     }

@@ -1,6 +1,7 @@
 use iced::{Font, font::Weight, widget::Text};
 
 use super::{style, text_size};
+use crate::Theme;
 
 pub trait TextExt: Sized {
     fn h3(self) -> Self;
@@ -14,7 +15,7 @@ pub trait TextExt: Sized {
     fn muted(self) -> Self;
 }
 
-impl<'a> TextExt for Text<'a> {
+impl<'a> TextExt for Text<'a, Theme> {
     fn h3(self) -> Self {
         self.size(54)
     }

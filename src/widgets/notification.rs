@@ -2,7 +2,7 @@
 //! action buttons.
 
 use iced::{
-    Alignment, Border, Center, Element, Fill, Theme,
+    Alignment, Border, Center, Fill,
     widget::{Row, column, container, opaque, row, text},
 };
 
@@ -13,7 +13,7 @@ use super::{
     text::TextExt as _,
     text_size,
 };
-use crate::{icons::Icon, theme::Surface};
+use crate::{Element, Theme, icons::Icon, theme::Surface};
 
 /// A notification whose content and actions are owned by the caller.
 pub struct Notification<'a, Message> {

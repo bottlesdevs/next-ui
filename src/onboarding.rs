@@ -1,12 +1,12 @@
 //! First-run experience selection and downloads of the essential addons.
 
 use iced::{
-    Element, Fill, Length, Theme,
+    Fill, Length,
     alignment::{Horizontal, Vertical},
     widget::{column, container, row, scrollable, svg, text},
 };
 use next_ui::{
-    Icon, chrome, theme,
+    Element, Icon, Theme, chrome, theme,
     widget::{
         ActionRow, Button, ButtonKind, InfoCard, InfoCardKind, InfoRow, RowGroup, TextExt as _,
         spacing, text_size,
@@ -243,7 +243,7 @@ fn title<'a>(heading: &'a str, subtitle: &'a str) -> Element<'a, Message> {
                 ..iced::Font::DEFAULT
             })
             .style(|theme: &Theme| text::Style {
-                color: Some(theme::colors(theme).accent)
+                color: Some(theme.colors.accent)
             }),
         text(subtitle).size(text_size::DETAIL).medium().muted(),
     ]
@@ -269,7 +269,7 @@ fn tutorial_view(index: usize) -> Element<'static, Message> {
         .width(160)
         .height(160)
         .style(|theme: &Theme, _| svg::Style {
-            color: Some(theme::colors(theme).accent),
+            color: Some(theme.colors.accent),
         });
     column![
         row![

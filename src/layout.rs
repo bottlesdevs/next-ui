@@ -1,5 +1,5 @@
 use iced::{
-    Background, Degrees, Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
+    Background, Degrees, Event, Length, Point, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
@@ -12,6 +12,7 @@ use iced::{
 };
 
 use crate::{
+    Element, Theme,
     chrome::{self, WINDOW_CONTROL_AT_START},
     theme,
     widget::{HeaderBar, spacing},
@@ -193,7 +194,6 @@ impl<'a, Message: 'a> PageBody<'a, Message> {
                             .scroller_width(4)
                             .margin(6),
                     ))
-                    .style(theme::scrollbar)
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .into()
@@ -492,7 +492,7 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedSplit<'_, Messa
                     && progress > 0.0
                     && let Some(bounds) = child_layout.bounds().intersection(&clip)
                 {
-                    let window = theme::colors(theme).chrome;
+                    let window = theme.colors.chrome;
                     renderer.with_layer(bounds, |renderer| {
                         renderer.fill_quad(
                             renderer::Quad {

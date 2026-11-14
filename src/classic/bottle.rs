@@ -2,11 +2,11 @@
 
 use bottles_core::{Slot, WineArch};
 use iced::{
-    Center, Element, Fill, Length, Theme,
+    Center, Fill, Length,
     widget::{Grid, column, container, responsive, row, text},
 };
 use next_ui::{
-    Icon,
+    Element, Icon, Theme,
     layout::PageBody,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, CardAction, CycleRow, ExpanderRow,
@@ -182,7 +182,7 @@ fn new_program<'a>(bottle: Uuid) -> ActionTile<'a, Message> {
         .align_y(Center)
         .style(|theme: &Theme| {
             container::Style::default()
-                .background(next_ui::theme::colors(theme).card)
+                .background(theme.colors.card)
                 .border(iced::Border::default().rounded(22))
         });
     let labels = column![

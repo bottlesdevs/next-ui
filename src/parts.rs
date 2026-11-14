@@ -1,11 +1,11 @@
 //! Compositions shared by the screens.
 
 use iced::{
-    Element, Fill,
+    Fill,
     widget::{Grid, Space, column, container, row, stack, text},
 };
 use next_ui::{
-    Icon, theme,
+    Element, Icon, Theme, theme,
     widget::{
         ArtworkCard, Button, ButtonKind, CardAction, InfoCard, InfoCardKind, ListRow, Popover,
         ProgressBar, ProgressRing, StatusPage, TextExt as _, radius, spacing, text_size,
@@ -129,9 +129,9 @@ fn suggestions<'a, Message: Clone + 'a>(
         let art = container(Space::new())
             .width(Fill)
             .height(120)
-            .style(|theme| {
+            .style(|theme: &Theme| {
                 container::Style::default()
-                    .background(theme::colors(theme).selected)
+                    .background(theme.colors.selected)
                     .border(iced::Border::default().rounded(iced::border::top(radius::ROW)))
             });
         let footer = row![
@@ -261,8 +261,8 @@ fn downloads<'a, Message: Clone + 'a>(
         .map(|download| -> Element<'a, Message> {
             let status = text(download_status(&download))
                 .size(text_size::DENSE)
-                .style(|theme| text::Style {
-                    color: Some(theme::colors(theme).accent_muted),
+                .style(|theme: &Theme| text::Style {
+                    color: Some(theme.colors.accent_muted),
                 });
             let name = text(download_name(model, &download))
                 .size(text_size::LABEL)

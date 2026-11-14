@@ -2,11 +2,11 @@
 //! Profiles side pane, which the shell owns.
 
 use iced::{
-    Alignment, Element, Fill,
+    Alignment, Fill,
     widget::{Space, column, row, text},
 };
 use next_ui::{
-    Icon,
+    Element, Icon,
     layout::{self, PageBody, PaneContext},
     widget::{
         ActionRow, Avatar, Button, ButtonKind, ListRow, Popover, RowGroup, TextExt as _, TextRow,

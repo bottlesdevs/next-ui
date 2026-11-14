@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Element, Event, Fill, Point, Rectangle, Renderer, Theme,
+    Background, Border, Event, Fill, Point, Rectangle, Renderer,
     animation::{Animation, Easing},
     mouse,
     theme::palette,
@@ -9,7 +9,7 @@ use iced::{
 };
 
 use super::focusable_action::{ActionState, FocusableAction};
-use crate::theme;
+use crate::{Element, Theme};
 
 const WIDTH: f32 = 52.0;
 const HEIGHT: f32 = 32.0;
@@ -86,7 +86,7 @@ impl KnobState {
     }
 }
 
-impl<Message> canvas::Program<Message> for AnimatedKnob {
+impl<Message> canvas::Program<Message, Theme> for AnimatedKnob {
     type State = KnobState;
 
     fn update(
@@ -118,7 +118,7 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
             |animation| animation.interpolate(0.0, 1.0, Instant::now()),
         );
         let diameter = bounds.height;
-        let colors = theme::colors(theme);
+        let colors = theme.colors;
         let color = if self.enabled {
             palette::mix(colors.selected, colors.accent, progress)
         } else {
@@ -142,7 +142,7 @@ impl<Message> canvas::Program<Message> for AnimatedKnob {
 }
 
 fn track_style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = theme::colors(theme);
+    let colors = theme.colors;
 
     button::Style {
         background: Some(Background::Color(colors.page)),

@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use iced::{
-    Element, Event, Point, Rectangle, Renderer, Theme,
+    Event, Point, Rectangle, Renderer,
     animation::{Animation, Easing},
     mouse,
     time::Instant,
@@ -9,7 +9,7 @@ use iced::{
     window,
 };
 
-use crate::{icons::SIZE, theme};
+use crate::{Element, Theme, icons::SIZE};
 
 const STROKE_WIDTH: f32 = 2.5;
 const START_ANGLE: f32 = -PI / 2.0;
@@ -62,7 +62,7 @@ impl RingState {
     }
 }
 
-impl<Message> canvas::Program<Message> for AnimatedRing {
+impl<Message> canvas::Program<Message, Theme> for AnimatedRing {
     type State = RingState;
 
     fn update(
@@ -95,7 +95,7 @@ impl<Message> canvas::Program<Message> for AnimatedRing {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = bounds.width.min(bounds.height) / 2.0 - STROKE_WIDTH / 2.0;
-        let colors = theme::colors(theme);
+        let colors = theme.colors;
         let track = canvas::Path::circle(center, radius);
 
         frame.stroke(

@@ -1,12 +1,12 @@
 use iced::{
-    Center, Element, Theme,
+    Center,
     widget::{
         Id, column, row, svg, text,
         text::{Fragment, IntoFragment},
     },
 };
 
-use crate::icons::Icon;
+use crate::{Element, Theme, icons::Icon};
 
 use super::{list_row::ListRow, spacing, text_field::TextField, text_size};
 
@@ -105,7 +105,7 @@ impl<'a, Message: Clone + 'a> From<TextRow<'a, Message>> for ListRow<'a, Message
         if let Some(error) = text_row.error {
             subtitle = subtitle.push(text(error).size(text_size::DETAIL).style(|theme: &Theme| {
                 text::Style {
-                    color: Some(crate::theme::colors(theme).danger),
+                    color: Some(theme.colors.danger),
                 }
             }));
         }
@@ -126,9 +126,9 @@ fn icon_view<'a, Message: 'a>(icon: Icon, size: f32, error: bool) -> Element<'a,
         .height(size)
         .style(move |theme: &Theme, _| svg::Style {
             color: Some(if error {
-                crate::theme::colors(theme).danger
+                theme.colors.danger
             } else {
-                crate::theme::colors(theme).muted
+                theme.colors.muted
             }),
         })
         .into()

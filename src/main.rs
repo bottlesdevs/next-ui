@@ -18,7 +18,6 @@ fn main() -> iced::Result {
         .title("Bottles Next")
         .theme(app::App::theme)
         .subscription(app::App::subscription)
-        .style(|_, theme| next_ui::theme::application(theme))
         .window(iced::window::Settings {
             size: iced::Size::new(1600.0, 1000.0),
             position: iced::window::Position::Centered,

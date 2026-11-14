@@ -1,5 +1,5 @@
 use iced::{
-    Border, Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
+    Border, Event, Fill, Length, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, tree},
@@ -7,7 +7,7 @@ use iced::{
     widget::{Column, button, column, container, scrollable, text},
 };
 
-use crate::icons::Icon;
+use crate::{Element, Theme, icons::Icon};
 
 use super::{
     disclosure::{self, Disclosure},
@@ -169,21 +169,19 @@ where
                 }));
         }
         let popup = selector.popup;
-        let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING))
-            .width(Fill)
-            .style(crate::theme::scrollbar);
+        let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING)).width(Fill);
         // The options continue the row: a hairline marks where the row ends.
         let list = column![
             container(iced::widget::Space::new().height(1))
                 .width(Fill)
-                .style(|theme| {
-                    container::Style::default().background(crate::theme::colors(theme).selected)
+                .style(|theme: &Theme| {
+                    container::Style::default().background(theme.colors.selected)
                 }),
             list,
         ];
         let panel = container(list).width(Fill).style(move |theme| {
             container::Style::default()
-                .background(crate::theme::colors(theme).raised)
+                .background(theme.colors.raised)
                 .border(Border::default().rounded(iced::border::bottom(if popup {
                     radius::BOX
                 } else {
@@ -202,7 +200,7 @@ where
             .width(Fill)
             .on_press_maybe(enabled.then_some(AnchorMessage::Toggle))
             .style(|theme, _| button::Style {
-                text_color: crate::theme::colors(theme).text,
+                text_color: theme.colors.text,
                 ..button::Style::default()
             });
 

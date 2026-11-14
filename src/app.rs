@@ -2,11 +2,10 @@
 
 use std::fmt;
 
-use iced::{Element, Fill, Subscription, Task, theme::Mode as ThemeMode, window};
+use iced::{Fill, Subscription, Task, theme::Mode as ThemeMode, window};
 use next_ui::{
-    chrome,
+    Element, Theme, chrome,
     layout::{PaneContext, Side, side_panel},
-    theme,
     widget::text_size,
 };
 use uuid::Uuid;
@@ -20,7 +19,7 @@ use crate::{
 };
 
 pub(crate) struct App {
-    theme: iced::Theme,
+    theme: Theme,
     state: State,
     closing: bool,
 }
@@ -144,7 +143,7 @@ impl App {
     pub(crate) fn new() -> (Self, Task<Message>) {
         (
             Self {
-                theme: theme::for_mode(ThemeMode::default()),
+                theme: Theme::new(ThemeMode::default()),
                 state: State::Loading,
                 closing: false,
             },
@@ -155,8 +154,8 @@ impl App {
         )
     }
 
-    pub(crate) fn theme(&self) -> iced::Theme {
-        self.theme.clone()
+    pub(crate) fn theme(&self) -> Theme {
+        self.theme
     }
 
     pub(crate) fn subscription(&self) -> Subscription<Message> {
@@ -173,7 +172,7 @@ impl App {
 
     pub(crate) fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ThemeChanged(mode) => self.theme = theme::for_mode(mode),
+            Message::ThemeChanged(mode) => self.theme = Theme::new(mode),
             Message::Window(chrome::Action::RequestClose) => {
                 if self.closing {
                     return Task::none();

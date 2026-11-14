@@ -1,6 +1,7 @@
-use iced::{Element, widget::text::IntoFragment};
+use iced::widget::text::IntoFragment;
 
 use super::{list_row::ListRow, switcher::Switcher};
+use crate::Element;
 
 pub struct SwitcherRow<'a, Message> {
     row: ListRow<'a, Message>,

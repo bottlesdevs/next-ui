@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Border, Element, Event, Length, Point, Rectangle, Size, Theme, Vector,
+    Alignment, Border, Event, Length, Point, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree},
@@ -11,7 +11,7 @@ use iced::{
     },
 };
 
-use crate::icons::Icon;
+use crate::{Element, Theme, icons::Icon};
 
 use super::{
     disclosure::{self, Disclosure},
@@ -179,7 +179,7 @@ fn boxed<'a, Message: Clone + 'a>(
                 .width(Length::Fill)
                 .padding([spacing::SM, spacing::LG])
                 .style(move |theme| {
-                    let colors = crate::theme::colors(theme);
+                    let colors = theme.colors;
                     container::Style::default()
                         .background(colors.card)
                         .color(colors.accent_muted)

@@ -1,10 +1,11 @@
 use iced::{
-    Background, Border, Element, Length, Padding, Point, Rectangle, Renderer, Theme, border,
+    Background, Border, Length, Padding, Point, Rectangle, Renderer, border,
     widget::{button, canvas, container, stack},
 };
 
 use super::focusable_action::{ActionState, FocusableAction};
 use super::radius;
+use crate::{Element, Theme};
 
 const BORDER_WIDTH: f32 = 2.0;
 const DASH_PATTERN: &[f32] = &[6.0, 6.0];
@@ -86,7 +87,7 @@ impl<'a, Message: Clone + 'a> From<ActionTile<'a, Message>> for Element<'a, Mess
 }
 
 fn style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = crate::theme::colors(theme);
+    let colors = theme.colors;
 
     button::Style {
         background: if state.pressed {
@@ -104,7 +105,7 @@ fn style(theme: &Theme, state: ActionState) -> button::Style {
 
 struct Outline;
 
-impl<Message> canvas::Program<Message> for Outline {
+impl<Message> canvas::Program<Message, Theme> for Outline {
     type State = ();
 
     fn draw(
@@ -135,7 +136,7 @@ impl<Message> canvas::Program<Message> for Outline {
                 },
                 ..canvas::Stroke::default()
                     .with_width(BORDER_WIDTH)
-                    .with_color(crate::theme::colors(theme).raised)
+                    .with_color(theme.colors.raised)
             },
         );
 

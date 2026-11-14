@@ -1,9 +1,9 @@
 use iced::{
-    Background, Border, Center, Element, Fill, Length, Theme,
+    Background, Border, Center, Fill, Length,
     widget::{Row, container, row},
 };
 
-use crate::{icons::Icon, theme};
+use crate::{Element, Theme, icons::Icon};
 
 use super::{
     button::{Button, ButtonKind},
@@ -101,7 +101,7 @@ impl<'a, Message: 'a> From<HeaderBar<'a, Message>> for Element<'a, Message> {
     }
 }
 
-fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Message> {
+fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Message, Theme> {
     Row::with_children(children)
         .spacing(spacing::SM)
         .align_y(Center)
@@ -109,7 +109,7 @@ fn section<'a, Message: 'a>(children: Vec<Element<'a, Message>>) -> Row<'a, Mess
 
 fn style(current_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(theme::colors(current_theme).chrome)),
+        background: Some(Background::Color(current_theme.colors.chrome)),
         border: Border::default().rounded(iced::border::top(radius::ROW)),
         ..container::Style::default()
     }

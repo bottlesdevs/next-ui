@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Background, Border, Element, Fill, Padding, Theme,
+    Alignment, Background, Border, Fill, Padding,
     border::Radius,
     widget::{
         Column, Row as IcedRow, Space, button, container, row, svg, text,
@@ -7,7 +7,7 @@ use iced::{
     },
 };
 
-use crate::icons::Icon;
+use crate::{Element, Theme, icons::Icon};
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
@@ -250,8 +250,8 @@ impl<'a, Message: 'a> ListRow<'a, Message> {
                     .height(16)
                     .style(move |theme: &Theme, _| svg::Style {
                         color: Some(match menu {
-                            Menu::Floating => crate::theme::colors(theme).accent,
-                            Menu::Attached => crate::theme::colors(theme).muted,
+                            Menu::Floating => theme.colors.accent,
+                            Menu::Attached => theme.colors.muted,
                         }),
                     })
                     .into(),
@@ -393,7 +393,7 @@ impl<'a, Message: Clone + 'a> From<ListRow<'a, Message>> for Element<'a, Message
 }
 
 fn control_style(theme: &Theme, corners: Radius) -> container::Style {
-    let colors = crate::theme::colors(theme);
+    let colors = theme.colors;
 
     container::Style::default()
         .background(colors.card)
@@ -402,7 +402,7 @@ fn control_style(theme: &Theme, corners: Radius) -> container::Style {
 }
 
 pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
-    let colors = crate::theme::colors(theme);
+    let colors = theme.colors;
     let color = if state.pressed {
         colors.selected
     } else if state.selected || state.focused {
@@ -422,7 +422,7 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
 }
 
 pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> button::Style {
-    let colors = crate::theme::colors(theme);
+    let colors = theme.colors;
     let highlighted =
         state.enabled && (state.selected || state.hovered || state.pressed || state.focused);
 

@@ -1,10 +1,13 @@
 use iced::{
-    Background, Border, Center, Element, Fill, Length, Theme,
+    Background, Border, Center, Fill, Length,
     theme::palette::Pair,
     widget::{Row, container, svg, text, tooltip},
 };
 
-use crate::icons::{self, Icon};
+use crate::{
+    Element, Theme,
+    icons::{self, Icon},
+};
 
 use super::{
     focusable_action::{ActionState, FocusableAction},
@@ -237,7 +240,7 @@ fn icon_element<'a, Message: 'a>(
             .width(size)
             .height(size)
             .style(|theme: &Theme, _| svg::Style {
-                color: Some(crate::theme::colors(theme).muted),
+                color: Some(theme.colors.muted),
             })
             .into()
     } else {
@@ -251,7 +254,7 @@ fn appearance(
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
-    let semantic = crate::theme::colors(theme);
+    let semantic = theme.colors;
     let colors = colors(
         theme,
         !state.enabled,
@@ -280,7 +283,7 @@ fn appearance(
 }
 
 fn colors(theme: &Theme, disabled: bool, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
-    let colors = crate::theme::colors(theme);
+    let colors = theme.colors;
 
     if disabled {
         return Pair {

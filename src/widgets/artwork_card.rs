@@ -1,5 +1,5 @@
 use iced::{
-    Center, ContentFit, Element, Event, Fill, Length, Rectangle, Size, Theme, Vector,
+    Center, ContentFit, Event, Fill, Length, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree},
@@ -8,7 +8,7 @@ use iced::{
 };
 
 use super::radius;
-use crate::{icons::Icon, widgets::button::ButtonKind};
+use crate::{Element, Theme, icons::Icon, widgets::button::ButtonKind};
 
 use super::{button::Button, card::Card, spacing, text::TextExt as _};
 
@@ -147,7 +147,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             .clip(true)
             .style(|theme: &Theme| {
                 container::Style::default()
-                    .background(crate::theme::colors(theme).raised)
+                    .background(theme.colors.raised)
                     .border(iced::Border::default().rounded(iced::border::top(radius::ROW)))
             });
         let labels = container(

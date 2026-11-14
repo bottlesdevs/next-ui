@@ -3,11 +3,11 @@
 
 use bottles_core::Slot;
 use iced::{
-    Alignment, Element, Fill,
+    Alignment, Fill,
     widget::{column, container, row, text},
 };
 use next_ui::{
-    Icon,
+    Element, Icon,
     layout::{self, PageBody, PaneContext, Side, side_panel},
     widget::{
         ActionRow, Avatar, AvatarShape, BoxedGroup, Button, ButtonKind, FilterChips, ListRow,
@@ -332,7 +332,7 @@ fn available_row<'a>(release: AvailableRelease) -> ListRow<'a, Message> {
         .label()
         .medium()
         .style(|theme| text::Style {
-            color: Some(next_ui::theme::colors(theme).accent_muted),
+            color: Some(theme.colors.accent_muted),
         });
     match release.download {
         Some(download) => {
@@ -405,7 +405,7 @@ fn plugins<'a>(model: &'a Model, state: &'a State) -> PageBody<'a, Message> {
             .size(text_size::DENSE)
             .medium()
             .style(|theme| text::Style {
-                color: Some(next_ui::theme::colors(theme).accent_muted),
+                color: Some(theme.colors.accent_muted),
             });
         let group = shown.into_iter().fold(BoxedGroup::new(), |group, plugin| {
             group.row(
@@ -503,7 +503,7 @@ fn icon_tile<'a>(icon: Icon) -> Element<'a, Message> {
     container(icon.view().width(22).height(22))
         .center(40)
         .style(|theme| {
-            let colors = next_ui::theme::colors(theme);
+            let colors = theme.colors;
             container::Style::default()
                 .background(colors.raised)
                 .border(iced::Border::default().rounded(10))

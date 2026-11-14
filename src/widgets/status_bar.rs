@@ -1,5 +1,5 @@
 use iced::{
-    Background, Element, Event, Fill, Length, Point, Rectangle, Size, Theme, Vector,
+    Background, Event, Fill, Length, Point, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
@@ -14,7 +14,7 @@ use iced::{
     window,
 };
 
-use crate::{icons::Icon, theme};
+use crate::{Element, Theme, icons::Icon};
 
 use super::{
     button::{Button, ButtonKind},
@@ -81,9 +81,9 @@ impl<'a> StatusBar<'a> {
                     .size(text_size::CAPTION)
                     .style(move |theme: &Theme| text::Style {
                         color: Some(if danger {
-                            theme::colors(theme).danger
+                            theme.colors.danger
                         } else {
-                            theme::colors(theme).muted
+                            theme.colors.muted
                         }),
                     }),
             ]
@@ -104,7 +104,7 @@ impl<'a> StatusBar<'a> {
 
         column![
             rule::horizontal(1).style(|theme: &Theme| rule::Style {
-                color: theme::colors(theme).raised,
+                color: theme.colors.raised,
                 radius: 0.0.into(),
                 fill_mode: rule::FillMode::Full,
                 snap: true,
@@ -168,26 +168,24 @@ impl<'a, Message: 'static> From<LogPanel<'a>> for Element<'a, Message> {
         let log = container(scrollable(log).height(Fill))
             .padding([spacing::MD, spacing::LG])
             .width(Fill)
-            .style(|current_theme: &Theme| {
-                container::background(theme::colors(current_theme).chrome)
-            })
+            .style(|current_theme: &Theme| container::background(current_theme.colors.chrome))
             .into();
 
         container(Element::new(LogWidget {
             children: [header, log],
         }))
         .width(Fill)
-        .style(|current_theme: &Theme| container::background(theme::colors(current_theme).page))
+        .style(|current_theme: &Theme| container::background(current_theme.colors.page))
         .into()
     }
 }
 
-fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
+fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a, Theme> {
     let icon = icon.view().width(ICON_SIZE).height(ICON_SIZE);
 
     if danger {
         icon.style(|theme: &Theme, _| svg::Style {
-            color: Some(theme::colors(theme).danger),
+            color: Some(theme.colors.danger),
         })
     } else {
         icon
@@ -195,7 +193,7 @@ fn status_icon<'a>(icon: Icon, danger: bool) -> svg::Svg<'a> {
 }
 
 fn bar_style(theme: &Theme) -> container::Style {
-    container::background(theme::colors(theme).page)
+    container::background(theme.colors.page)
         .border(iced::Border::default().rounded(iced::border::bottom(radius::ROW)))
 }
 
@@ -702,7 +700,7 @@ impl<Message: 'static> Widget<Message, Theme, iced::Renderer> for LogWidget<'_> 
                     snap: true,
                     ..renderer::Quad::default()
                 },
-                Background::Color(theme::colors(theme).accent_muted),
+                Background::Color(theme.colors.accent_muted),
             );
         }
     }

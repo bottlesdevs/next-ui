@@ -1,6 +1,9 @@
-use iced::{Element, Length, Padding, widget::container};
+use iced::{Length, Padding, widget::container};
 
-use crate::theme::{self, Surface};
+use crate::{
+    Element,
+    theme::{self, Surface},
+};
 
 pub struct Card<'a, Message> {
     content: Element<'a, Message>,
