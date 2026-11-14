@@ -207,7 +207,7 @@ pub fn button(model: &Model) -> Element<'_, Message> {
     )
     .kind(ButtonKind::Flat);
 
-    let mut menu = Popover::new(trigger).width(300.0);
+    let mut menu = Popover::new(trigger);
     for profile in &profiles.profiles {
         let active = profile.id == profiles.selected;
         menu = menu.item(

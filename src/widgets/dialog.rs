@@ -18,11 +18,27 @@ use super::{
     button::{Button, ButtonKind},
     focus::{cycle_descendant_focus, event_cursor, focus_first_descendant},
     inert::inert,
+    natural::NaturalColumn,
     text::TextExt as _,
     text_size,
 };
 
 const DIALOG_MAX_WIDTH: f32 = 360.0;
+const CONFIRM_MAX_WIDTH: f32 = 460.0;
+
+/// A dialog's surface around `content`, as wide as the content wants up to
+/// `max_width`.
+fn sized<'a, Message: 'a>(
+    content: impl Into<Element<'a, Message>>,
+    max_width: f32,
+) -> Element<'a, Message> {
+    NaturalColumn::new([container(content)
+        .padding(24)
+        .style(theme::surface(Surface::Page))
+        .into()])
+    .max_width(max_width)
+    .into()
+}
 
 /// Arbitrary content presented by a [`WindowModal`].
 ///
@@ -36,11 +52,7 @@ pub struct Dialog<'a, Message> {
 impl<'a, Message: 'a> Dialog<'a, Message> {
     pub fn new(content: impl Into<Element<'a, Message>>, on_dismiss: Message) -> Self {
         Self {
-            content: container(content)
-                .max_width(DIALOG_MAX_WIDTH)
-                .padding(24)
-                .style(theme::surface(Surface::Page))
-                .into(),
+            content: sized(content, DIALOG_MAX_WIDTH),
             on_dismiss,
         }
     }
@@ -76,11 +88,7 @@ impl<'a, Message: 'a> Dialog<'a, Message> {
         .spacing(12);
 
         Self {
-            content: container(content)
-                .max_width(460)
-                .padding(24)
-                .style(theme::surface(Surface::Page))
-                .into(),
+            content: sized(content, CONFIRM_MAX_WIDTH),
             on_dismiss: on_cancel,
         }
     }

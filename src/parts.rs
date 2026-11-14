@@ -298,7 +298,7 @@ fn downloads<'a, Message: Clone + 'a>(
     Some(
         Popover::new(trigger)
             .content(column(rows).spacing(8))
-            .width(420.0)
+            .min_width(420.0)
             .into(),
     )
 }

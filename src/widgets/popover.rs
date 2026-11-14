@@ -1,5 +1,5 @@
 use iced::{
-    Fill, Length,
+    Fill,
     widget::{Space, column, container, row, scrollable, text, text::IntoFragment},
 };
 
@@ -7,6 +7,7 @@ use super::text::TextExt as _;
 use super::{
     button::{Button, ButtonKind},
     list_row::{ListRow, Menu},
+    natural::NaturalColumn,
     picker_row::PickerRow,
     popup::{self, AnchorMessage, Popup, PopupMessage},
     spacing, text_size,
@@ -16,7 +17,9 @@ use crate::{
     theme::{self, Surface},
 };
 
-const WIDTH: f32 = 240.0;
+/// The panel sizes to its content within these
+const MIN_WIDTH: f32 = 180.0;
+const MAX_WIDTH: f32 = 360.0;
 
 /// A trigger that opens an anchored panel: a menu of [`ListRow`]s, or
 /// arbitrary content such as a confirmation.
@@ -25,7 +28,7 @@ const WIDTH: f32 = 240.0;
 pub struct Popover<'a, Message> {
     trigger: Element<'a, ()>,
     body: Body<'a, Message>,
-    width: f32,
+    min_width: f32,
 }
 
 enum Body<'a, Message> {
@@ -43,7 +46,7 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         Self {
             trigger: trigger.on_press(()).into(),
             body: Body::Items(Vec::new()),
-            width: WIDTH,
+            min_width: MIN_WIDTH,
         }
     }
 
@@ -51,7 +54,7 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         Self {
             trigger: trigger.on_press(()).into(),
             body: Body::Items(Vec::new()),
-            width: WIDTH,
+            min_width: MIN_WIDTH,
         }
     }
 
@@ -81,9 +84,10 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         self
     }
 
-    /// Sets the panel's width.
-    pub fn width(mut self, width: f32) -> Self {
-        self.width = width.max(1.0);
+    /// Keeps the panel at least `min_width` wide, for content with little
+    /// natural width of its own, e.g. progress bars that only fill.
+    pub fn min_width(mut self, min_width: f32) -> Self {
+        self.min_width = min_width;
         self
     }
 
@@ -116,26 +120,29 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
         Self {
             trigger: trigger.on_press(()).into(),
             body: Body::Content(content.into()),
-            width: 320.0,
+            min_width: MIN_WIDTH,
         }
     }
 }
 
 impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
     fn from(popover: Popover<'a, Message>) -> Self {
+        let fit = |children: Vec<Element<'a, Message>>| {
+            NaturalColumn::new(children)
+                .min_width(popover.min_width)
+                .max_width(MAX_WIDTH)
+        };
         let body: Element<'a, Message> = match popover.body {
             Body::Items(items) => {
                 let rows = items.into_iter().map(|entry| match entry {
                     Entry::Item(item) => item.menu(Menu::Floating).into(),
                     Entry::Separator => popup::separator(),
                 });
-                scrollable(container(column(rows).width(Fill)).width(Fill)).into()
+                scrollable(fit(rows.collect())).into()
             }
-            Body::Content(content) => content,
+            Body::Content(content) => fit(vec![content]).into(),
         };
-        let content = container(body)
-            .width(Length::Fixed(popover.width))
-            .padding(spacing::MD);
+        let content = container(body).padding(spacing::MD);
 
         let panel: Element<'a, Message> = container(content)
             .style(theme::surface(Surface::Overlay))

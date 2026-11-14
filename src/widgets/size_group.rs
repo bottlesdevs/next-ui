@@ -2,6 +2,7 @@
 //! with the same key is as wide as the widest of them, so what sits beside
 //! them lines up across rows whatever each one holds.
 
+use super::natural::natural_layout;
 use crate::{Element, Theme};
 use iced::{
     Event, Length, Point, Rectangle, Size, Vector,
@@ -251,10 +252,12 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Shared<'_, Message> {
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let node = self
-            .content
-            .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, limits);
+        let node = natural_layout(
+            &mut self.content,
+            &mut tree.children[0],
+            renderer,
+            limits.max(),
+        );
         let member = tree.state.downcast_mut::<Member>();
         let natural = node.size().width;
         member.natural = natural;
