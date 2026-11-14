@@ -104,7 +104,7 @@ impl<'a, Message: Clone + 'a> From<ArtworkCard<'a, Message>> for Element<'a, Mes
             menu = menu.push(
                 action
                     .button()
-                    .kind(ButtonKind::Transparent)
+                    .kind(ButtonKind::Flat)
                     .diameter(16.0)
                     .icon_size(16.0),
             );

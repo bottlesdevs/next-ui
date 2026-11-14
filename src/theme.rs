@@ -49,6 +49,24 @@ impl Theme {
         }
     }
 
+    /// The state layer every action draws over its resting look while the
+    /// pointer is on it or it is pressed: its label's `content` color,
+    /// faintly, so it suits any surface.
+    pub(crate) fn state_layer(
+        &self,
+        content: Color,
+        hovered: bool,
+        pressed: bool,
+    ) -> Option<Color> {
+        if pressed {
+            Some(content.scale_alpha(0.16))
+        } else if hovered {
+            Some(content.scale_alpha(0.08))
+        } else {
+            None
+        }
+    }
+
     /// The palette's colors for the inherited state.
     pub fn colors(&self) -> Colors {
         if self.disabled {
@@ -74,14 +92,12 @@ pub struct Colors {
     pub raised: Color,
     pub selected: Color,
     pub hovered: Color,
-    /// Set below the page, e.g. a progress track or a pressed chrome button.
+    /// Set below the page, e.g. a progress track.
     pub sunken: Color,
     /// A button set back into a row or card.
     pub control: Color,
     /// The outline around the window.
     pub chrome_border: Color,
-    /// A chrome-filled button under the pointer.
-    pub chrome_hovered: Color,
     pub text: Color,
     pub muted: Color,
     pub accent: Color,
@@ -118,7 +134,6 @@ impl Colors {
             sunken: fade(self.sunken),
             control: fade(self.control),
             chrome_border: fade(self.chrome_border),
-            chrome_hovered: fade(self.chrome_hovered),
             text: fade(self.text),
             muted: fade(self.muted),
             accent: fade(self.accent),
@@ -142,7 +157,6 @@ impl Colors {
         sunken: Color::from_rgb8(27, 25, 26),
         control: Color::from_rgb8(47, 40, 43),
         chrome_border: Color::from_rgb8(54, 44, 49),
-        chrome_hovered: Color::from_rgb8(54, 44, 49),
         text: Color::from_rgb8(250, 236, 241),
         muted: Color::from_rgb8(166, 147, 154),
         accent: Color::from_rgb8(250, 230, 237),
@@ -165,7 +179,6 @@ impl Colors {
         sunken: Color::from_rgb8(251, 248, 249),
         control: Color::from_rgb8(230, 221, 224),
         chrome_border: Color::from_rgb8(226, 215, 219),
-        chrome_hovered: Color::from_rgb8(214, 200, 204),
         text: Color::from_rgb8(36, 28, 31),
         muted: Color::from_rgb8(135, 116, 122),
         accent: Color::from_rgb8(168, 76, 104),

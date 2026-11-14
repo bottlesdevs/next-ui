@@ -134,15 +134,13 @@ impl<Message> canvas::Program<Message, Theme> for AnimatedKnob {
     }
 }
 
-fn track_style(theme: &Theme, state: ActionState) -> button::Style {
+fn track_style(theme: &Theme, _: ActionState) -> button::Style {
     let colors = theme.colors();
 
     button::Style {
         background: Some(Background::Color(colors.page)),
-        border: Border::default()
-            .rounded(HEIGHT / 2.0)
-            .color(colors.accent)
-            .width(if state.focused { 2 } else { 0 }),
+        text_color: colors.text,
+        border: Border::default().rounded(HEIGHT / 2.0),
         ..button::Style::default()
     }
 }

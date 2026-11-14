@@ -431,7 +431,7 @@ pub(super) fn place(header: layout::Node, panel: Option<layout::Node>) -> layout
         .move_to(bounds.position())
 }
 
-/// Fills a disclosure's header as a list row that is `selected` while its
+/// Draws a disclosure's header frame as a list row that is `selected` while its
 /// panel shows. An `attached` panel continues the header, so the header's
 /// bottom corners go.
 pub(super) fn draw_header(
@@ -445,17 +445,7 @@ pub(super) fn draw_header(
     if attached {
         style.border = Border::default().rounded(iced::border::top(radius::ROW));
     }
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds,
-            border: style.border,
-            shadow: style.shadow,
-            snap: style.snap,
-        },
-        style
-            .background
-            .unwrap_or(Background::Color(Color::TRANSPARENT)),
-    );
+    super::focusable_action::draw_frame(renderer, theme, bounds, &style, state);
 }
 
 /// Draws the caret in the slot a disclosure's `header` keeps for it,

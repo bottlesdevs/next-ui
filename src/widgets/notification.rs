@@ -64,7 +64,7 @@ impl<'a, Message: Clone + 'a> From<Notification<'a, Message>> for Element<'a, Me
             Button::icon_only(tooltip, icon)
                 .diameter(32.0)
                 .icon_size(16.0)
-                .kind(ButtonKind::Transparent)
+                .kind(ButtonKind::Flat)
         };
 
         let mut controls = Row::new().spacing(2);

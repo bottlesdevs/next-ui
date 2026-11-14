@@ -1,5 +1,5 @@
 use iced::{
-    Color, Event, Length, Padding, Rectangle, Size, Vector,
+    Background, Border, Color, Event, Length, Padding, Rectangle, Shadow, Size, Vector,
     advanced::{
         Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
         widget::{Operation, Tree, operation, tree},
@@ -170,6 +170,8 @@ pub(crate) struct FocusableAction<'a, Message> {
     height: Length,
     padding: Padding,
     style: Box<StyleFn<'a>>,
+    frame: bool,
+    state_layer: bool,
 }
 
 impl<'a, Message> FocusableAction<'a, Message> {
@@ -185,6 +187,8 @@ impl<'a, Message> FocusableAction<'a, Message> {
                 text_color: theme.colors().text,
                 ..button::Style::default()
             }),
+            frame: true,
+            state_layer: true,
         }
     }
 
@@ -210,6 +214,21 @@ impl<'a, Message> FocusableAction<'a, Message> {
 
     pub(crate) fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
+        self
+    }
+
+    /// Leaves this action's frame to its owner, which draws it with
+    /// [`draw_frame`] itself, e.g. a selector whose header is the action.
+    pub(crate) fn without_frame(mut self) -> Self {
+        self.frame = false;
+        self
+    }
+
+    /// Draws no state layer, for an action whose hover shows in its label
+    /// alone, e.g. a tab, which its selection indicator already marks. The
+    /// focus ring stays.
+    pub(crate) fn without_state_layer(mut self) -> Self {
+        self.state_layer = false;
         self
     }
 
@@ -353,19 +372,17 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
             &disabled
         };
         let style = (self.style)(theme, state);
-
-        if style.background.is_some() || style.border.width > 0.0 || style.shadow.color.a > 0.0 {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: layout.bounds(),
-                    border: style.border,
-                    shadow: style.shadow,
-                    snap: style.snap,
-                },
-                style
-                    .background
-                    .unwrap_or(iced::Background::Color(Color::TRANSPARENT)),
-            );
+        if self.frame {
+            let shown = if self.state_layer {
+                state
+            } else {
+                ActionState {
+                    hovered: false,
+                    pressed: false,
+                    ..state
+                }
+            };
+            draw_frame(renderer, theme, layout.bounds(), &style, shown);
         }
 
         self.content.as_widget().draw(
@@ -423,6 +440,51 @@ impl<Message: Clone> Widget<Message, Theme, iced::Renderer> for FocusableAction<
         )
     }
 }
+
+/// Draws an action's frame: its resting look from `style`, then the
+/// interaction states every action shares, so no style draws its own: the
+/// [`Theme::state_layer`] while hovered or pressed, and a focus ring while it
+/// has keyboard focus (a press hands focus to the pointer, so the ring only
+/// shows for the keyboard).
+pub(crate) fn draw_frame(
+    renderer: &mut iced::Renderer,
+    theme: &Theme,
+    bounds: Rectangle,
+    style: &button::Style,
+    state: ActionState,
+) {
+    let quad = |border| renderer::Quad {
+        bounds,
+        border,
+        shadow: Shadow::default(),
+        snap: style.snap,
+    };
+
+    if style.background.is_some() || style.border.width > 0.0 || style.shadow.color.a > 0.0 {
+        renderer.fill_quad(
+            renderer::Quad {
+                shadow: style.shadow,
+                ..quad(style.border)
+            },
+            style
+                .background
+                .unwrap_or(Background::Color(Color::TRANSPARENT)),
+        );
+    }
+
+    let corners = Border::default().rounded(style.border.radius);
+    if let Some(layer) = theme.state_layer(style.text_color, state.hovered, state.pressed) {
+        renderer.fill_quad(quad(corners), layer);
+    }
+    if state.focused {
+        renderer.fill_quad(
+            quad(corners.color(theme.colors().accent).width(FOCUS_RING)),
+            Color::TRANSPARENT,
+        );
+    }
+}
+
+const FOCUS_RING: f32 = 2.0;
 
 impl<'a, Message: Clone + 'a> From<FocusableAction<'a, Message>> for Element<'a, Message> {
     fn from(action: FocusableAction<'a, Message>) -> Self {

@@ -157,7 +157,7 @@ fn suggestions<'a, Message: Clone + 'a>(
     });
     let add = Button::new("Add a program from your computer")
         .icon(Icon::Folder)
-        .kind(ButtonKind::Transparent)
+        .kind(ButtonKind::Flat)
         .on_press(on_add);
     let content = column![
         text("Your library is empty")
@@ -253,7 +253,7 @@ fn downloads<'a, Message: Clone + 'a>(
         ProgressRing::new(overall),
         container(Icon::Download.view().width(12).height(12)).center(24),
     ])
-    .kind(ButtonKind::Transparent);
+    .kind(ButtonKind::Flat);
     // Each download is a card of its own, set a step darker into the popover:
     // its name over the progress bar, whose caption is its status.
     let rows = downloads

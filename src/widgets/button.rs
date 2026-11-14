@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Center, Fill, Length,
+    Background, Border, Center, Color, Fill, Length,
     theme::palette::Pair,
     widget::{Row, container, svg, text, tooltip},
 };
@@ -29,7 +29,9 @@ pub enum ButtonKind {
     Secondary,
     Primary,
     Surface,
-    Transparent,
+    /// No fill until hovered, focused or pressed: for header bars, toolbars
+    /// and controls set into rows.
+    Flat,
     /// The light accent fill for a page's main action, e.g. Install.
     Accent,
     /// The danger fill for confirming a destructive action, e.g. Delete.
@@ -247,97 +249,35 @@ fn appearance(
     shape: Shape,
     kind: ButtonKind,
 ) -> iced::widget::button::Style {
-    let semantic = theme.colors();
-    let colors = colors(theme, state.hovered || state.focused, state.pressed, kind);
+    let colors = colors(theme, state.hovered || state.pressed || state.focused, kind);
 
     iced::widget::button::Style {
-        background: if kind == ButtonKind::Transparent {
-            if state.focused && !state.hovered {
-                Some(Background::Color(semantic.hovered))
-            } else {
-                None
-            }
-        } else {
-            Some(Background::Color(colors.color))
-        },
+        background: Some(Background::Color(colors.color)),
         text_color: colors.text,
         border: Border::default().rounded(match (shape, kind) {
-            (Shape::Rectangular, _) | (Shape::IconOnly, ButtonKind::Transparent) => radius::ROW,
+            (Shape::Rectangular, _) | (Shape::IconOnly, ButtonKind::Flat) => radius::ROW,
             (Shape::Pill | Shape::IconOnly, _) => radius::PILL,
         }),
         ..iced::widget::button::Style::default()
     }
 }
 
-fn colors(theme: &Theme, active: bool, pressed: bool, kind: ButtonKind) -> Pair {
+/// A kind's resting fill and label. Hover and press come from the state
+/// layer every action draws; only a flat button's label brightens too, since
+/// it has no fill to carry the emphasis.
+fn colors(theme: &Theme, active: bool, kind: ButtonKind) -> Pair {
     let colors = theme.colors();
+    let pair = |color, text| Pair { color, text };
 
     match kind {
-        ButtonKind::Primary => {
-            if pressed {
-                Pair {
-                    color: colors.sunken,
-                    text: colors.text,
-                }
-            } else {
-                Pair {
-                    color: if active {
-                        colors.chrome_hovered
-                    } else {
-                        colors.chrome
-                    },
-                    text: colors.text,
-                }
-            }
-        }
-        ButtonKind::Secondary => Pair {
-            color: if pressed {
-                colors.chrome
-            } else if active {
-                colors.page
-            } else {
-                colors.control
-            },
-            text: colors.accent_muted,
-        },
-        ButtonKind::Surface => {
-            let background = if pressed {
-                colors.selected
-            } else if active {
-                colors.hovered
-            } else {
-                colors.card
-            };
-
-            Pair {
-                color: background,
-                text: colors.muted,
-            }
-        }
-        // No fill, so the pointer shows in the label, as it does on tabs.
-        ButtonKind::Transparent => Pair {
-            color: colors.page,
-            text: if active || pressed {
-                colors.text
-            } else {
-                colors.muted
-            },
-        },
-        ButtonKind::Accent => Pair {
-            color: if pressed || active {
-                colors.accent_muted
-            } else {
-                colors.accent
-            },
-            text: colors.chrome,
-        },
-        ButtonKind::Destructive => Pair {
-            color: if pressed || active {
-                colors.danger.scale_alpha(0.8)
-            } else {
-                colors.danger
-            },
-            text: colors.text,
-        },
+        ButtonKind::Primary => pair(colors.chrome, colors.text),
+        ButtonKind::Secondary => pair(colors.control, colors.accent_muted),
+        ButtonKind::Surface => pair(colors.card, colors.muted),
+        ButtonKind::Flat => pair(
+            Color::TRANSPARENT,
+            if active { colors.text } else { colors.muted },
+        ),
+        ButtonKind::Accent => pair(colors.accent, colors.chrome),
+        ButtonKind::Destructive => pair(colors.danger, colors.text),
     }
 }

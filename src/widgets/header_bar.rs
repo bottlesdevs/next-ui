@@ -16,7 +16,7 @@ pub fn header_button<Message>(label: &str, icon: Icon) -> Button<'_, Message> {
     Button::icon_only(label, icon)
         .diameter(header::CONTROL)
         .icon_size(header::ICON)
-        .kind(ButtonKind::Transparent)
+        .kind(ButtonKind::Flat)
 }
 
 pub struct HeaderBar<'a, Message> {

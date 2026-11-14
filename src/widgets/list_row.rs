@@ -401,18 +401,12 @@ fn control_style(theme: &Theme, corners: Radius) -> container::Style {
 
 pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = theme.colors();
-    let color = if state.pressed {
-        colors.selected
-    } else if state.selected || state.focused {
-        colors.raised
-    } else if state.hovered {
-        colors.hovered
-    } else {
-        colors.card
-    };
-
     button::Style {
-        background: Some(Background::Color(color)),
+        background: Some(Background::Color(if state.selected {
+            colors.raised
+        } else {
+            colors.card
+        })),
         text_color: colors.text,
         border: Border::default().rounded(radius::ROW),
         ..button::Style::default()
@@ -421,11 +415,10 @@ pub(crate) fn action_style(theme: &Theme, state: ActionState) -> button::Style {
 
 pub(crate) fn menu_style(theme: &Theme, state: ActionState, menu: Menu) -> button::Style {
     let colors = theme.colors();
-    let highlighted =
-        state.enabled && (state.selected || state.hovered || state.pressed || state.focused);
+    let highlighted = state.selected || state.hovered || state.pressed || state.focused;
 
     button::Style {
-        background: highlighted.then_some(Background::Color(match menu {
+        background: state.selected.then_some(Background::Color(match menu {
             Menu::Floating => colors.hovered,
             Menu::Attached => colors.selected,
         })),

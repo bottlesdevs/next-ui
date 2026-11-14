@@ -97,6 +97,7 @@ where
                 .padding(spacing::SM)
                 .selected(selected)
                 .on_press_maybe(message)
+                .without_state_layer()
                 .style(tab_style);
 
                 stack![label, container(indicator).align_bottom(Fill)]
@@ -122,8 +123,6 @@ fn tab_style(theme: &Theme, state: ActionState) -> button::Style {
     let colors = theme.colors();
 
     button::Style {
-        background: (state.focused && !state.hovered && !state.pressed)
-            .then_some(Background::Color(colors.hovered)),
         text_color: if state.selected || state.hovered || state.pressed || state.focused {
             colors.text
         } else {

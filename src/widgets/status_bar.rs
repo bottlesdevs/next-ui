@@ -97,7 +97,7 @@ impl<'a> StatusBar<'a> {
                 Button::icon_only("Toggle log", Icon::Computer)
                     .diameter(ICON_SIZE)
                     .icon_size(ICON_SIZE)
-                    .kind(ButtonKind::Transparent)
+                    .kind(ButtonKind::Flat)
                     .on_press(message),
             );
         }

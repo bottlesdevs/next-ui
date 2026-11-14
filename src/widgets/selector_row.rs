@@ -199,6 +199,7 @@ where
         let anchor = FocusableAction::new(header.map(AnchorMessage::Emit))
             .width(Fill)
             .on_press_maybe(enabled.then_some(AnchorMessage::Toggle))
+            .without_frame()
             .style(|theme, _| button::Style {
                 text_color: theme.colors().text,
                 ..button::Style::default()

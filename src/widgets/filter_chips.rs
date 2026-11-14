@@ -46,18 +46,10 @@ impl<'a, T: Copy + PartialEq + 'a, Message: Clone + 'a> From<FilterChips<'a, T, 
             FocusableAction::new(text(label).size(text_size::DETAIL))
                 .on_press_maybe(on_select.as_ref().map(|on_select| on_select(value)))
                 .padding([6, 14])
-                .style(move |theme, state| {
+                .style(move |theme, _| {
                     let colors = theme.colors();
-                    let background = if active {
-                        Some(colors.raised)
-                    } else if state.hovered || state.focused {
-                        Some(colors.card)
-                    } else {
-                        None
-                    };
-
                     iced::widget::button::Style {
-                        background: background.map(Background::Color),
+                        background: active.then_some(Background::Color(colors.raised)),
                         text_color: if active { colors.text } else { colors.muted },
                         border: Border::default().rounded(radius::PILL),
                         ..iced::widget::button::Style::default()

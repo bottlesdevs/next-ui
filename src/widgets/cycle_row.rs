@@ -58,11 +58,11 @@ impl<'a, Message: Clone + 'a> From<CycleRow<'a, Message>> for ListRow<'a, Messag
     fn from(cycle: CycleRow<'a, Message>) -> Self {
         let enabled = cycle.previous.is_some() || cycle.next.is_some();
         let previous = Button::icon_only("Previous value", Icon::Arrow)
-            .kind(ButtonKind::Transparent)
+            .kind(ButtonKind::Flat)
             .diameter(32.0)
             .on_press_maybe(cycle.previous);
         let next = Button::icon_only("Next value", Icon::ArrowRight)
-            .kind(ButtonKind::Transparent)
+            .kind(ButtonKind::Flat)
             .diameter(32.0)
             .on_press_maybe(cycle.next);
 

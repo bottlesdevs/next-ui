@@ -1,5 +1,5 @@
 use iced::{
-    Background, Border, Length, Padding, Point, Rectangle, Renderer, border,
+    Border, Length, Padding, Point, Rectangle, Renderer, border,
     widget::{button, canvas, container, stack},
 };
 
@@ -86,17 +86,10 @@ impl<'a, Message: Clone + 'a> From<ActionTile<'a, Message>> for Element<'a, Mess
     }
 }
 
-fn style(theme: &Theme, state: ActionState) -> button::Style {
+fn style(theme: &Theme, _: ActionState) -> button::Style {
     let colors = theme.colors();
 
     button::Style {
-        background: if state.pressed {
-            Some(Background::Color(colors.selected))
-        } else if state.hovered || state.focused {
-            Some(Background::Color(colors.hovered))
-        } else {
-            None
-        },
         text_color: colors.text,
         border: Border::default().rounded(radius::ROW),
         ..button::Style::default()
