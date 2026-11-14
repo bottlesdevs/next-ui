@@ -24,56 +24,116 @@ use super::{
 
 const PANEL_PADDING: [f32; 2] = [spacing::SM, spacing::SM];
 
-/// An in-flow row that selects one value from a connected option panel.
-pub struct SelectorRow<'a, T, Message> {
+/// One entry in a [`SelectorRow`]'s options: a [`choice`](Self::choice) or
+/// an [`action`](Self::action), what it says, what sits in it, and what
+/// pressing it does. The selector knows nothing else about it, so what an
+/// entry means, e.g. a release still to download, is up to whoever builds it.
+pub struct SelectorItem<'a, Message> {
+    kind: Kind,
+    label: String,
+    detail: Option<Element<'a, Message>>,
+    trailing: Option<Element<'a, Message>>,
+    on_press: Option<Message>,
+    selected: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Choice,
+    Action,
+}
+
+impl<'a, Message> SelectorItem<'a, Message> {
+    /// A value to pick: pressing it closes the options, and it can be the
+    /// [`selected`](Self::selected) one.
+    pub fn choice(label: impl Into<String>) -> Self {
+        Self::new(Kind::Choice, label)
+    }
+
+    /// Something to do that picks no value, e.g. starting a download: the
+    /// options stay open, so whatever it starts stays in view.
+    pub fn action(label: impl Into<String>) -> Self {
+        Self::new(Kind::Action, label)
+    }
+
+    fn new(kind: Kind, label: impl Into<String>) -> Self {
+        Self {
+            kind,
+            label: label.into(),
+            detail: None,
+            trailing: None,
+            on_press: None,
+            selected: false,
+        }
+    }
+
+    /// Adds a widget under the label, e.g. a [`ProgressBar`].
+    ///
+    /// [`ProgressBar`]: super::progress_bar::ProgressBar
+    pub fn detail(mut self, widget: impl Into<Element<'a, Message>>) -> Self {
+        self.detail = Some(widget.into());
+        self
+    }
+
+    /// Adds a widget at the item's end, e.g. an icon, or a button showing
+    /// what pressing the item does. The item is one entry, so what sits in it
+    /// takes no presses or focus of its own.
+    pub fn trailing(mut self, widget: impl Into<Element<'a, Message>>) -> Self {
+        self.trailing = Some(widget.into());
+        self
+    }
+
+    /// Without one, the item is shown unavailable.
+    pub fn on_press(self, message: Message) -> Self {
+        self.on_press_maybe(Some(message))
+    }
+
+    pub fn on_press_maybe(mut self, message: Option<Message>) -> Self {
+        self.on_press = message;
+        self
+    }
+
+    /// Marks the current choice, whose label the selector's row shows. Only
+    /// a choice can be selected; an action ignores it.
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected && self.kind == Kind::Choice;
+        self
+    }
+}
+
+/// An in-flow row that selects one value from a connected panel of items,
+/// grouped under optional titles.
+pub struct SelectorRow<'a, Message> {
     title: &'a str,
-    options: Vec<T>,
-    selected: Option<T>,
-    label: Box<dyn Fn(&T) -> String + 'a>,
-    on_selected: Option<Box<dyn Fn(T) -> Message + 'a>>,
+    groups: Vec<(Option<&'a str>, Vec<SelectorItem<'a, Message>>)>,
     placeholder: &'a str,
     icon: Option<Icon>,
-    options_title: Option<&'a str>,
-    sections: Vec<(&'a str, Vec<Element<'a, Message>>)>,
     popup: bool,
     switch: Option<Switcher<'a, Message>>,
 }
 
-impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
-    pub fn new(title: &'a str, options: &[T], selected: Option<T>) -> Self {
+impl<'a, Message> SelectorRow<'a, Message> {
+    pub fn new(title: &'a str) -> Self {
         Self {
             title,
-            options: options.to_vec(),
-            selected,
-            label: Box::new(ToString::to_string),
-            on_selected: None,
+            groups: Vec::new(),
             placeholder: "",
             icon: None,
-            options_title: None,
-            sections: Vec::new(),
             popup: false,
             switch: None,
         }
     }
 
-    /// Heads the options with `title` when there are any, e.g. to set them
-    /// apart from the sections under them.
-    pub fn options_title(mut self, title: &'a str) -> Self {
-        self.options_title = Some(title);
-        self
-    }
-
-    /// Lists `rows` under the options with a `title`, e.g. releases that can
-    /// be downloaded. Unlike picking an option, their messages keep the
-    /// options open. A section without rows isn't shown.
-    pub fn section(
+    /// Adds `items`, under `title` if one is given; a separator sets each
+    /// group after the first apart. A group without items isn't shown.
+    pub fn group(
         mut self,
-        title: &'a str,
-        rows: impl IntoIterator<Item = Element<'a, Message>>,
+        title: impl Into<Option<&'a str>>,
+        items: impl IntoIterator<Item = SelectorItem<'a, Message>>,
     ) -> Self {
-        let rows = rows.into_iter().collect::<Vec<_>>();
-        if !rows.is_empty() {
-            self.sections.push((title, rows));
+        let items = items.into_iter().collect::<Vec<_>>();
+        if !items.is_empty() {
+            self.groups.push((title.into(), items));
         }
         self
     }
@@ -92,11 +152,7 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
         self
     }
 
-    pub fn label(mut self, label: impl Fn(&T) -> String + 'a) -> Self {
-        self.label = Box::new(label);
-        self
-    }
-
+    /// Shown in the row while no item is selected.
     pub fn placeholder(mut self, placeholder: &'a str) -> Self {
         self.placeholder = placeholder;
         self
@@ -106,69 +162,53 @@ impl<'a, T: Clone + ToString + 'a, Message> SelectorRow<'a, T, Message> {
         self.icon = Some(icon);
         self
     }
-
-    pub fn on_selected(mut self, on_selected: impl Fn(T) -> Message + 'a) -> Self {
-        self.on_selected = Some(Box::new(on_selected));
-        self
-    }
 }
 
-impl<'a, T, Message> From<SelectorRow<'a, T, Message>> for Element<'a, Message>
-where
-    T: Clone + PartialEq + ToString + 'a,
-    Message: Clone + 'a,
-{
-    fn from(selector: SelectorRow<'a, T, Message>) -> Self {
-        let selected = selector
-            .selected
-            .as_ref()
-            .filter(|selected| selector.options.contains(selected));
-        let label = &selector.label;
-        let value = selected.map_or_else(|| selector.placeholder.to_owned(), label);
-        // Sections, e.g. releases to download, are worth opening for even
-        // with no option to pick.
-        let enabled = selector.on_selected.is_some()
-            && !(selector.options.is_empty() && selector.sections.is_empty());
+impl<'a, Message: Clone + 'a> From<SelectorRow<'a, Message>> for Element<'a, Message> {
+    fn from(selector: SelectorRow<'a, Message>) -> Self {
+        let items = || selector.groups.iter().flat_map(|(_, items)| items);
+        let value = items().find(|item| item.selected).map_or_else(
+            || selector.placeholder.to_owned(),
+            |item| item.label.clone(),
+        );
+        // Worth opening only if some item can be pressed.
+        let enabled = items().any(|item| item.on_press.is_some());
         let header = header(
             selector.title,
             value,
             selector.icon,
             selector.switch.map(Element::from),
         );
-        let rows = selector.options.iter().map(|option| {
-            let message = selector
-                .on_selected
-                .as_ref()
-                .map(|on_selected| PopupMessage::Close(on_selected(option.clone())));
-
-            ListRow::new(text(label(option)).size(text_size::DENSE))
-                .menu(Menu::Attached)
-                .padding([spacing::SM, spacing::MD])
-                .selected(selected == Some(option))
-                .on_press_maybe(message)
-                .into()
-        });
         let mut list = Column::new().width(Fill);
-        if let Some(title) = selector
-            .options_title
-            .filter(|_| !selector.options.is_empty())
-        {
-            list = list.push(section_heading(title));
-        }
-        list = list.extend(rows);
-        let mut above = !selector.options.is_empty();
-        for (title, rows) in selector.sections {
-            if above {
+        for (index, (title, items)) in selector.groups.into_iter().enumerate() {
+            if index > 0 {
                 list = list.push(popup::separator());
             }
-            above = true;
-            list = list
-                .push(section_heading(title))
-                .extend(rows.into_iter().map(|row| {
-                    container(row.map(PopupMessage::Emit))
-                        .padding([spacing::XS, spacing::MD])
-                        .into()
-                }));
+            if let Some(title) = title {
+                list = list.push(section_heading(title));
+            }
+            for item in items {
+                let kind = item.kind;
+                let label = text(item.label).size(text_size::DENSE);
+                let body: Element<'a, PopupMessage<Message>> = match item.detail {
+                    Some(detail) => column![label, detail.map(PopupMessage::Emit)]
+                        .spacing(spacing::XS)
+                        .into(),
+                    None => label.into(),
+                };
+                let mut row = ListRow::new(body)
+                    .menu(Menu::Attached)
+                    .padding([spacing::SM, spacing::MD])
+                    .selected(item.selected)
+                    .on_press_maybe(item.on_press.map(|message| match kind {
+                        Kind::Choice => PopupMessage::Close(message),
+                        Kind::Action => PopupMessage::Emit(message),
+                    }));
+                if let Some(trailing) = item.trailing {
+                    row = row.trailing(trailing.map(PopupMessage::Emit));
+                }
+                list = list.push(row);
+            }
         }
         let popup = selector.popup;
         let list = scrollable(container(list).width(Fill).padding(PANEL_PADDING)).width(Fill);

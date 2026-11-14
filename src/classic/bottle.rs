@@ -2,16 +2,16 @@
 
 use bottles_core::{Slot, WineArch};
 use iced::{
-    Center, Fill, Length,
-    widget::{Grid, column, container, responsive, row, text},
+    Fill, Length,
+    widget::{Grid, column, container, responsive, text},
 };
 use next_ui::{
     Element, Icon,
     layout::PageBody,
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, CardAction, CycleRow, ExpanderRow,
-        InfoRow, LogPanel, PickerRow, ProgressBar, RowGroup, SelectorRow, StatusBar, SwitcherRow,
-        TextExt as _, TextRow, spacing, text_size,
+        InfoRow, LogPanel, PickerRow, ProgressBar, RowGroup, SelectorItem, SelectorRow, StatusBar,
+        SwitcherRow, TextRow, spacing, text_size,
     },
 };
 use uuid::Uuid;
@@ -94,22 +94,22 @@ pub(super) fn creation<'a>(
     model: &'a Model,
     can_create: bool,
 ) -> Element<'a, Message> {
-    let labels = model.runners();
-    let runners = labels.iter().map(|runner| runner.id()).collect::<Vec<_>>();
-    let runner = SelectorRow::new("Runner", &runners, draft.runner)
+    let runners = model.runners();
+    let runner = SelectorRow::new("Runner")
         .icon(Icon::Run)
         .placeholder(if runners.is_empty() {
             "No runners installed"
         } else {
             "Choose a runner"
         })
-        .label(move |id| {
-            labels.iter().find(|runner| runner.id() == *id).map_or_else(
-                || id.to_string(),
-                |runner| format!("{} {}", runner.name(), runner.version()),
-            )
-        })
-        .on_selected(Message::Runner);
+        .group(
+            None,
+            runners.iter().map(|runner| {
+                SelectorItem::choice(format!("{} {}", runner.name(), runner.version()))
+                    .selected(draft.runner == Some(runner.id()))
+                    .on_press(Message::Runner(runner.id()))
+            }),
+        );
     let mut name = TextRow::new("Bottle Name", &draft.name).on_input(Message::Name);
     if can_create {
         name = name.on_submit(Message::Create);
@@ -117,20 +117,20 @@ pub(super) fn creation<'a>(
     let mut content = column![
         name,
         runner,
-        SelectorRow::new(
-            "Purpose",
-            &["Gaming", "Software", "Gaming (ULWGL)", "Custom"],
+        SelectorRow::new("Purpose")
+            .placeholder("Not available yet")
+            .group(
+                None,
+                ["Gaming", "Software", "Gaming (ULWGL)", "Custom"].map(SelectorItem::choice),
+            ),
+        SelectorRow::new("Architecture").icon(Icon::Chip).group(
             None,
-        )
-        .placeholder("Not available yet"),
-        SelectorRow::new(
-            "Architecture",
-            &[WineArch::Win64, WineArch::Win32],
-            Some(draft.arch),
-        )
-        .icon(Icon::Chip)
-        .label(|arch| arch_label(*arch).into())
-        .on_selected(Message::Arch),
+            [WineArch::Win64, WineArch::Win32].map(|arch| {
+                SelectorItem::choice(arch_label(arch))
+                    .selected(draft.arch == arch)
+                    .on_press(Message::Arch(arch))
+            }),
+        ),
         PickerRow::new("Use Recipe").description("Choose the location"),
     ]
     .spacing(spacing::SM);
@@ -258,16 +258,6 @@ pub(super) fn settings<'a>(
     .into()
 }
 
-/// A downloaded release a picker offers, with its label.
-#[derive(Clone, PartialEq)]
-struct Choice(Uuid, String);
-
-impl std::fmt::Display for Choice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.1)
-    }
-}
-
 /// A row for `slot`: its switch turns the component on or off, and its
 /// options pick the downloaded release, or download one of the newest the
 /// catalogs offer, which is selected once downloaded.
@@ -278,24 +268,19 @@ fn component<'a>(
     title: &'a str,
 ) -> Element<'a, Message> {
     let prefix = bottle.id;
-    let options = model
-        .component_releases(slot)
-        .into_iter()
-        .map(|(id, label)| Choice(id, label))
-        .collect::<Vec<_>>();
-    let selected = bottle.state.component(slot).map(|installed| {
-        let addon = &installed.addon;
-        Choice(addon.id(), format!("{} {}", addon.name(), addon.version()))
-    });
-    let on = selected.is_some();
+    let downloaded = model.component_releases(slot);
+    let current = bottle
+        .state
+        .component(slot)
+        .map(|installed| installed.addon.id());
     let available = model.available_components(slot);
     // Turning it on uses the newest downloaded release, or downloads the
     // newest one; with neither, the switch stays off.
-    let turn_on = options
+    let turn_on = downloaded
         .first()
-        .map(|choice| Action::UseRelease {
+        .map(|(release, _)| Action::UseRelease {
             prefix,
-            release: choice.0,
+            release: *release,
         })
         .or_else(|| {
             available
@@ -306,21 +291,20 @@ fn component<'a>(
                     release: release.id,
                 })
         });
-    let toggle = if on {
+    let toggle = if current.is_some() {
         Some(Action::RemoveComponent { prefix, slot })
     } else {
         turn_on
     };
-    SelectorRow::new(title, &options, selected)
+    SelectorRow::new(title)
         .placeholder("Off")
         .popup()
-        .options_title("Downloaded")
-        .section("Available", available_rows(available, prefix))
+        .group("Downloaded", downloaded_items(downloaded, current, prefix))
+        .group("Available", available_items(available, prefix))
         .switch(
-            on,
+            current.is_some(),
             toggle.map(|action| move |_| Message::Act(action.clone())),
         )
-        .on_selected(move |Choice(release, _)| Message::Act(Action::UseRelease { prefix, release }))
         .into()
 }
 
@@ -329,61 +313,77 @@ fn component<'a>(
 fn runner<'a>(model: &'a Model, bottle: Bottle<'a>) -> Element<'a, Message> {
     let prefix = bottle.id;
     let current = &bottle.state.runner;
-    let selected = Choice(
-        current.id(),
-        format!("{} {}", current.name(), current.version()),
-    );
-    let mut options = model
-        .runner_releases(bottle.state.arch)
-        .into_iter()
-        .map(|(id, label)| Choice(id, label))
-        .collect::<Vec<_>>();
+    let mut downloaded = model.runner_releases(bottle.state.arch);
     // The runner in use stays listed even if it was removed since.
-    if !options.contains(&selected) {
-        options.insert(0, selected.clone());
+    if !downloaded.iter().any(|(id, _)| *id == current.id()) {
+        downloaded.insert(
+            0,
+            (
+                current.id(),
+                format!("{} {}", current.name(), current.version()),
+            ),
+        );
     }
-    SelectorRow::new("Runner", &options, Some(selected))
+    SelectorRow::new("Runner")
         .icon(Icon::Run)
         .popup()
-        .options_title("Downloaded")
-        .section(
-            "Available",
-            available_rows(model.available_runners(), prefix),
+        .group(
+            "Downloaded",
+            downloaded_items(downloaded, Some(current.id()), prefix),
         )
-        .on_selected(move |Choice(release, _)| Message::Act(Action::UseRelease { prefix, release }))
+        .group(
+            "Available",
+            available_items(model.available_runners(), prefix),
+        )
         .into()
 }
 
-/// The releases a picker offers to download, or shows downloading.
-fn available_rows<'a>(
+/// Downloaded releases as options: picking one uses it in bottle `prefix`.
+fn downloaded_items<'a>(
+    releases: Vec<(Uuid, String)>,
+    current: Option<Uuid>,
+    prefix: Uuid,
+) -> impl Iterator<Item = SelectorItem<'a, Message>> {
+    releases.into_iter().map(move |(release, label)| {
+        SelectorItem::choice(label)
+            .selected(current == Some(release))
+            .on_press(Message::Act(Action::UseRelease { prefix, release }))
+    })
+}
+
+/// Releases the catalogs offer: picking one downloads it, then uses it in
+/// bottle `prefix`. One downloading shows its progress, and picking it again
+/// stops the download.
+fn available_items<'a>(
     releases: Vec<AvailableRelease>,
     prefix: Uuid,
-) -> impl Iterator<Item = Element<'a, Message>> {
-    // Release names read like the picker's options.
-    const LABEL_SIZE: f32 = text_size::DENSE;
-
+) -> impl Iterator<Item = SelectorItem<'a, Message>> {
     releases.into_iter().map(move |release| {
-        let label = text(release.label).size(LABEL_SIZE).muted();
+        let item = SelectorItem::action(release.label);
         match release.download {
-            Some(download) => ProgressBar::new(download.fraction().unwrap_or(0.0))
-                .caption(label)
-                .percentage()
-                .into(),
-            None => row![
-                label.width(Fill),
-                Button::custom(text("Download").size(text_size::SMALL))
-                    .trailing_icon(Icon::ArrowRight)
-                    .icon_size(14.0)
-                    .kind(ButtonKind::Secondary)
-                    .compact()
-                    .on_press(Message::Act(Action::FetchRelease {
-                        prefix,
-                        release: release.id,
-                    })),
-            ]
-            .spacing(spacing::SM)
-            .align_y(Center)
-            .into(),
+            Some(download) => {
+                let fraction = download.fraction().unwrap_or(0.0);
+                item.detail(ProgressBar::new(fraction))
+                    .trailing(text(format!("{:.0}%", fraction * 100.0)).size(text_size::SMALL))
+                    .on_press(Message::Act(Action::CancelDownload(release.id)))
+            }
+            None => {
+                let fetch = Message::Act(Action::FetchRelease {
+                    prefix,
+                    release: release.id,
+                });
+                // The button shows what picking the row does; the row takes
+                // the press.
+                item.trailing(
+                    Button::custom(text("Download").size(text_size::SMALL))
+                        .trailing_icon(Icon::ArrowRight)
+                        .icon_size(14.0)
+                        .kind(ButtonKind::Secondary)
+                        .compact()
+                        .on_press(fetch.clone()),
+                )
+                .on_press(fetch)
+            }
         }
     })
 }

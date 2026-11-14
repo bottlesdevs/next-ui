@@ -50,7 +50,7 @@ pub mod widget {
         radius,
         row_group::RowGroup,
         search::{Search, SearchState},
-        selector_row::SelectorRow,
+        selector_row::{SelectorItem, SelectorRow},
         sensitive::sensitive,
         size_group::{Shared, SizeGroup},
         spacing,

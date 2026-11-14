@@ -7,13 +7,12 @@ use next_ui::{
     widget::{
         ActionRow, ActionTile, ArtworkCard, Button, ButtonKind, Card, CardAction, CycleRow, Dialog,
         ExpanderRow, InfoCard, InfoCardKind, InfoRow, ListRow, LogPanel, PickerRow, Popover,
-        ProgressRing, RowGroup, Search, SearchState, SelectorRow, StatusBar, Switcher, SwitcherRow,
-        Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
+        ProgressRing, RowGroup, Search, SearchState, SelectorItem, SelectorRow, StatusBar,
+        Switcher, SwitcherRow, Tab, Tabs, TextExt as _, TextRow, Title, WindowModal,
     },
 };
 
 const SELECTOR_OPTIONS: &[&str] = &["Option 1", "Option 2", "Option 3"];
-const EMPTY_OPTIONS: &[&str] = &[];
 const GALLERY_TABS: &[&str] = &["Bottles", "Library", "Settings"];
 const DLSS_LEVELS: &[&str] = &["Off", "Quality", "Balanced", "Performance"];
 const SEARCH_CATALOG: &[(&str, &str, Icon)] = &[
@@ -291,12 +290,18 @@ impl Gallery {
                 .icon(Icon::Person)
                 .on_input(|value| Message::TextRowChanged(2, value))
                 .error(Some("Example validation error")),
-            SelectorRow::new("Selector Name", SELECTOR_OPTIONS, selected.copied())
-                .on_selected(Message::OptionSelected)
+            SelectorRow::new("Selector Name")
                 .placeholder("Placeholder")
-                .icon(Icon::Person),
-            SelectorRow::new("Empty selector", EMPTY_OPTIONS, None)
-                .placeholder("No options available"),
+                .icon(Icon::Person)
+                .group(
+                    None,
+                    SELECTOR_OPTIONS.iter().map(|option| {
+                        SelectorItem::choice(*option)
+                            .selected(selected == Some(option))
+                            .on_press(Message::OptionSelected(option))
+                    }),
+                ),
+            SelectorRow::new("Empty selector").placeholder("No options available"),
             ActionRow::new("Title", Message::Noop).description("Description"),
             ActionRow::new("Unavailable action", None)
                 .description("This action cannot currently run"),
