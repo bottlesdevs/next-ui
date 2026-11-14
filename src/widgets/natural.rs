@@ -14,14 +14,12 @@
 //! take it from the last pass, which is the allocation.
 
 use iced::{
-    Event, Length, Point, Rectangle, Size, Vector,
-    advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree},
-    },
+    Length, Point, Size,
+    advanced::{layout, widget::Tree},
 };
 
-use crate::{Element, Theme};
+use super::arranged::Arrangement;
+use crate::Element;
 
 /// Lays `element` out at its natural width within `max`: compressed, so
 /// whatever fills reports its intrinsic width, and wrapping text its
@@ -39,18 +37,16 @@ pub(crate) fn natural_layout<Message>(
     )
 }
 
-/// Stacks `children` at the widest of their natural widths, between
-/// `min_width` and `max_width`.
-pub(crate) struct NaturalColumn<'a, Message> {
-    children: Vec<Element<'a, Message>>,
+/// Stacks children at the widest of their natural widths, between
+/// `min_width` and `max_width`, like a vertical box.
+pub(crate) struct NaturalColumn {
     min_width: f32,
     max_width: f32,
 }
 
-impl<'a, Message> NaturalColumn<'a, Message> {
-    pub(crate) fn new(children: impl IntoIterator<Item = Element<'a, Message>>) -> Self {
+impl NaturalColumn {
+    pub(crate) fn new() -> Self {
         Self {
-            children: children.into_iter().collect(),
             min_width: 0.0,
             max_width: f32::INFINITY,
         }
@@ -67,22 +63,15 @@ impl<'a, Message> NaturalColumn<'a, Message> {
     }
 }
 
-impl<Message> Widget<Message, Theme, iced::Renderer> for NaturalColumn<'_, Message> {
-    fn children(&self) -> Vec<Tree> {
-        self.children.iter().map(Tree::new).collect()
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&self.children);
-    }
-
+impl Arrangement for NaturalColumn {
     fn size(&self) -> Size<Length> {
         Size::new(Length::Shrink, Length::Shrink)
     }
 
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
+    fn layout<Message>(
+        &self,
+        children: &mut [Element<'_, Message>],
+        trees: &mut [Tree],
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
@@ -92,10 +81,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for NaturalColumn<'_, Messa
             limits.max().height,
         );
 
-        let natural = self
-            .children
+        let natural = children
             .iter_mut()
-            .zip(&mut tree.children)
+            .zip(trees.iter_mut())
             .map(|(child, tree)| natural_layout(child, tree, renderer, max).size().width)
             .fold(0.0, f32::max);
         let width = natural
@@ -106,10 +94,9 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for NaturalColumn<'_, Messa
         // Allocate: every child at that width.
         let allocate = layout::Limits::new(Size::new(width, 0.0), Size::new(width, max.height));
         let mut y = 0.0;
-        let nodes = self
-            .children
+        let nodes = children
             .iter_mut()
-            .zip(&mut tree.children)
+            .zip(trees.iter_mut())
             .map(|(child, tree)| {
                 let node = child
                     .as_widget_mut()
@@ -121,117 +108,5 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for NaturalColumn<'_, Messa
             .collect();
 
         layout::Node::with_children(Size::new(width, y), nodes)
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        operation.container(None, layout.bounds());
-        operation.traverse(&mut |operation| {
-            for ((child, tree), layout) in self
-                .children
-                .iter_mut()
-                .zip(&mut tree.children)
-                .zip(layout.children())
-            {
-                child
-                    .as_widget_mut()
-                    .operate(tree, layout, renderer, operation);
-            }
-        });
-    }
-
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle,
-    ) {
-        for ((child, tree), layout) in self
-            .children
-            .iter_mut()
-            .zip(&mut tree.children)
-            .zip(layout.children())
-        {
-            child.as_widget_mut().update(
-                tree, event, layout, cursor, renderer, clipboard, shell, viewport,
-            );
-        }
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        self.children
-            .iter()
-            .zip(&tree.children)
-            .zip(layout.children())
-            .map(|((child, tree), layout)| {
-                child
-                    .as_widget()
-                    .mouse_interaction(tree, layout, cursor, viewport, renderer)
-            })
-            .max()
-            .unwrap_or_default()
-    }
-
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut iced::Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        for ((child, tree), layout) in self
-            .children
-            .iter()
-            .zip(&tree.children)
-            .zip(layout.children())
-        {
-            child
-                .as_widget()
-                .draw(tree, renderer, theme, style, layout, cursor, viewport);
-        }
-    }
-
-    fn overlay<'b>(
-        &'b mut self,
-        tree: &'b mut Tree,
-        layout: Layout<'b>,
-        renderer: &iced::Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, iced::Renderer>> {
-        overlay::from_children(
-            &mut self.children,
-            tree,
-            layout,
-            renderer,
-            viewport,
-            translation,
-        )
-    }
-}
-
-impl<'a, Message: 'a> From<NaturalColumn<'a, Message>> for Element<'a, Message> {
-    fn from(column: NaturalColumn<'a, Message>) -> Self {
-        Element::new(column)
     }
 }

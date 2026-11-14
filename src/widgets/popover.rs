@@ -5,6 +5,7 @@ use iced::{
 
 use super::text::TextExt as _;
 use super::{
+    arranged::Arrangement as _,
     button::{Button, ButtonKind},
     list_row::{ListRow, Menu},
     natural::NaturalColumn,
@@ -128,9 +129,10 @@ impl<'a, Message: Clone + 'a> Popover<'a, Message> {
 impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message> {
     fn from(popover: Popover<'a, Message>) -> Self {
         let fit = |children: Vec<Element<'a, Message>>| {
-            NaturalColumn::new(children)
+            NaturalColumn::new()
                 .min_width(popover.min_width)
                 .max_width(MAX_WIDTH)
+                .arrange(children)
         };
         let body: Element<'a, Message> = match popover.body {
             Body::Items(items) => {
@@ -140,7 +142,7 @@ impl<'a, Message: Clone + 'a> From<Popover<'a, Message>> for Element<'a, Message
                 });
                 scrollable(fit(rows.collect())).into()
             }
-            Body::Content(content) => fit(vec![content]).into(),
+            Body::Content(content) => fit(vec![content]),
         };
         let content = container(body).padding(spacing::MD);
 

@@ -15,6 +15,7 @@ use crate::{
 };
 
 use super::{
+    arranged::Arrangement as _,
     button::{Button, ButtonKind},
     focus::{cycle_descendant_focus, event_cursor, focus_first_descendant},
     inert::inert,
@@ -32,12 +33,12 @@ fn sized<'a, Message: 'a>(
     content: impl Into<Element<'a, Message>>,
     max_width: f32,
 ) -> Element<'a, Message> {
-    NaturalColumn::new([container(content)
-        .padding(24)
-        .style(theme::surface(Surface::Page))
-        .into()])
-    .max_width(max_width)
-    .into()
+    NaturalColumn::new()
+        .max_width(max_width)
+        .arrange([container(content)
+            .padding(24)
+            .style(theme::surface(Surface::Page))
+            .into()])
 }
 
 /// Arbitrary content presented by a [`WindowModal`].
